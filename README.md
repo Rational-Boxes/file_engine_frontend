@@ -366,6 +366,172 @@ npm run lint                     # Lint backend code
 4. Update documentation if needed
 5. Submit a pull request with description
 
+## Testing with Public URLs using Ngrok
+
+For testing purposes, you can use Ngrok to create public URLs for your locally running services. This is especially useful for OAuth callback testing and allowing external access to the system.
+
+### Installing Ngrok
+1. Download Ngrok from https://ngrok.com/
+2. Sign up for a free account to get an authentication token
+3. Install the binary and authenticate:
+
+```bash
+# Extract and install ngrok binary
+# Then authenticate with your token
+ngrok config add-authtoken YOUR_AUTH_TOKEN
+```
+
+### Running Services with Ngrok
+
+#### 1. Start all services locally
+```bash
+# Terminal 1: Start FileEngine C++ backend (if running locally)
+# Ensure FileEngine is running on port 8080
+
+# Terminal 2: Start ExpressJS backend
+cd express-backend
+npm run dev
+
+# Terminal 3: Start Vue3 frontend
+npm run dev
+```
+
+#### 2. Create Ngrok tunnels
+```bash
+# In separate terminals, create tunnels for each service:
+
+# For FileEngine backend (if running locally)
+ngrok http 8080
+
+# For ExpressJS backend
+ngrok http 8081
+
+# For Vue3 frontend
+ngrok http 3000
+```
+
+Ngrok will provide you with public URLs like:
+- FileEngine: `https://xxxx-xx-xxx-xxx-xxx.ngrok-free.app`
+- ExpressJS: `https://yyyy-yy-yyy-yyy-yyy.ngrok-free.app`
+- Frontend: `https://zzzz-zz-zzz-zzz-zzz.ngrok-free.app`
+
+### Configuring for Testing
+
+#### Update Environment Variables
+Update your `.env` files with the Ngrok URLs:
+
+**Frontend .env:**
+```bash
+VUE_APP_FILEENGINE_API_URL=https://yyyy-yy-yyy-yyy-yyy.ngrok-free.app
+VUE_APP_FRONTEND_URL=https://zzzz-zz-zzz-zzz-zzz.ngrok-free.app
+```
+
+**Backend .env:**
+```bash
+FILEENGINE_API_URL=https://xxxx-xx-xxx-xxx-xxx.ngrok-free.app
+FRONTEND_URL=https://zzzz-zz-zzz-zzz-zzz.ngrok-free.app
+```
+
+#### Configure OAuth for Testing
+When using Ngrok for OAuth testing:
+
+1. Update OAuth callback URLs in your OAuth provider settings to use the Ngrok frontend URL:
+   - Development: `https://zzzz-zz-zzz-zzz-zzz.ngrok-free.app/oauth/callback`
+
+2. Ensure the JWT configuration in the FileEngine backend is updated to accept tokens issued for the new domain.
+
+### JWT Configuration for Testing Domains
+
+#### Registering Testing Domain with FileEngine Backend
+
+The FileEngine system validates JWT tokens against registered origins. To add your Ngrok domain to the backend:
+
+1. **Access the FileEngine Admin Tool** (if available):
+```bash
+# If using the admin tool directly
+python admin_tool.py --register-origin "ngrok-test" "YOUR_PUBLIC_KEY"
+```
+
+2. **If adding via API** (using the FileEngine HTTP proxy):
+```bash
+curl -X POST https://xxxx-xx-xxx-xxx-xxx.ngrok-free.app/api/v1/admin/origins/register \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "ngrok-test",
+    "public_key": "YOUR_PUBLIC_KEY",
+    "domain": "zzzz-zz-zzz-zzz-zzz.ngrok-free.app"
+  }'
+```
+
+3. **Key Generation for Testing** (if you need to generate new keys):
+```bash
+# Generate a new key pair for testing
+openssl genrsa -out test_jwt_private.pem 2048
+openssl rsa -in test_jwt_private.pem -pubout -out test_jwt_public.pem
+```
+
+4. **Update the JWT Secret** in your backend `.env`:
+```bash
+JWT_SECRET="your-test-jwt-secret-key"
+```
+
+5. **Configure the public key** in the FileEngine backend system:
+   - Add the public key to the origins table in the FileEngine database
+   - Or use the admin tool to register the new origin with its public key
+   - The FileEngine backend must have the public key to validate JWT signatures
+
+#### JWT Token Structure Requirements
+When testing with different domains, ensure JWT tokens contain the correct domain information:
+
+```json
+{
+  "sub": "user@example.com",
+  "iss": "https://zzzz-zz-zzz-zzz-zzz.ngrok-free.app",
+  "aud": ["https://xxxx-xx-xxx-xxx-xxx.ngrok-free.app", "https://yyyy-yy-yyy-yyy-yyy.ngrok-free.app"],
+  "exp": 1234567890,
+  "iat": 1234561234,
+  "roles": ["user", "editor"],
+  "permissions": ["file.read", "file.write", "file.delete"]
+}
+```
+
+### Example Complete Ngrok Setup
+
+Here's a complete example of how to set up all services with Ngrok:
+
+```bash
+# Terminal 1: Start FileEngine backend
+# (Assuming it's running on localhost:8080)
+
+# Terminal 2: Start ExpressJS backend
+cd express-backend
+npm run dev
+
+# Terminal 3: Start Vue3 frontend
+npm run dev
+
+# Terminal 4: Create Ngrok tunnel for FileEngine (if local)
+ngrok http 8080
+
+# Terminal 5: Create Ngrok tunnel for ExpressJS backend
+ngrok http 8081
+
+# Terminal 6: Create Ngrok tunnel for Vue3 frontend
+ngrok http 3000
+
+# Terminal 7: Update environment files and restart services with new URLs
+# Update .env files with Ngrok URLs and restart services
+```
+
+### Testing Authentication Flow with Ngrok
+1. The OAuth2 redirect will go to your Ngrok frontend URL
+2. The callback will be received at the Ngrok frontend URL
+3. JWT tokens will be validated against the registered origin
+4. All API calls will be properly authenticated and authorized
+
+**Important**: Remember that Ngrok URLs change each time you restart the tunnel, so you'll need to update your configurations and registered origins each time.
+
 ## Support
 
 ### Getting Help
@@ -379,6 +545,9 @@ Common issues and solutions:
 - File operations failing: Check FileEngine backend connectivity
 - CAD conversion issues: Ensure LibreOffice is properly installed
 - Performance problems: Monitor cache and temporary file directories
+- Ngrok connectivity: Check that all services are accessible via Ngrok URLs
+- JWT validation: Ensure public keys are properly registered with FileEngine
+- Domain mismatch: Verify that JWT tokens contain correct domain information
 
 ## License
 
