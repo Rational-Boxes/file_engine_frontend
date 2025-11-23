@@ -156,6 +156,335 @@ cd express-backend
 npm start
 ```
 
+## Running with Docker Compose
+
+For easier deployment and management, you can run the FileEngine frontend system using Docker Compose.
+
+### Docker Compose Configuration
+
+Create a `docker-compose.yml` file in the project root:
+
+```yaml
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VUE_APP_FILEENGINE_API_URL=http://backend:8081
+      - VUE_APP_FRONTEND_URL=http://localhost:3000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - FILEENGINE_API_URL=http://host.docker.internal:8080  # For connecting to FileEngine backend running on host
+      - JWT_SECRET=your-super-secret-jwt-signing-key-here
+      - OPENOFFICE_PATH=/usr/bin/libreoffice
+      - FRONTEND_URL=http://localhost:3000
+      - CACHE_DIR=/app/cache
+      - UPLOAD_LIMIT=52428800
+      - TEMP_DIR=/tmp/fileengine
+      - CAD_VIEWER_OUTPUT=/app/cad-viewers
+    volumes:
+      - backend_cache:/app/cache
+      - backend_temp:/tmp/fileengine
+      - backend_cad:/app/cad-viewers
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl  # For HTTPS configuration
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend_cache:
+  backend_temp:
+  backend_cad:
+```
+
+### Dockerfiles
+
+#### Frontend Dockerfile (`Dockerfile.frontend`)
+
+```Dockerfile
+FROM node:18-alpine AS build
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Production stage
+FROM nginx:alpine
+
+# Copy build output to nginx html directory
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY nginx-frontend.conf /etc/nginx/nginx.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+#### Backend Dockerfile (`Dockerfile.backend`)
+
+```Dockerfile
+FROM node:18-alpine
+
+# Install LibreOffice for document conversion
+RUN apk add --no-cache \
+    libreoffice \
+    python3 \
+    py3-pip
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY express-backend/package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source code
+COPY express-backend/ .
+
+# Create necessary directories
+RUN mkdir -p /app/cache /tmp/fileengine /app/cad-viewers
+
+# Expose port
+EXPOSE 8081
+
+# Start the server
+CMD ["npm", "start"]
+```
+
+#### Nginx Configuration (`nginx-frontend.conf`)
+
+```nginx
+events {
+    worker_connections 1024;
+}
+
+http {
+    server {
+        listen 80;
+        server_name localhost;
+
+        # Frontend static files
+        location / {
+            root /usr/share/nginx/html;
+            try_files $uri $uri/ /index.html;
+        }
+
+        # API proxy to backend
+        location /api {
+            proxy_pass http://backend:8081;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_cache_bypass $http_upgrade;
+        }
+
+        # For OAuth callbacks if needed
+        location /oauth {
+            proxy_pass http://backend:8081;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+    }
+}
+```
+
+### Environment Configuration for Docker
+
+Create a `.env.docker` file for Docker-specific environment variables:
+
+```bash
+# Frontend environment for Docker
+VUE_APP_FILEENGINE_API_URL=http://backend:8081
+VUE_APP_OAUTH_CLIENT_ID=your-oauth-client-id
+VUE_APP_OAUTH_SCOPE="openid profile email"
+VUE_APP_OAUTH_PROVIDERS="google,github,ldap"
+VUE_APP_FRONTEND_URL=http://localhost:3000
+
+# Backend environment for Docker
+PORT=8081
+FILEENGINE_API_URL=http://fileengine:8080  # Adjust based on your FileEngine setup
+JWT_SECRET=your-super-secret-jwt-signing-key-here
+OPENOFFICE_PATH=/usr/bin/libreoffice
+FRONTEND_URL=http://localhost:3000
+CACHE_DIR=/app/cache
+UPLOAD_LIMIT=52428800
+TEMP_DIR=/tmp/fileengine
+CAD_VIEWER_OUTPUT=/app/cad-viewers
+```
+
+### Running with Docker Compose
+
+1. **Build and start the services:**
+```bash
+# Build and start all services
+docker-compose up -d --build
+
+# View logs
+docker-compose logs -f
+```
+
+2. **Access the application:**
+   - Frontend: `http://localhost:3000`
+   - Backend API: `http://localhost:8081`
+   - Health check: `http://localhost/health` (through nginx)
+
+3. **Stop the services:**
+```bash
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes (data will be lost)
+docker-compose down -v
+```
+
+4. **Update configurations:**
+```bash
+# Rebuild and restart after code changes
+docker-compose up -d --build
+
+# Update only the frontend
+docker-compose build frontend
+docker-compose restart frontend
+```
+
+### Production Docker Compose Configuration
+
+For production deployments, create a separate `docker-compose.prod.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "443:80"
+    environment:
+      - VUE_APP_FILEENGINE_API_URL=https://api.yourdomain.com
+      - VUE_APP_FRONTEND_URL=https://yourdomain.com
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - frontend
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - FILEENGINE_API_URL=https://fileengine.yourdomain.com
+      - JWT_SECRET=${JWT_SECRET}
+      - OPENOFFICE_PATH=/usr/bin/libreoffice
+      - FRONTEND_URL=https://yourdomain.com
+      - CACHE_DIR=/app/cache
+      - UPLOAD_LIMIT=52428800
+      - TEMP_DIR=/tmp/fileengine
+      - CAD_VIEWER_OUTPUT=/app/cad-viewers
+    volumes:
+      - /volume1/backend_cache:/app/cache
+      - /volume1/backend_temp:/tmp/fileengine
+      - /volume1/backend_cad:/app/cad-viewers
+    restart: unless-stopped
+    networks:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf
+      - /etc/letsencrypt:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  backend_cache:
+  backend_temp:
+  backend_cad:
+```
+
+### Running Production Setup
+
+```bash
+# Start production setup
+docker-compose -f docker-compose.prod.yml up -d --build
+
+# With environment variables from file
+docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
 ## Project Structure
 
 ```
