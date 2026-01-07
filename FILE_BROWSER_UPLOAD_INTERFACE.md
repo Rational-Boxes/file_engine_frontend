@@ -290,19 +290,21 @@ onUnmounted(() => {
 <template>
   <div class="file-toolbar">
     <div class="toolbar-left">
-      <button 
-        class="btn-primary" 
+      <button
+        class="btn-primary"
         @click="emit('create-directory')"
         :disabled="!canCreate"
+        v-if="hasPermission('directory.create')"
       >
         <i class="create-icon"></i>
         New Folder
       </button>
-      
-      <button 
-        class="btn-success" 
+
+      <button
+        class="btn-success"
         @click="emit('upload')"
         :disabled="!canUpload"
+        v-if="hasPermission('file.write')"
       >
         <i class="upload-icon"></i>
         Upload
@@ -379,6 +381,13 @@ const canCreate = computed(() => {
 const canUpload = computed(() => {
   return authStore.hasAccessLevel('user');
 });
+
+// Check if user has specific permission based on LDAP roles
+const hasPermission = (permission) => {
+  // Check if user has the required permission based on their LDAP roles
+  return authStore.userPermissions.includes(permission) ||
+         authStore.userPermissions.includes('admin'); // Admin has all permissions
+};
 
 const toggleView = () => {
   emit('toggle-view');
@@ -983,24 +992,24 @@ const cancelUpload = (uploadId) => {
           <i class="open-icon"></i>
           Open
         </li>
-        <li v-else @click="emit('action', 'open', item)">
+        <li v-else @click="emit('action', 'open', item)" v-if="hasPermission('file.read')">
           <i class="preview-icon"></i>
           Preview
         </li>
-        
-        <li @click="emit('action', 'download', item)">
+
+        <li @click="emit('action', 'download', item)" v-if="hasPermission('file.read')">
           <i class="download-icon"></i>
           Download
         </li>
-        
-        <li @click="emit('action', 'rename', item)">
+
+        <li @click="emit('action', 'rename', item)" v-if="hasPermission('file.write')">
           <i class="rename-icon"></i>
           Rename
         </li>
-        
-        <li class="divider"></li>
-        
-        <li @click="emit('action', 'delete', item)" class="danger">
+
+        <li class="divider" v-if="hasPermission('file.write') || hasPermission('file.delete')"></li>
+
+        <li @click="emit('action', 'delete', item)" class="danger" v-if="hasPermission('file.delete')">
           <i class="delete-icon"></i>
           Delete
         </li>
@@ -1010,6 +1019,8 @@ const cancelUpload = (uploadId) => {
 </template>
 
 <script setup>
+import { useAuthStore } from '@/stores/auth';
+
 defineProps({
   x: {
     type: Number,
@@ -1026,6 +1037,14 @@ defineProps({
 });
 
 const emit = defineEmits(['action', 'close']);
+const authStore = useAuthStore();
+
+// Check if user has specific permission based on LDAP roles
+const hasPermission = (permission) => {
+  // Check if user has the required permission based on their LDAP roles
+  return authStore.userPermissions.includes(permission) ||
+         authStore.userPermissions.includes('admin'); // Admin has all permissions
+};
 
 // Close context menu when clicking outside
 const closeOnOutsideClick = (event) => {

@@ -17,14 +17,24 @@ The FileEngine Frontend is a full-stack JavaScript application that provides a w
                               │                          │
                               ▼                          ▼
                     ┌──────────────────┐        ┌─────────────────┐
-                    │ PostgreSQL       │        │ PostgreSQL      │
-                    │ (Auth/Metadata)  │        └─────────────────┘
+                    │ ExpressJS        │        │ PostgreSQL      │
+                    │ Backend Service  │        │ (FileEngine)    │
+                    │ (Transformations,│        └─────────────────┘
+                    │  Auth, Business  │
+                    │   Logic)         │
                     └──────────────────┘
                               │
-                              ▼
+                    ┌──────────────────┐
+                    │  Transformation  │
+                    │   Services       │
+                    │ (OpenOffice,     │
+                    │  XeoKit, etc.)   │
+                    └──────────────────┘
+                              │
                     ┌──────────────────┐
                     │   LDAP Server    │
-                    │ (Authentication) │
+                    │ (User Directory  │
+                    │   & Roles)       │
                     └──────────────────┘
 ```
 

@@ -12,14 +12,15 @@ FileEngine Frontend is a modern web application built with Vue3 and ExpressJS th
 - **Format Conversion**: Automatic conversion of documents to PDF using LibreOffice
 - **CAD Visualization**: 3D CAD model viewing using Xeokit integration
 - **Image Optimization**: Automatic image compression and format conversion
-- **Role-Based Access Control**: Granular permissions system with user, editor, and admin levels
-- **OAuth2 Authentication**: Secure authentication with PKCE flow
+- **Role-Based Access Control**: Granular permissions system with user, contributor, and admin levels based on LDAP roles
+- **Authentication**: Secure authentication with OAuth2 and LDAP integration
 
 ### Architecture Highlights
 - **Frontend**: Vue3 with TypeScript, Pinia for state management
-- **Backend**: ExpressJS with transformation services
+- **Backend**: ExpressJS with transformation services and LDAP integration
+- **Authentication**: OAuth2 and LDAP with JWT-based tokens
 - **API Integration**: Seamless integration with FileEngine C++ HTTP proxy
-- **Security**: JWT-based authentication with auto-refresh
+- **Security**: JWT-based authentication with auto-refresh and LDAP role management
 - **Testing**: Full test coverage with TDD approach
 
 ## Prerequisites
@@ -543,8 +544,9 @@ fileengine-frontend/
 
 ### Authentication & Authorization
 - **OAuth2 with PKCE**: Secure authentication flow
+- **LDAP Integration**: Integration with LDAP for user authentication and role management
 - **JWT Management**: Automatic token refresh and storage
-- **Role-Based Access**: User, editor, and admin levels
+- **Role-Based Access**: User, contributor, and admin levels based on LDAP roles
 - **Session Management**: Automatic session handling
 
 ## API Integration

@@ -1,10 +1,10 @@
 # Front-end for the file_engine_cpp project
 
-This is a full-stack JavaScript application to provide a full front-end to the file_engine_cpp project using it’s REST API.
+This is a full-stack JavaScript application to provide a full front-end to the file_engine_cpp project using
+the JavaScript/TypeScript library.
 
-This application needs to implement log-in including Oauth2, The access to the File Engine is via a Bearer JWT signed with a Private Key held by this application and the Public Key stored by the File Engine.
-
-The JS back-end also needs to be able to access File Engine for features such as automatic format conversion.
+This application needs to implement log-in including Oauth2. User account information and Roles under
+each Tenant will be stored in an LDAP service.
 
 ## Technology stack
 
@@ -18,7 +18,21 @@ File-browser.
 
 Upload with drag and drop targets and progress bar for large files.
 
-Front-end supports multiple access levels depending on the user’s privileges including a system administrator interface. Menus should respect the user’s level of access.
+Front-end supports multiple access levels depending on user privileges including a
+system administrator interface. Menus should respect the user’s level of access.
+
+## User and permissions in LDAP
+
+User accounts in LDAP are stored under `ou=users`
+
+Tenants are implemented as `ou` under `ou=tenants`, under each one the user groups are implemented as
+`groupOfNames` entities for the Roles.
+
+### Default role definitions:
+
+- `users` Basic access, can read files
+- `contribuators` write access
+- `administrators` full access for administration
 
 ## Advanced features
 

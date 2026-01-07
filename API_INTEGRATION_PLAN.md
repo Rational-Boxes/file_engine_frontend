@@ -71,9 +71,17 @@ export default apiClient;
 ## Authentication Service
 
 ### Endpoints
-- OAuth2 integration endpoints (to be implemented based on OAuth2 provider)
+- OAuth2 integration endpoints with LDAP backend
+- LDAP authentication endpoints
 - Token validation and refresh
 - User session management
+- Tenant and role information retrieval from LDAP
+
+### LDAP Integration Details
+User accounts and roles are stored in an LDAP service as specified in the frontend specifications:
+- User accounts are stored under `ou=users`
+- Tenants are implemented as `ou` under `ou=tenants`
+- User groups (roles) are implemented as `groupOfNames` entities for each tenant
 
 ### Implementation Plan
 ```javascript
@@ -81,12 +89,22 @@ export default apiClient;
 import apiClient from './api';
 
 export const authService = {
-  // OAuth2 login flow
+  // OAuth2 login flow with LDAP backend
   async initiateOAuth(provider) {
     // Redirect to OAuth provider
     window.location.href = `${apiClient.defaults.baseURL}/auth/oauth/${provider}`;
   },
-  
+
+  // LDAP login flow
+  async ldapLogin(username, password, tenant) {
+    const response = await apiClient.post('/auth/ldap/login', {
+      username,
+      password,
+      tenant
+    });
+    return response.data;
+  },
+
   // Token exchange after OAuth callback
   async exchangeCodeForToken(code, state) {
     const response = await apiClient.post('/auth/token', {
@@ -95,7 +113,7 @@ export const authService = {
     });
     return response.data;
   },
-  
+
   // Validate current token
   async validateToken() {
     try {
@@ -109,11 +127,23 @@ export const authService = {
       throw error;
     }
   },
-  
-  // Get user profile information
+
+  // Get user profile information including LDAP roles
   async getUserProfile() {
     const response = await apiClient.get('/auth/profile');
     return response.data;
+  },
+
+  // Get user roles from LDAP for access control
+  async getUserRoles(userId, tenantId) {
+    const response = await apiClient.get(`/auth/user/${userId}/roles?tenant=${tenantId}`);
+    return response.data.roles;
+  },
+
+  // Get available tenants for the user
+  async getUserTenants(userId) {
+    const response = await apiClient.get(`/auth/user/${userId}/tenants`);
+    return response.data.tenants;
   }
 };
 ```

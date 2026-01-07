@@ -42,6 +42,32 @@ export const authService = {
       return ['google', 'github', 'ldap'];
     }
   },
+
+  // LDAP login flow
+  async ldapLogin(credentials) {
+    try {
+      const response = await apiClient.post('/auth/ldap/login', credentials);
+      const { token, user, roles } = response.data;
+
+      // Store the JWT token
+      this.storeTokens({
+        accessToken: token,
+        refreshToken: null, // LDAP may not use refresh tokens
+        expiresAt: this.getTokenExpiration(token)
+      });
+
+      // Store user information including LDAP roles
+      return {
+        success: true,
+        user: {
+          ...user,
+          roles: roles // Include roles from LDAP
+        }
+      };
+    } catch (error) {
+      throw error;
+    }
+  },
   
   // Initiate OAuth2 flow
   async initiateOAuth(provider) {
@@ -121,13 +147,13 @@ export const authService = {
     try {
       const response = await apiClient.post('/auth/login', credentials);
       const { access_token, refresh_token, expires_in } = response.data;
-      
+
       this.storeTokens({
         accessToken: access_token,
         refreshToken: refresh_token,
         expiresAt: Date.now() + (expires_in * 1000)
       });
-      
+
       return { success: true, user: decodeToken(access_token) };
     } catch (error) {
       throw error;
@@ -337,30 +363,37 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     
-    // Login with credentials or OAuth
-    async login(credentials, isOAuth = false) {
+    // Login with credentials, OAuth, or LDAP
+    async login(credentials, authType = 'local') {
       this.loading = true;
       this.error = null;
-      
+
       try {
         let result;
-        if (isOAuth) {
-          result = await authService.handleOAuthCallback(credentials.code, credentials.state);
-        } else {
-          result = await authService.login(credentials);
+        switch (authType) {
+          case 'oauth':
+            result = await authService.handleOAuthCallback(credentials.code, credentials.state);
+            break;
+          case 'ldap':
+            result = await authService.ldapLogin(credentials);
+            break;
+          case 'local':
+          default:
+            result = await authService.login(credentials);
+            break;
         }
-        
+
         if (result.success) {
           this.user = result.user;
           this.isAuthenticated = true;
           this.accessLevel = this.determineAccessLevel(this.user);
-          
+
           // Set up automatic token refresh
           const accessToken = tokenStorage.getAccessToken();
           if (accessToken) {
             this.setupTokenRefresh(accessToken);
           }
-          
+
           return { success: true };
         } else {
           throw new Error('Authentication failed');

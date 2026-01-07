@@ -74,11 +74,12 @@ This document outlines the development timeline and milestones for the FileEngin
   - Set up token refresh mechanism
   - Implement automatic login persistence
 
-- **M2.2** - OAuth2 integration (Day 18-21)
-  - Implement PKCE flow
+- **M2.2** - OAuth2 and LDAP integration (Day 18-21)
+  - Implement PKCE flow for OAuth2
   - Create OAuth provider components
   - Handle OAuth callbacks
-  - Integrate with FileEngine auth endpoints
+  - Integrate with LDAP backend for user authentication
+  - Implement LDAP connection and user validation
 
 - **M2.3** - User session management (Day 22-24)
   - Implement session persistence
@@ -86,11 +87,12 @@ This document outlines the development timeline and milestones for the FileEngin
   - Handle token expiration
   - Implement "Remember Me" feature
 
-- **M2.4** - Access level system (Day 25-28)
-  - Implement role-based permissions
-  - Create access level hierarchy
-  - Build dynamic menu system
+- **M2.4** - Access level system with LDAP roles (Day 25-28)
+  - Implement role-based permissions from LDAP
+  - Create access level hierarchy based on LDAP groups
+  - Build dynamic menu system based on LDAP roles
   - Implement permission-based UI elements
+  - Integrate with LDAP groupOfNames for role management
 
 #### Deliverables:
 - Complete authentication system with OAuth2 support

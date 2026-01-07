@@ -16,7 +16,8 @@ This document outlines the design for the ExpressJS backend component that will 
 │   Vue3 Frontend │◄──►│ ExpressJS Server │◄──►│ FileEngine HTTP  │◄──►│ FileEngine gRPC │
 │                 │    │                  │    │      Proxy       │    │    Service      │
 │ (User Interface)│    │ (Transformations,│    │   (REST API)     │    │                 │
-└─────────────────┘    │ Business Logic)  │    └──────────────────┘    └─────────────────┘
+└─────────────────┘    │ Business Logic,  │    └──────────────────┘    └─────────────────┘
+                       │   LDAP Auth)     │
                        └──────────────────┘
                               │
                     ┌──────────────────┐
@@ -24,6 +25,12 @@ This document outlines the design for the ExpressJS backend component that will 
                     │   Services       │
                     │ (OpenOffice,     │
                     │  XeoKit, etc.)   │
+                    └──────────────────┘
+                              │
+                    ┌──────────────────┐
+                    │   LDAP Service   │
+                    │ (User Directory  │
+                    │   & Roles)       │
                     └──────────────────┘
 ```
 
@@ -34,22 +41,25 @@ This document outlines the design for the ExpressJS backend component that will 
 express-backend/
 ├── app.js                    # Main Express application
 ├── routes/                   # API route definitions
-│   ├── auth.js               # Authentication routes
+│   ├── auth.js               # Authentication routes (OAuth2 and LDAP)
 │   ├── files.js              # File operations routes
 │   ├── transform.js          # File transformation routes
 │   └── cad.js                # CAD conversion routes
 ├── middleware/               # Custom middleware
 │   ├── auth.js               # JWT validation
+│   ├── ldap-auth.js          # LDAP authentication middleware
 │   ├── file-validation.js    # File validation
 │   └── rate-limiting.js      # Rate limiting
 ├── services/                 # Business logic services
 │   ├── fileService.js        # File operations
 │   ├── transformService.js   # Format conversion
 │   ├── cadService.js         # CAD conversion
-│   └── authService.js        # Auth utilities
+│   ├── authService.js        # Auth utilities
+│   └── ldapService.js        # LDAP integration service
 ├── utils/                    # Utility functions
 │   ├── fileUtils.js          # File utilities
-│   └── cacheUtils.js         # Caching utilities
+│   ├── cacheUtils.js         # Caching utilities
+│   └── ldapUtils.js          # LDAP utilities
 ├── config/                   # Configuration
 │   └── index.js              # Configuration management
 └── package.json              # Dependencies and scripts
@@ -66,6 +76,7 @@ const rateLimit = require('express-rate-limit');
 const fileUpload = require('express-fileupload');
 const { verifyJWT } = require('./middleware/auth');
 const { handleFileTransformations } = require('./middleware/file-validation');
+const { initializeLdapConnection } = require('./services/ldapService');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -74,6 +85,9 @@ const transformRoutes = require('./routes/transform');
 const cadRoutes = require('./routes/cad');
 
 const app = express();
+
+// Initialize LDAP connection on startup
+initializeLdapConnection();
 
 // Security middleware
 app.use(helmet());
@@ -96,7 +110,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // File upload middleware
 app.use(fileUpload({
   createParentPath: true,
-  limits: { 
+  limits: {
     fileSize: 50 * 1024 * 1024 // 50MB max file size
   },
   useTempFiles: true,
@@ -1003,6 +1017,251 @@ function isValidExtensionForType(mimeType, ext) {
 module.exports = { handleFileTransformations };
 ```
 
+## LDAP Integration
+
+### LDAP Service Implementation
+
+The ExpressJS backend integrates with an LDAP service to handle user authentication and role management as specified in the frontend specifications. User accounts are stored in LDAP under `ou=users` and roles are defined per tenant under `ou=tenants` as `groupOfNames` entities.
+
+```javascript
+// express-backend/services/ldapService.js
+const ldap = require('ldapjs');
+const jwt = require('jsonwebtoken');
+
+class LdapService {
+  constructor() {
+    this.client = null;
+    this.ldapUrl = process.env.LDAP_URL || 'ldap://localhost:389';
+    this.bindDN = process.env.LDAP_BIND_DN;
+    this.bindPassword = process.env.LDAP_BIND_PASSWORD;
+    this.searchBase = process.env.LDAP_SEARCH_BASE || 'ou=users';
+    this.tenantsBase = process.env.LDAP_TENANTS_BASE || 'ou=tenants';
+    this.jwtSecret = process.env.JWT_SECRET || 'default_secret_for_dev';
+  }
+
+  async initializeLdapConnection() {
+    try {
+      this.client = ldap.createClient({
+        url: this.ldapUrl
+      });
+
+      // Bind with service account if provided
+      if (this.bindDN && this.bindPassword) {
+        await new Promise((resolve, reject) => {
+          this.client.bind(this.bindDN, this.bindPassword, (err) => {
+            if (err) {
+              console.error('LDAP bind error:', err);
+              reject(err);
+            } else {
+              console.log('Successfully bound to LDAP server');
+              resolve();
+            }
+          });
+        });
+      }
+
+      console.log('LDAP service initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize LDAP service:', error);
+      throw error;
+    }
+  }
+
+  async authenticateUser(username, password, tenant = 'default') {
+    return new Promise((resolve, reject) => {
+      // Search for the user
+      const searchOptions = {
+        filter: `(uid=${username})`,
+        scope: 'sub',
+        attributes: ['dn', 'cn', 'mail', 'memberOf']
+      };
+
+      const userSearchBase = `${this.searchBase},dc=fileengine,dc=com`;
+
+      this.client.search(userSearchBase, searchOptions, (err, res) => {
+        if (err) {
+          console.error('LDAP search error:', err);
+          return reject(err);
+        }
+
+        let userFound = false;
+        let userDn = null;
+        let userInfo = {};
+
+        res.on('searchEntry', (entry) => {
+          userFound = true;
+          userDn = entry.object.dn;
+          userInfo = {
+            dn: entry.object.dn,
+            uid: entry.object.uid,
+            cn: entry.object.cn,
+            mail: entry.object.mail,
+            memberOf: Array.isArray(entry.object.memberOf) ? entry.object.memberOf : [entry.object.memberOf || '']
+          };
+        });
+
+        res.on('error', (err) => {
+          console.error('LDAP search error:', err);
+          reject(err);
+        });
+
+        res.on('end', async (result) => {
+          if (!userFound) {
+            return resolve({ success: false, error: 'User not found' });
+          }
+
+          // Try to bind with user's credentials to authenticate
+          const userClient = ldap.createClient({ url: this.ldapUrl });
+
+          userClient.bind(userDn, password, async (bindErr) => {
+            if (bindErr) {
+              console.log('LDAP authentication failed for user:', username);
+              userClient.unbind();
+              return resolve({ success: false, error: 'Invalid credentials' });
+            }
+
+            // Authentication successful, get user roles
+            try {
+              const roles = await this.getUserRoles(username, tenant);
+              userClient.unbind();
+              resolve({
+                success: true,
+                user: userInfo,
+                roles
+              });
+            } catch (error) {
+              userClient.unbind();
+              reject(error);
+            }
+          });
+        });
+      });
+    });
+  }
+
+  async getUserRoles(userId, tenantId) {
+    return new Promise((resolve, reject) => {
+      // Search for groups the user is a member of within the tenant
+      const searchOptions = {
+        filter: `(&(objectClass=groupOfNames)(member=uid=${userId},${this.searchBase},dc=fileengine,dc=com))`,
+        scope: 'sub',
+        attributes: ['cn', 'description']
+      };
+
+      const tenantBase = `${this.tenantsBase}/${tenantId},dc=fileengine,dc=com`;
+
+      this.client.search(tenantBase, searchOptions, (err, res) => {
+        if (err) {
+          console.error('LDAP role search error:', err);
+          return reject(err);
+        }
+
+        const roles = [];
+
+        res.on('searchEntry', (entry) => {
+          roles.push(entry.object.cn);
+        });
+
+        res.on('error', (err) => {
+          console.error('LDAP role search error:', err);
+          reject(err);
+        });
+
+        res.on('end', () => {
+          resolve(roles);
+        });
+      });
+    });
+  }
+
+  async getUserTenants(userId) {
+    return new Promise((resolve, reject) => {
+      // Search for all tenants the user has access to
+      const searchOptions = {
+        filter: `(member=uid=${userId},${this.searchBase},dc=fileengine,dc=com)`,
+        scope: 'sub',
+        attributes: ['ou']
+      };
+
+      this.client.search(this.tenantsBase, searchOptions, (err, res) => {
+        if (err) {
+          console.error('LDAP tenant search error:', err);
+          return reject(err);
+        }
+
+        const tenants = [];
+
+        res.on('searchEntry', (entry) => {
+          if (entry.object.ou) {
+            tenants.push(entry.object.ou);
+          }
+        });
+
+        res.on('error', (err) => {
+          console.error('LDAP tenant search error:', err);
+          reject(err);
+        });
+
+        res.on('end', () => {
+          resolve(tenants);
+        });
+      });
+    });
+  }
+
+  generateToken(user) {
+    const payload = {
+      sub: user.uid,
+      name: user.cn,
+      email: user.mail,
+      // Add roles to the token for frontend access control
+    };
+
+    return jwt.sign(payload, this.jwtSecret, { expiresIn: '24h' });
+  }
+}
+
+const ldapService = new LdapService();
+
+module.exports = ldapService;
+```
+
+### LDAP Authentication Middleware
+
+```javascript
+// express-backend/middleware/ldap-auth.js
+const ldapService = require('../services/ldapService');
+
+const ldapAuth = async (req, res, next) => {
+  try {
+    // Extract credentials from request
+    const { username, password, tenant } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    // Authenticate against LDAP
+    const authResult = await ldapService.authenticateUser(username, password, tenant);
+
+    if (!authResult.success) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Add user info to request object
+    req.user = authResult.user;
+    req.roles = authResult.roles;
+
+    next();
+  } catch (error) {
+    console.error('LDAP authentication error:', error);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+};
+
+module.exports = { ldapAuth };
+```
+
 ## Performance Optimization
 
 ### Caching Layer for Transformations
@@ -1026,11 +1285,11 @@ class CacheManager {
   // Cache transformed file results
   async cacheTransformation(originalPath, transformType, outputPath) {
     const cacheKey = this.generateCacheKey(originalPath, transformType);
-    
+
     // Copy transformed file to cache directory
     const cacheFilePath = path.join(this.cacheDir, `${cacheKey}${path.extname(outputPath)}`);
     await fs.copyFile(outputPath, cacheFilePath);
-    
+
     // Store cache key and path
     this.cache.set(cacheKey, cacheFilePath);
   }
@@ -1045,7 +1304,7 @@ class CacheManager {
   async isTransformationCached(originalPath, transformType) {
     const cachedPath = this.getCachedTransformation(originalPath, transformType);
     if (!cachedPath) return false;
-    
+
     try {
       await fs.access(cachedPath);
       return true;
@@ -1086,8 +1345,9 @@ This additional planning document addresses the requirement for the ExpressJS ba
 3. CAD conversion services with XeoKit integration
 4. Backend logic for advanced file operations
 5. Proper security and validation middleware
-6. Caching mechanisms for performance optimization
-7. Frontend integration patterns for accessing transformation services
-8. Direct integration with FileEngine REST API for filesystem operations
+6. LDAP integration for user authentication and role management
+7. Caching mechanisms for performance optimization
+8. Frontend integration patterns for accessing transformation services
+9. Direct integration with FileEngine REST API for filesystem operations
 
-This design ensures that the ExpressJS backend can handle the advanced file transformation requirements mentioned in the original frontend specification while maintaining proper integration with the FileEngine system.
+This design ensures that the ExpressJS backend can handle the advanced file transformation requirements mentioned in the original frontend specification while maintaining proper integration with the FileEngine system and providing secure LDAP-based authentication.

@@ -2,34 +2,39 @@
 
 ## Overview
 
-This document outlines the comprehensive plan for implementing access level management and dynamic menu systems in the FileEngine frontend. The system will support multiple user access levels (user, editor, admin) with role-based permissions that dynamically affect UI visibility and functionality.
+This document outlines the comprehensive plan for implementing access level management and dynamic menu systems in the FileEngine frontend. The system will support multiple user access levels (user, contributor, admin) with role-based permissions that dynamically affect UI visibility and functionality. User accounts and roles are stored in an LDAP service as specified in the frontend specifications.
 
 ## Access Level Architecture
 
 ### Access Level Hierarchy
 
-The FileEngine frontend supports three primary access levels:
+The FileEngine frontend supports three primary access levels based on LDAP role definitions:
 
-1. **User (Basic)**: Standard file operations (read, write, basic management)
-2. **Editor**: Extended file operations (advanced management, sharing, metadata)
-3. **Admin**: Full system access (user management, system configuration, ACL management)
+1. **User (Basic)**: Standard file operations (read files)
+2. **Contributor**: Extended file operations (read, write, edit files)
+3. **Administrator**: Full system access (read, write, delete, admin operations)
 
-### Role-to-Access Level Mapping
+### LDAP Role-to-Access Level Mapping
+
+User accounts are stored in LDAP under `ou=users` and roles are defined per tenant under `ou=tenants`. The default role definitions are:
+
+- `users`: Basic access, can read files (maps to User access level)
+- `contributors`: Write access (maps to Contributor access level)
+- `administrators`: Full access for administration (maps to Administrator access level)
 
 ```javascript
-// Role-to-Level mapping
+// Role-to-Level mapping from LDAP
 const roleToAccessLevel = {
-  'guest': 'user',        // Read-only in designated areas
-  'user': 'user',         // Standard user operations
-  'editor': 'editor',     // Enhanced editing capabilities  
-  'admin': 'admin',       // Full administrative access
+  'users': 'user',        // Read-only access as defined in LDAP
+  'contributors': 'contributor', // Read and write access as defined in LDAP
+  'administrators': 'admin',     // Full administrative access as defined in LDAP
   'root': 'admin'         // System-level access
 };
 ```
 
 ### Permission-Based Access Control
 
-Access to features is determined by permissions granted to roles:
+Access to features is determined by permissions granted to LDAP roles:
 
 ```javascript
 // Permission structure

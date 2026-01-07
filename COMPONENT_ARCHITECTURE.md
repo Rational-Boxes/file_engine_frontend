@@ -158,9 +158,9 @@ const changeAccessLevel = (event) => {
 ### Auth Components Structure
 ```
 components/auth/
-├── LoginPage.vue             # Main login form
+├── LoginPage.vue             # Main login form with OAuth2 and LDAP options
 ├── OAuth2Buttons.vue         # OAuth2 provider buttons
-├── LoginForm.vue             # Local login form
+├── LoginForm.vue             # LDAP login form
 ├── RegisterForm.vue          # User registration
 └── JWTManager.vue            # JWT token management
 ```
@@ -172,17 +172,17 @@ components/auth/
     <div class="login-container">
       <div class="login-card">
         <h2>Sign in to FileEngine</h2>
-        
-        <OAuth2Buttons 
+
+        <OAuth2Buttons
           :providers="availableProviders"
           @oauth="handleOAuth"
         />
-        
+
         <div class="divider">
           <span>or</span>
         </div>
-        
-        <LoginForm 
+
+        <LoginForm
           @login="handleLogin"
           @register="showRegisterForm"
         />
@@ -213,7 +213,8 @@ const handleOAuth = async (provider) => {
 
 const handleLogin = async (credentials) => {
   try {
-    await authStore.login(credentials);
+    // Handle LDAP login
+    await authStore.ldapLogin(credentials);
     // Redirect to main application
     router.push('/');
   } catch (error) {
