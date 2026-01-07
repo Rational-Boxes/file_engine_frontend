@@ -12,12 +12,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8081', // Express backend server
-        changeOrigin: true,
-      },
-    },
+    // No proxy needed since we're using gRPC directly
   },
   test: {
     environment: 'jsdom',
