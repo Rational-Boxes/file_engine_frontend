@@ -1,3 +1,5 @@
+import grpcService from './grpcService'
+
 interface ApiResponse<T> {
   success: boolean
   data?: T
@@ -8,12 +10,31 @@ export const fileService = {
   // List directory contents
   async listDirectory(uid: string): Promise<ApiResponse<any[]>> {
     try {
-      // Placeholder implementation - in a real scenario, you would use the gRPC client
-      // For now, returning an empty array to satisfy the type checker
-      return {
-        success: true,
-        data: [],
-        error: null
+      const { user, tenant } = grpcService.getUserContext()
+      const response = await grpcService.grpcClient.listDirectory(uid, user, tenant)
+
+      if (response.success && response.entries) {
+        // Transform gRPC response to match expected format
+        const transformedEntries = response.entries.map(entry => ({
+          uid: entry.uid,
+          name: entry.name,
+          type: entry.type === 1 ? 'directory' : 'file', // 1 is DIRECTORY in gRPC enum
+          size: entry.size,
+          isDirectory: entry.type === 1,
+          isFile: entry.type === 0
+        }))
+
+        return {
+          success: true,
+          data: transformedEntries,
+          error: null
+        }
+      } else {
+        return {
+          success: false,
+          data: null,
+          error: response.error || 'Failed to list directory'
+        }
       }
     } catch (error: any) {
       return {
@@ -27,11 +48,21 @@ export const fileService = {
   // Create directory
   async createDirectory(parentUid: string, name: string): Promise<ApiResponse<string>> {
     try {
-      // Placeholder implementation
-      return {
-        success: true,
-        data: 'mock-uid',
-        error: null
+      const { user, tenant } = grpcService.getUserContext()
+      const response = await grpcService.grpcClient.makeDirectory(parentUid, name, user, tenant)
+
+      if (response.success && response.uid) {
+        return {
+          success: true,
+          data: response.uid,
+          error: null
+        }
+      } else {
+        return {
+          success: false,
+          data: null,
+          error: response.error || 'Failed to create directory'
+        }
       }
     } catch (error: any) {
       return {
@@ -45,10 +76,19 @@ export const fileService = {
   // Remove directory
   async removeDirectory(uid: string): Promise<ApiResponse<null>> {
     try {
-      // Placeholder implementation
-      return {
-        success: true,
-        error: null
+      const { user, tenant } = grpcService.getUserContext()
+      const response = await grpcService.grpcClient.removeDirectory(uid, user, tenant)
+
+      if (response.success) {
+        return {
+          success: true,
+          error: null
+        }
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Failed to remove directory'
+        }
       }
     } catch (error: any) {
       return {
@@ -61,10 +101,19 @@ export const fileService = {
   // Remove file
   async removeFile(uid: string): Promise<ApiResponse<null>> {
     try {
-      // Placeholder implementation
-      return {
-        success: true,
-        error: null
+      const { user, tenant } = grpcService.getUserContext()
+      const response = await grpcService.grpcClient.removeFile(uid, user, tenant)
+
+      if (response.success) {
+        return {
+          success: true,
+          error: null
+        }
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Failed to remove file'
+        }
       }
     } catch (error: any) {
       return {
@@ -77,22 +126,35 @@ export const fileService = {
   // Get file metadata
   async getFileMetadata(uid: string): Promise<ApiResponse<any>> {
     try {
-      // Placeholder implementation
-      return {
-        success: true,
-        data: {
-          uid: 'mock-uid',
-          name: 'mock-file',
-          parent_uid: 'mock-parent-uid',
-          type: 'file',
-          size: 0,
-          owner: 'mock-owner',
-          permissions: 0,
-          created_at: 0,
-          modified_at: 0,
-          version: 'mock-version'
-        },
-        error: null
+      const { user, tenant } = grpcService.getUserContext()
+      const response = await grpcService.grpcClient.stat(uid, user, tenant)
+
+      if (response.success && response.info) {
+        // Transform gRPC response to match expected format
+        const fileInfo = {
+          uid: response.info.uid,
+          name: response.info.name,
+          parent_uid: response.info.parent_uid,
+          type: response.info.type === 1 ? 'directory' : 'file',
+          size: response.info.size,
+          owner: response.info.owner,
+          permissions: response.info.permissions,
+          created_at: response.info.created_at,
+          modified_at: response.info.modified_at,
+          version: response.info.version
+        }
+
+        return {
+          success: true,
+          data: fileInfo,
+          error: null
+        }
+      } else {
+        return {
+          success: false,
+          data: null,
+          error: response.error || 'Failed to get file metadata'
+        }
       }
     } catch (error: any) {
       return {
@@ -106,8 +168,9 @@ export const fileService = {
   // Check if file exists
   async fileExists(uid: string): Promise<boolean> {
     try {
-      // Placeholder implementation
-      return true
+      const { user, tenant } = grpcService.getUserContext()
+      const response = await grpcService.grpcClient.exists(uid, user, tenant)
+      return response.success && response.exists
     } catch (error: any) {
       console.error('Error checking if file exists:', error)
       return false
@@ -117,11 +180,21 @@ export const fileService = {
   // Get file content
   async getFile(uid: string): Promise<ApiResponse<any>> {
     try {
-      // Placeholder implementation
-      return {
-        success: true,
-        data: new ArrayBuffer(0),
-        error: null
+      const { user, tenant } = grpcService.getUserContext()
+      const response = await grpcService.grpcClient.getFile(uid, user, null, tenant)
+
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: response.data,
+          error: null
+        }
+      } else {
+        return {
+          success: false,
+          data: null,
+          error: response.error || 'Failed to get file'
+        }
       }
     } catch (error: any) {
       return {

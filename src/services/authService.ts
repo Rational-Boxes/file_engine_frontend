@@ -98,6 +98,9 @@ export const authService = {
   // LDAP authentication
   async ldapLogin(credentials: { username: string, password: string, tenant?: string }) {
     try {
+      // Get tenant from subdomain if not provided in credentials
+      const tenant = credentials.tenant || this.getTenantFromSubdomain()
+
       // In a real implementation, this would call a gRPC authentication method
       // For now, we'll simulate the authentication process
       const response = await fetch(`${import.meta.env.VITE_FILEENGINE_GRPC_URL || 'http://localhost:8080'}/auth/ldap/login`, {
@@ -108,7 +111,7 @@ export const authService = {
         body: JSON.stringify({
           username: credentials.username,
           password: credentials.password,
-          tenant: credentials.tenant || 'default'
+          tenant: tenant
         })
       })
 
@@ -141,6 +144,9 @@ export const authService = {
   // Local authentication (if needed)
   async login(credentials: { username: string, password: string }) {
     try {
+      // Get tenant from subdomain
+      const tenant = this.getTenantFromSubdomain()
+
       // In a gRPC implementation, authentication might be handled differently
       // For now, we'll simulate the authentication process
       const response = await fetch(`${import.meta.env.VITE_FILEENGINE_GRPC_URL || 'http://localhost:8080'}/auth/login`, {
@@ -148,7 +154,10 @@ export const authService = {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(credentials)
+        body: JSON.stringify({
+          ...credentials,
+          tenant
+        })
       })
 
       if (!response.ok) {
@@ -236,6 +245,28 @@ export const authService = {
     const array = new Uint8Array(32)
     crypto.getRandomValues(array)
     return this.base64URLEncode(array)
+  },
+
+  // Get tenant from subdomain
+  getTenantFromSubdomain(): string {
+    const hostname = window.location.hostname
+    // Exclude 'www' and extract tenant from subdomain
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      // For local development, use default tenant
+      return 'default'
+    }
+
+    // Split hostname into parts
+    const parts = hostname.split('.')
+
+    // If there are more than 2 parts (e.g., tenant.example.com),
+    // and the first part is not 'www', use it as tenant
+    if (parts.length > 2 && parts[0] !== 'www') {
+      return parts[0]
+    }
+
+    // Otherwise, use default tenant
+    return 'default'
   },
 
   // Decode JWT token
