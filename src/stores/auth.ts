@@ -14,6 +14,10 @@ function levelFromRoles(roles: string[]): AccessLevel {
 }
 
 interface AuthState {
+  // Reactive mirror of the stored bearer token. isAuthenticated derives from
+  // this so login/logout update the UI and router guards immediately (reading
+  // the non-reactive tokenStorage from a getter would cache a stale value).
+  token: string | null
   user: string | null
   tenant: string | null
   roles: string[]
@@ -24,6 +28,7 @@ interface AuthState {
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
+    token: tokenStorage.getAccessToken(),
     user: null,
     tenant: null,
     roles: [],
@@ -33,12 +38,17 @@ export const useAuthStore = defineStore('auth', {
   }),
 
   getters: {
-    isAuthenticated: () => tokenStorage.isAuthenticated(),
+    isAuthenticated: (state) => !!state.token,
     hasAccessLevel: (state) => (level: AccessLevel) =>
       LEVELS[state.accessLevel] >= (LEVELS[level] ?? 1),
   },
 
   actions: {
+    // Pull the current (unexpired) token from storage into reactive state.
+    syncToken() {
+      this.token = tokenStorage.getAccessToken()
+    },
+
     applyIdentity(id: Identity) {
       this.user = id.user
       this.tenant = id.tenant
@@ -48,11 +58,13 @@ export const useAuthStore = defineStore('auth', {
 
     // On app start: if a valid token is present, hydrate the identity.
     async initialize() {
-      if (!tokenStorage.isAuthenticated()) return
+      this.syncToken()
+      if (!this.token) return
       try {
         this.applyIdentity(await authService.whoami())
       } catch {
         tokenStorage.clearTokens()
+        this.token = null
       }
     },
 
@@ -61,6 +73,7 @@ export const useAuthStore = defineStore('auth', {
       this.error = null
       try {
         await authService.ldapLogin(username, password, tenant)
+        this.syncToken()
         this.applyIdentity(await authService.whoami())
         return true
       } catch (e) {
@@ -77,18 +90,21 @@ export const useAuthStore = defineStore('auth', {
         this.error = 'No authentication token in callback'
         return false
       }
+      this.syncToken()
       try {
         this.applyIdentity(await authService.whoami())
         return true
       } catch (e) {
         this.error = errorMessage(e, 'Login failed')
         tokenStorage.clearTokens()
+        this.token = null
         return false
       }
     },
 
     async logout() {
       await authService.logout()
+      this.token = null
       this.user = null
       this.tenant = null
       this.roles = []

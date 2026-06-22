@@ -14,6 +14,7 @@ vi.mock('@/services/authService', () => ({
 vi.mock('@/utils/tokenStorage', () => ({
   tokenStorage: {
     isAuthenticated: vi.fn(() => false),
+    getAccessToken: vi.fn(() => 'tok'),
     clearTokens: vi.fn(),
   },
 }))
@@ -37,6 +38,7 @@ describe('auth store', () => {
     const store = useAuthStore()
     const ok = await store.ldapLogin('alice', 'pw')
     expect(ok).toBe(true)
+    expect(store.isAuthenticated).toBe(true) // reactive — updates without reload
     expect(store.user).toBe('alice')
     expect(store.accessLevel).toBe('editor')
     expect(store.hasAccessLevel('user')).toBe(true)
