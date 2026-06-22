@@ -1,234 +1,63 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { fileService } from '@/services/fileService'
-import apiService from '@/services/apiService'
 
-// Mock the API service client
-const mockGet = vi.fn()
-const mockPost = vi.fn()
-const mockDelete = vi.fn()
+const { get, post, del } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), del: vi.fn() }))
 
-vi.mock('@/services/apiService', () => ({
-  default: {
-    client: {
-      get: mockGet,
-      post: mockPost,
-      delete: mockDelete,
-    }
-  }
+vi.mock('@/services/apiClient', () => ({
+  default: { get, post, delete: del },
+  ROOT_UID: '00000000-0000-0000-0000-000000000000',
+  errorMessage: (e: unknown) => String(e),
 }))
 
-describe('File Service', () => {
+import { fileService } from '@/services/fileService'
+
+describe('fileService (REST)', () => {
   beforeEach(() => {
-    // Clear all mocks before each test
     vi.clearAllMocks()
   })
 
-  describe('listDirectory', () => {
-    it('should list directory contents successfully', async () => {
-      // Arrange
-      const mockEntries = [
-        { id: 'file1', name: 'test.txt', type: 'file' },
-        { id: 'dir1', name: 'subdir', type: 'directory' }
-      ]
-      
-      mockGet.mockResolvedValue({ data: { entries: mockEntries } })
-      
-      // Act
-      const result = await fileService.listDirectory('test-uid')
-      
-      // Assert
-      expect(result.success).toBe(true)
-      expect(result.data).toEqual(mockEntries)
-      expect(mockGet).toHaveBeenCalledWith('/api/v1/filesystem/dir/test-uid')
+  it('lists a directory and maps entries to FileItem', async () => {
+    get.mockResolvedValue({
+      data: {
+        entries: [
+          { uid: 'd1', name: 'docs', type: 'directory', size: 0, version_count: 0 },
+          { uid: 'f1', name: 'a.txt', type: 'file', size: 12, version_count: 1 },
+        ],
+      },
     })
-
-    it('should handle list directory errors', async () => {
-      // Arrange
-      mockGet.mockRejectedValue({ response: { data: { message: 'Directory not found' } } })
-      
-      // Act
-      const result = await fileService.listDirectory('invalid-uid')
-      
-      // Assert
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Directory not found')
-    })
+    const items = await fileService.listDirectory('root')
+    expect(get).toHaveBeenCalledWith('/v1/dirs/root')
+    expect(items).toEqual([
+      { uid: 'd1', name: 'docs', type: 'directory', size: 0, isDirectory: true },
+      { uid: 'f1', name: 'a.txt', type: 'file', size: 12, isDirectory: false },
+    ])
   })
 
-  describe('createDirectory', () => {
-    it('should create a directory successfully', async () => {
-      // Arrange
-      const mockResponse = { data: { uid: 'new-dir-uid' } }
-      mockPost.mockResolvedValue(mockResponse)
-      
-      // Act
-      const result = await fileService.createDirectory('parent-uid', 'new-dir')
-      
-      // Assert
-      expect(result.success).toBe(true)
-      expect(result.data).toBe('new-dir-uid')
-      expect(mockPost).toHaveBeenCalledWith('/api/v1/filesystem/mkdir', {
-        parent_uid: 'parent-uid',
-        name: 'new-dir'
-      })
-    })
-
-    it('should handle create directory errors', async () => {
-      // Arrange
-      mockPost.mockRejectedValue({ response: { data: { message: 'Permission denied' } } })
-      
-      // Act
-      const result = await fileService.createDirectory('parent-uid', 'new-dir')
-      
-      // Assert
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Permission denied')
-    })
+  it('creates a directory and returns the new uid', async () => {
+    post.mockResolvedValue({ data: { uid: 'new' } })
+    const uid = await fileService.makeDirectory('parent', 'sub')
+    expect(post).toHaveBeenCalledWith('/v1/dirs/parent', { name: 'sub' })
+    expect(uid).toBe('new')
   })
 
-  describe('removeDirectory', () => {
-    it('should remove a directory successfully', async () => {
-      // Arrange
-      mockDelete.mockResolvedValue({})
-      
-      // Act
-      const result = await fileService.removeDirectory('dir-uid')
-      
-      // Assert
-      expect(result.success).toBe(true)
-      expect(mockDelete).toHaveBeenCalledWith('/api/v1/filesystem/rmdir/dir-uid')
-    })
-
-    it('should handle remove directory errors', async () => {
-      // Arrange
-      mockDelete.mockRejectedValue({ response: { data: { message: 'Directory not empty' } } })
-      
-      // Act
-      const result = await fileService.removeDirectory('dir-uid')
-      
-      // Assert
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Directory not empty')
-    })
+  it('renames via /nodes/{uid}/rename', async () => {
+    post.mockResolvedValue({ data: {} })
+    await fileService.rename('f1', 'b.txt')
+    expect(post).toHaveBeenCalledWith('/v1/nodes/f1/rename', { new_name: 'b.txt' })
   })
 
-  describe('removeFile', () => {
-    it('should remove a file successfully', async () => {
-      // Arrange
-      mockDelete.mockResolvedValue({})
-      
-      // Act
-      const result = await fileService.removeFile('file-uid')
-      
-      // Assert
-      expect(result.success).toBe(true)
-      expect(mockDelete).toHaveBeenCalledWith('/api/v1/filesystem/remove/file-uid')
-    })
-
-    it('should handle remove file errors', async () => {
-      // Arrange
-      mockDelete.mockRejectedValue({ response: { data: { message: 'File not found' } } })
-      
-      // Act
-      const result = await fileService.removeFile('file-uid')
-      
-      // Assert
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('File not found')
-    })
+  it('deletes files and directories on the right routes', async () => {
+    del.mockResolvedValue({ data: {} })
+    await fileService.removeFile('f1')
+    await fileService.removeDirectory('d1')
+    expect(del).toHaveBeenCalledWith('/v1/files/f1')
+    expect(del).toHaveBeenCalledWith('/v1/dirs/d1')
   })
 
-  describe('getFileMetadata', () => {
-    it('should get file metadata successfully', async () => {
-      // Arrange
-      const mockMetadata = { name: 'test.txt', size: 1024 }
-      mockGet.mockResolvedValue({ data: { info: mockMetadata } })
-      
-      // Act
-      const result = await fileService.getFileMetadata('file-uid')
-      
-      // Assert
-      expect(result.success).toBe(true)
-      expect(result.data).toEqual(mockMetadata)
-      expect(mockGet).toHaveBeenCalledWith('/api/v1/filesystem/stat/file-uid')
-    })
-
-    it('should handle get file metadata errors', async () => {
-      // Arrange
-      mockGet.mockRejectedValue({ response: { data: { message: 'File not found' } } })
-      
-      // Act
-      const result = await fileService.getFileMetadata('file-uid')
-      
-      // Assert
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('File not found')
-    })
-  })
-
-  describe('fileExists', () => {
-    it('should return true when file exists', async () => {
-      // Arrange
-      mockGet.mockResolvedValue({ data: { exists: true } })
-      
-      // Act
-      const result = await fileService.fileExists('file-uid')
-      
-      // Assert
-      expect(result).toBe(true)
-      expect(mockGet).toHaveBeenCalledWith('/api/v1/filesystem/exists/file-uid')
-    })
-
-    it('should return false when file does not exist', async () => {
-      // Arrange
-      mockGet.mockResolvedValue({ data: { exists: false } })
-      
-      // Act
-      const result = await fileService.fileExists('file-uid')
-      
-      // Assert
-      expect(result).toBe(false)
-    })
-
-    it('should return false when request fails', async () => {
-      // Arrange
-      mockGet.mockRejectedValue(new Error('Network error'))
-      
-      // Act
-      const result = await fileService.fileExists('file-uid')
-      
-      // Assert
-      expect(result).toBe(false)
-    })
-  })
-
-  describe('getFile', () => {
-    it('should get file content successfully', async () => {
-      // Arrange
-      const mockFileContent = 'file content'
-      mockGet.mockResolvedValue({ data: mockFileContent })
-      
-      // Act
-      const result = await fileService.getFile('file-uid')
-      
-      // Assert
-      expect(result.success).toBe(true)
-      expect(result.data).toBe(mockFileContent)
-      expect(mockGet).toHaveBeenCalledWith('/api/v1/filesystem/get/file-uid', {
-        responseType: 'arraybuffer'
-      })
-    })
-
-    it('should handle get file errors', async () => {
-      // Arrange
-      mockGet.mockRejectedValue({ response: { data: { message: 'Access denied' } } })
-      
-      // Act
-      const result = await fileService.getFile('file-uid')
-      
-      // Assert
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Access denied')
-    })
+  it('downloads content as a blob', async () => {
+    const blob = new Blob(['hi'])
+    get.mockResolvedValue({ data: blob })
+    const out = await fileService.downloadFile('f1')
+    expect(get).toHaveBeenCalledWith('/v1/files/f1/content', { responseType: 'blob' })
+    expect(out).toBe(blob)
   })
 })

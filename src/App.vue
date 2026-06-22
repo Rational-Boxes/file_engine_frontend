@@ -11,16 +11,41 @@ import { useAuthStore } from '@/stores/auth'
 const authStore = useAuthStore()
 
 onMounted(() => {
-  // Initialize authentication state
-  authStore.initializeAuth()
+  // Hydrate identity from a stored token, if any.
+  authStore.initialize()
 })
 </script>
 
 <style>
+:root {
+  --fg: #1f2933;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --bg: #f7f8fa;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --danger: #dc2626;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
 #app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #2c3e50;
+  color: var(--fg);
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
 }
 </style>

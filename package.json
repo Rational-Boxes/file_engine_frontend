@@ -16,7 +16,6 @@
   "dependencies": {
     "@vueuse/core": "^10.9.0",
     "axios": "^1.6.7",
-    "fileengine-grpc-client": "file:../javascript_interface",
     "pinia": "^2.1.7",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0"

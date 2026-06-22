@@ -1,207 +1,74 @@
-import grpcService from './grpcService'
+import apiClient from '@/services/apiClient'
 
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: string
+export interface FileItem {
+  uid: string
+  name: string
+  type: 'file' | 'directory' | 'symlink'
+  size: number
+  isDirectory: boolean
 }
 
+export interface NodeInfo {
+  uid: string
+  name: string
+  parent_uid: string
+  type: string
+  size: number
+  owner: string
+  version: string
+}
+
+interface DirEntry {
+  uid: string
+  name: string
+  type: string
+  size: number
+  version_count: number
+}
+
+function toItem(e: DirEntry): FileItem {
+  const type = (e.type as FileItem['type']) || 'file'
+  return { uid: e.uid, name: e.name, type, size: e.size ?? 0, isDirectory: type === 'directory' }
+}
+
+// REST client for the bridge filesystem. The bridge is UID-native, so every
+// operation addresses a node by its uid; throws an AxiosError on failure (the
+// caller maps it to a user message via errorMessage()).
 export const fileService = {
-  // List directory contents
-  async listDirectory(uid: string): Promise<ApiResponse<any[]>> {
-    try {
-      const { user, tenant } = grpcService.getUserContext()
-      const response = await grpcService.grpcClient.listDirectory(uid, user, tenant)
-
-      if (response.success && response.entries) {
-        // Transform gRPC response to match expected format
-        const transformedEntries = response.entries.map(entry => ({
-          uid: entry.uid,
-          name: entry.name,
-          type: entry.type === 1 ? 'directory' : 'file', // 1 is DIRECTORY in gRPC enum
-          size: entry.size,
-          isDirectory: entry.type === 1,
-          isFile: entry.type === 0
-        }))
-
-        return {
-          success: true,
-          data: transformedEntries,
-          error: null
-        }
-      } else {
-        return {
-          success: false,
-          data: null,
-          error: response.error || 'Failed to list directory'
-        }
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        data: null,
-        error: error.message || 'Failed to list directory'
-      }
-    }
+  async listDirectory(uid: string): Promise<FileItem[]> {
+    const { data } = await apiClient.get<{ entries: DirEntry[] }>(`/v1/dirs/${uid}`)
+    return (data.entries || []).map(toItem)
   },
 
-  // Create directory
-  async createDirectory(parentUid: string, name: string): Promise<ApiResponse<string>> {
-    try {
-      const { user, tenant } = grpcService.getUserContext()
-      const response = await grpcService.grpcClient.makeDirectory(parentUid, name, user, tenant)
-
-      if (response.success && response.uid) {
-        return {
-          success: true,
-          data: response.uid,
-          error: null
-        }
-      } else {
-        return {
-          success: false,
-          data: null,
-          error: response.error || 'Failed to create directory'
-        }
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        data: null,
-        error: error.message || 'Failed to create directory'
-      }
-    }
+  async makeDirectory(parentUid: string, name: string): Promise<string> {
+    const { data } = await apiClient.post<{ uid: string }>(`/v1/dirs/${parentUid}`, { name })
+    return data.uid
   },
 
-  // Remove directory
-  async removeDirectory(uid: string): Promise<ApiResponse<null>> {
-    try {
-      const { user, tenant } = grpcService.getUserContext()
-      const response = await grpcService.grpcClient.removeDirectory(uid, user, tenant)
-
-      if (response.success) {
-        return {
-          success: true,
-          error: null
-        }
-      } else {
-        return {
-          success: false,
-          error: response.error || 'Failed to remove directory'
-        }
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'Failed to remove directory'
-      }
-    }
+  async touch(parentUid: string, name: string): Promise<string> {
+    const { data } = await apiClient.post<{ uid: string }>(`/v1/dirs/${parentUid}/files`, { name })
+    return data.uid
   },
 
-  // Remove file
-  async removeFile(uid: string): Promise<ApiResponse<null>> {
-    try {
-      const { user, tenant } = grpcService.getUserContext()
-      const response = await grpcService.grpcClient.removeFile(uid, user, tenant)
-
-      if (response.success) {
-        return {
-          success: true,
-          error: null
-        }
-      } else {
-        return {
-          success: false,
-          error: response.error || 'Failed to remove file'
-        }
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'Failed to remove file'
-      }
-    }
+  async removeFile(uid: string): Promise<void> {
+    await apiClient.delete(`/v1/files/${uid}`)
   },
 
-  // Get file metadata
-  async getFileMetadata(uid: string): Promise<ApiResponse<any>> {
-    try {
-      const { user, tenant } = grpcService.getUserContext()
-      const response = await grpcService.grpcClient.stat(uid, user, tenant)
-
-      if (response.success && response.info) {
-        // Transform gRPC response to match expected format
-        const fileInfo = {
-          uid: response.info.uid,
-          name: response.info.name,
-          parent_uid: response.info.parent_uid,
-          type: response.info.type === 1 ? 'directory' : 'file',
-          size: response.info.size,
-          owner: response.info.owner,
-          permissions: response.info.permissions,
-          created_at: response.info.created_at,
-          modified_at: response.info.modified_at,
-          version: response.info.version
-        }
-
-        return {
-          success: true,
-          data: fileInfo,
-          error: null
-        }
-      } else {
-        return {
-          success: false,
-          data: null,
-          error: response.error || 'Failed to get file metadata'
-        }
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        data: null,
-        error: error.message || 'Failed to get file metadata'
-      }
-    }
+  async removeDirectory(uid: string): Promise<void> {
+    await apiClient.delete(`/v1/dirs/${uid}`)
   },
 
-  // Check if file exists
-  async fileExists(uid: string): Promise<boolean> {
-    try {
-      const { user, tenant } = grpcService.getUserContext()
-      const response = await grpcService.grpcClient.exists(uid, user, tenant)
-      return response.success && response.exists
-    } catch (error: any) {
-      console.error('Error checking if file exists:', error)
-      return false
-    }
+  async rename(uid: string, newName: string): Promise<void> {
+    await apiClient.post(`/v1/nodes/${uid}/rename`, { new_name: newName })
   },
 
-  // Get file content
-  async getFile(uid: string): Promise<ApiResponse<any>> {
-    try {
-      const { user, tenant } = grpcService.getUserContext()
-      const response = await grpcService.grpcClient.getFile(uid, user, null, tenant)
+  async stat(uid: string): Promise<NodeInfo> {
+    const { data } = await apiClient.get<NodeInfo>(`/v1/nodes/${uid}`)
+    return data
+  },
 
-      if (response.success && response.data) {
-        return {
-          success: true,
-          data: response.data,
-          error: null
-        }
-      } else {
-        return {
-          success: false,
-          data: null,
-          error: response.error || 'Failed to get file'
-        }
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        data: null,
-        error: error.message || 'Failed to get file'
-      }
-    }
-  }
+  async downloadFile(uid: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/v1/files/${uid}/content`, { responseType: 'blob' })
+    return data as Blob
+  },
 }

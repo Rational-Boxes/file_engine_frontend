@@ -1,123 +1,51 @@
 import { defineStore } from 'pinia'
 import { uploadService } from '@/services/uploadService'
+import { useFileStore } from '@/stores/files'
+import { errorMessage } from '@/services/apiClient'
 
 export interface UploadItem {
   id: string
-  file: File
-  directory: string | null
-  status: 'pending' | 'uploading' | 'completed' | 'failed' | 'cancelled'
+  name: string
+  status: 'uploading' | 'completed' | 'failed'
   progress: number
   error?: string
 }
 
+let counter = 0
+
 export const useUploadStore = defineStore('upload', {
   state: () => ({
-    uploadQueue: [] as UploadItem[],
-    targetDirectory: null as string | null,
-    showUploadModal: false,
-    isUploading: false
+    queue: [] as UploadItem[],
   }),
-  
+
   getters: {
-    getUploadProgress: (state) => (uploadId: string) => {
-      const upload = state.uploadQueue.find(u => u.id === uploadId)
-      return upload ? upload.progress : 0
-    },
-    
-    getUploadStatus: (state) => (uploadId: string) => {
-      const upload = state.uploadQueue.find(u => u.id === uploadId)
-      return upload ? upload.status : 'not_found'
-    },
-    
-    getUploadsInStatus: (state) => (status: string) => {
-      return state.uploadQueue.filter(upload => upload.status === status)
-    }
+    isUploading: (state) => state.queue.some((u) => u.status === 'uploading'),
   },
-  
+
   actions: {
-    setTargetDirectory(directoryUid: string) {
-      this.targetDirectory = directoryUid
-    },
-    
-    async addFileToQueue(file: File, directoryUid: string | undefined, onProgress: (progress: number) => void) {
-      const uploadId = Date.now() + Math.random().toString()
-      
-      // Add to queue
-      const newUpload: UploadItem = {
-        id: uploadId,
-        file,
-        directory: directoryUid || this.targetDirectory,
-        status: 'pending',
-        progress: 0
-      }
-      
-      this.uploadQueue.push(newUpload)
-      
-      // Process upload
-      try {
-        const result = await uploadService.directUpload(
-          file, 
-          directoryUid || this.targetDirectory,
-          (progress: number) => {
-            // Update progress in the UI
-            const upload = this.uploadQueue.find(u => u.id === uploadId)
-            if (upload) {
-              upload.progress = progress
-              onProgress(progress) // Call the callback for UI updates
-            }
-          }
-        )
-        
-        // Update upload status
-        const upload = this.uploadQueue.find(u => u.id === uploadId)
-        if (upload) {
-          upload.status = 'completed'
-          upload.progress = 100
+    // Upload a batch into the directory; refresh the file list once done.
+    async uploadFiles(parentUid: string, files: File[]) {
+      const fileStore = useFileStore()
+      for (const file of files) {
+        const id = `${Date.now()}-${counter++}`
+        const item: UploadItem = { id, name: file.name, status: 'uploading', progress: 0 }
+        this.queue.push(item)
+        try {
+          await uploadService.upload(parentUid, file, (p) => {
+            item.progress = p
+          })
+          item.status = 'completed'
+          item.progress = 100
+        } catch (e) {
+          item.status = 'failed'
+          item.error = errorMessage(e, 'Upload failed')
         }
-        
-        return result
-      } catch (error: any) {
-        const upload = this.uploadQueue.find(u => u.id === uploadId)
-        if (upload) {
-          upload.status = 'failed'
-          upload.error = error.message
-        }
-        
-        throw error
       }
+      await fileStore.load()
     },
-    
-    async uploadFiles(files: File[], directoryUid: string) {
-      this.isUploading = true
-      
-      try {
-        for (const file of files) {
-          await this.addFileToQueue(
-            file, 
-            directoryUid,
-            (progress: number) => {
-              // Progress update callback
-            }
-          )
-        }
-      } finally {
-        this.isUploading = false
-      }
+
+    clearFinished() {
+      this.queue = this.queue.filter((u) => u.status === 'uploading')
     },
-    
-    cancelUpload(uploadId: string) {
-      const upload = this.uploadQueue.find(u => u.id === uploadId)
-      if (upload) {
-        upload.status = 'cancelled'
-      }
-    },
-    
-    removeUpload(uploadId: string) {
-      this.uploadQueue = this.uploadQueue.filter(u => u.id !== uploadId)
-    },
-    
-    clearCompletedUploads() {
-      this.uploadQueue = this.uploadQueue.filter(u => u.status !== 'completed')
-    }
-  }
+  },
 })
