@@ -71,4 +71,50 @@ export const fileService = {
     const { data } = await apiClient.get(`/v1/files/${uid}/content`, { responseType: 'blob' })
     return data as Blob
   },
+
+  // --- metadata ---
+  async getMetadata(uid: string): Promise<Record<string, string>> {
+    const { data } = await apiClient.get<{ metadata: Record<string, string> }>(
+      `/v1/nodes/${uid}/metadata`,
+    )
+    return data.metadata || {}
+  },
+
+  async setMetadata(uid: string, key: string, value: string): Promise<void> {
+    await apiClient.put(`/v1/nodes/${uid}/metadata/${encodeURIComponent(key)}`, { value })
+  },
+
+  async deleteMetadata(uid: string, key: string): Promise<void> {
+    await apiClient.delete(`/v1/nodes/${uid}/metadata/${encodeURIComponent(key)}`)
+  },
+
+  // --- permissions / ACL ---
+  // Point-check a single permission for a principal (defaults to the requester).
+  async checkPermission(
+    uid: string,
+    opts: { permission: string; user?: string; roles?: string[] },
+  ): Promise<boolean> {
+    const params: Record<string, string> = { permission: opts.permission }
+    if (opts.user) params.user = opts.user
+    if (opts.roles?.length) params.roles = opts.roles.join(',')
+    const { data } = await apiClient.get<{ has_permission: boolean }>(
+      `/v1/nodes/${uid}/permissions`,
+      { params },
+    )
+    return !!data.has_permission
+  },
+
+  async grantPermission(
+    uid: string,
+    body: { principal: string; permission: string; effect?: 'allow' | 'deny' },
+  ): Promise<void> {
+    await apiClient.post(`/v1/nodes/${uid}/permissions`, body)
+  },
+
+  async revokePermission(
+    uid: string,
+    body: { principal: string; permission: string; effect?: 'allow' | 'deny' },
+  ): Promise<void> {
+    await apiClient.delete(`/v1/nodes/${uid}/permissions`, { data: body })
+  },
 }

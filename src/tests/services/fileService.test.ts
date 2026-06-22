@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-const { get, post, del } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), del: vi.fn() }))
+const { get, post, put, del } = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  del: vi.fn(),
+}))
 
 vi.mock('@/services/apiClient', () => ({
-  default: { get, post, delete: del },
+  default: { get, post, put, delete: del },
   ROOT_UID: '00000000-0000-0000-0000-000000000000',
   errorMessage: (e: unknown) => String(e),
 }))
@@ -59,5 +64,42 @@ describe('fileService (REST)', () => {
     const out = await fileService.downloadFile('f1')
     expect(get).toHaveBeenCalledWith('/v1/files/f1/content', { responseType: 'blob' })
     expect(out).toBe(blob)
+  })
+
+  it('reads and writes metadata', async () => {
+    get.mockResolvedValue({ data: { metadata: { color: 'blue' } } })
+    expect(await fileService.getMetadata('f1')).toEqual({ color: 'blue' })
+    expect(get).toHaveBeenCalledWith('/v1/nodes/f1/metadata')
+
+    put.mockResolvedValue({ data: {} })
+    await fileService.setMetadata('f1', 'color', 'red')
+    expect(put).toHaveBeenCalledWith('/v1/nodes/f1/metadata/color', { value: 'red' })
+
+    del.mockResolvedValue({ data: {} })
+    await fileService.deleteMetadata('f1', 'color')
+    expect(del).toHaveBeenCalledWith('/v1/nodes/f1/metadata/color')
+  })
+
+  it('checks a permission via query params', async () => {
+    get.mockResolvedValue({ data: { has_permission: true } })
+    const ok = await fileService.checkPermission('f1', { permission: 'r' })
+    expect(ok).toBe(true)
+    expect(get).toHaveBeenCalledWith('/v1/nodes/f1/permissions', { params: { permission: 'r' } })
+  })
+
+  it('grants and revokes permissions', async () => {
+    post.mockResolvedValue({ data: {} })
+    await fileService.grantPermission('f1', { principal: 'dave', permission: 'r', effect: 'allow' })
+    expect(post).toHaveBeenCalledWith('/v1/nodes/f1/permissions', {
+      principal: 'dave',
+      permission: 'r',
+      effect: 'allow',
+    })
+
+    del.mockResolvedValue({ data: {} })
+    await fileService.revokePermission('f1', { principal: 'dave', permission: 'r' })
+    expect(del).toHaveBeenCalledWith('/v1/nodes/f1/permissions', {
+      data: { principal: 'dave', permission: 'r' },
+    })
   })
 })

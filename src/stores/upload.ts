@@ -20,6 +20,12 @@ export const useUploadStore = defineStore('upload', {
 
   getters: {
     isUploading: (state) => state.queue.some((u) => u.status === 'uploading'),
+    // Mean progress across the current batch (for the aggregate bar).
+    overallProgress: (state) => {
+      if (!state.queue.length) return 0
+      const sum = state.queue.reduce((acc, u) => acc + u.progress, 0)
+      return Math.round(sum / state.queue.length)
+    },
   },
 
   actions: {

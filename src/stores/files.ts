@@ -14,7 +14,8 @@ interface FilesState {
   currentUid: string
   items: FileItem[]
   breadcrumbs: Crumb[]
-  selected: FileItem[]
+  detailItem: FileItem | null
+  drawerOpen: boolean
   loading: boolean
   error: string | null
   viewMode: 'list' | 'grid'
@@ -27,7 +28,8 @@ export const useFileStore = defineStore('files', {
     currentUid: ROOT_UID,
     items: [],
     breadcrumbs: [ROOT_CRUMB],
-    selected: [],
+    detailItem: null,
+    drawerOpen: false,
     loading: false,
     error: null,
     viewMode: 'grid',
@@ -37,7 +39,8 @@ export const useFileStore = defineStore('files', {
     async load() {
       this.loading = true
       this.error = null
-      this.selected = []
+      this.drawerOpen = false
+      this.detailItem = null
       try {
         this.items = await fileService.listDirectory(this.currentUid)
       } catch (e) {
@@ -46,6 +49,16 @@ export const useFileStore = defineStore('files', {
       } finally {
         this.loading = false
       }
+    },
+
+    openDetails(item: FileItem) {
+      this.detailItem = item
+      this.drawerOpen = true
+    },
+
+    closeDetails() {
+      this.drawerOpen = false
+      this.detailItem = null
     },
 
     // Open the root and reset breadcrumbs.

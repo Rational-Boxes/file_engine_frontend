@@ -3,7 +3,7 @@
     <header class="topbar">
       <div class="brand">FileEngine</div>
       <div class="user">
-        <span v-if="auth.user" class="who">{{ auth.user }} · {{ auth.tenant }}</span>
+        <span v-if="auth.user" class="who">{{ auth.user }} · {{ auth.tenant }} · {{ auth.accessLevel }}</span>
         <button class="link" @click="logout">Sign out</button>
       </div>
     </header>
@@ -18,53 +18,62 @@
         </template>
       </nav>
       <div class="actions">
-        <button class="btn" @click="newFolder">New folder</button>
-        <button class="btn btn-primary" @click="fileInput?.click()">Upload</button>
-        <input ref="fileInput" type="file" multiple hidden @change="onUpload" />
+        <button v-if="canModify" class="btn" @click="newFolder">New folder</button>
+        <button v-if="canModify" class="btn btn-primary" @click="fileInput?.click()">Upload</button>
+        <input ref="fileInput" type="file" multiple hidden @change="onPick" />
       </div>
     </div>
 
     <p v-if="files.error" class="banner error">{{ files.error }}</p>
 
-    <ul v-if="upload.queue.length" class="uploads">
-      <li v-for="u in upload.queue" :key="u.id">
-        <span class="up-name">{{ u.name }}</span>
-        <span class="up-status" :class="u.status">
-          {{ u.status === 'uploading' ? u.progress + '%' : u.status }}
-        </span>
-      </li>
-    </ul>
+    <div class="list-area">
+      <div v-if="files.loading" class="empty">Loading…</div>
+      <div v-else-if="!files.items.length" class="empty">
+        This folder is empty.<template v-if="canModify"> Drag files here to upload.</template>
+      </div>
 
-    <div v-if="files.loading" class="empty">Loading…</div>
-    <div v-else-if="!files.items.length" class="empty">This folder is empty.</div>
+      <table v-else class="files">
+        <thead>
+          <tr><th>Name</th><th class="size">Size</th><th class="row-actions"></th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in files.items" :key="item.uid" @dblclick="open(item)">
+            <td class="name" @click="open(item)">
+              <span class="icon">{{ item.isDirectory ? '📁' : '📄' }}</span>{{ item.name }}
+            </td>
+            <td class="size">{{ item.isDirectory ? '—' : formatSize(item.size) }}</td>
+            <td class="row-actions">
+              <KebabMenu :items="menuFor(item)" @select="(a) => onAction(a, item)" />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-    <table v-else class="files">
-      <thead>
-        <tr><th>Name</th><th class="size">Size</th><th class="row-actions"></th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="item in files.items" :key="item.uid" @dblclick="open(item)">
-          <td class="name" @click="open(item)">
-            <span class="icon">{{ item.isDirectory ? '📁' : '📄' }}</span>{{ item.name }}
-          </td>
-          <td class="size">{{ item.isDirectory ? '—' : formatSize(item.size) }}</td>
-          <td class="row-actions">
-            <button v-if="!item.isDirectory" class="link" @click.stop="files.downloadItem(item)">Download</button>
-            <button class="link" @click.stop="rename(item)">Rename</button>
-            <button class="link danger" @click.stop="remove(item)">Delete</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <FileDetailsDrawer />
+    <UploadTray />
+
+    <!-- Full-window drag-and-drop target overlay -->
+    <div v-if="dragOver" class="drop-overlay">
+      <div class="drop-card">
+        <span class="up">⬆</span>
+        <span>Drop files to upload here</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/files'
 import { useUploadStore } from '@/stores/upload'
+import { canDo } from '@/utils/permissions'
+import { formatSize } from '@/utils/format'
+import KebabMenu, { type KebabItem } from '@/components/KebabMenu.vue'
+import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
+import UploadTray from '@/components/UploadTray.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -72,12 +81,36 @@ const files = useFileStore()
 const upload = useUploadStore()
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const dragOver = ref(false)
 
-onMounted(() => files.openRoot())
+const canModify = computed(() => auth.hasAccessLevel('editor'))
+
+files.openRoot()
+
+// Build the per-row action menu from the user's access level.
+const menuFor = (item: FileItem): KebabItem[] => {
+  const m: KebabItem[] = []
+  if (item.isDirectory) m.push({ action: 'open', label: 'Open' })
+  else if (canDo('download', auth.accessLevel)) m.push({ action: 'download', label: 'Download' })
+  if (canDo('rename', auth.accessLevel)) m.push({ action: 'rename', label: 'Rename' })
+  if (canDo('delete', auth.accessLevel)) m.push({ action: 'delete', label: 'Delete', danger: true })
+  m.push({ action: 'info', label: 'Info' })
+  return m
+}
 
 const open = (item: FileItem) => {
   if (item.isDirectory) files.openDirectory(item)
   else files.downloadItem(item)
+}
+
+const onAction = (action: string, item: FileItem) => {
+  switch (action) {
+    case 'open': return files.openDirectory(item)
+    case 'download': return files.downloadItem(item)
+    case 'info': return files.openDetails(item)
+    case 'rename': return rename(item)
+    case 'delete': return remove(item)
+  }
 }
 
 const newFolder = async () => {
@@ -94,24 +127,59 @@ const remove = async (item: FileItem) => {
   if (confirm(`Delete "${item.name}"?`)) await files.deleteItem(item)
 }
 
-const onUpload = async (e: Event) => {
+const uploadFiles = (list: FileList | null) => {
+  if (list && list.length) upload.uploadFiles(files.currentUid, Array.from(list))
+}
+
+const onPick = (e: Event) => {
   const input = e.target as HTMLInputElement
-  if (input.files?.length) {
-    await upload.uploadFiles(files.currentUid, Array.from(input.files))
-  }
+  uploadFiles(input.files)
   input.value = ''
 }
+
+// Full-window drag overlay. dragenter/leave fire per element, so count depth to
+// avoid flicker as the cursor crosses children.
+const dragDepth = ref(0)
+const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+
+const onWinDragEnter = (e: DragEvent) => {
+  if (!canModify.value || !hasFiles(e)) return
+  dragDepth.value++
+  dragOver.value = true
+}
+const onWinDragOver = (e: DragEvent) => {
+  if (!canModify.value || !hasFiles(e)) return
+  e.preventDefault() // required to allow a drop
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+}
+const onWinDragLeave = () => {
+  if (dragDepth.value > 0) dragDepth.value--
+  if (dragDepth.value === 0) dragOver.value = false
+}
+const onWinDrop = (e: DragEvent) => {
+  dragDepth.value = 0
+  dragOver.value = false
+  if (!canModify.value) return
+  e.preventDefault()
+  uploadFiles(e.dataTransfer?.files ?? null)
+}
+
+onMounted(() => {
+  window.addEventListener('dragenter', onWinDragEnter)
+  window.addEventListener('dragover', onWinDragOver)
+  window.addEventListener('dragleave', onWinDragLeave)
+  window.addEventListener('drop', onWinDrop)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('dragenter', onWinDragEnter)
+  window.removeEventListener('dragover', onWinDragOver)
+  window.removeEventListener('dragleave', onWinDragLeave)
+  window.removeEventListener('drop', onWinDrop)
+})
 
 const logout = async () => {
   await auth.logout()
   router.push('/login')
-}
-
-const formatSize = (bytes: number): string => {
-  if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`
 }
 </script>
 
@@ -209,10 +277,6 @@ const formatSize = (bytes: number): string => {
   padding: 2px 6px;
 }
 
-.link.danger {
-  color: var(--danger);
-}
-
 .banner.error {
   background: #fef2f2;
   color: var(--danger);
@@ -222,34 +286,40 @@ const formatSize = (bytes: number): string => {
   margin: 0 0 12px;
 }
 
-.uploads {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
+.list-area {
+  min-height: 120px;
 }
 
-.uploads li {
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(37, 99, 235, 0.08);
+  backdrop-filter: blur(1px);
   display: flex;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #fff;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* underlying window listeners handle the drop */
 }
 
-.uploads li:last-child {
-  border-bottom: none;
+.drop-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 56px;
+  border: 3px dashed var(--primary);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
 }
 
-.up-status.completed {
-  color: #16a34a;
-}
-
-.up-status.failed {
-  color: var(--danger);
+.drop-card .up {
+  font-size: 36px;
+  line-height: 1;
 }
 
 .empty {
@@ -304,8 +374,7 @@ const formatSize = (bytes: number): string => {
 }
 
 .row-actions {
-  width: 220px;
+  width: 60px;
   text-align: right;
-  white-space: nowrap;
 }
 </style>

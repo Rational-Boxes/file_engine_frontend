@@ -43,6 +43,14 @@ describe('upload store', () => {
     expect(store.queue[0].error).toBeTruthy()
   })
 
+  it('reports overall progress across the batch', async () => {
+    ;(uploadService.upload as any).mockResolvedValue('uid')
+    const store = useUploadStore()
+    await store.uploadFiles('parent', [new File(['x'], 'a'), new File(['y'], 'b')])
+    expect(store.queue).toHaveLength(2)
+    expect(store.overallProgress).toBe(100) // both completed
+  })
+
   it('clearFinished keeps only in-progress items', async () => {
     ;(uploadService.upload as any).mockResolvedValue('uid')
     const store = useUploadStore()
