@@ -7,6 +7,7 @@ interface TokenData {
 
 class SecureTokenStorage {
   private storageKey = 'fileengine_auth'
+  private tenantKey = 'fileengine_tenant'
   private currentTokens: TokenData | null = null
 
   // Store tokens securely
@@ -42,9 +43,22 @@ class SecureTokenStorage {
   // Clear stored tokens
   clearTokens() {
     localStorage.removeItem(this.storageKey)
+    localStorage.removeItem(this.tenantKey)
     sessionStorage.removeItem('oauth_code_verifier')
     sessionStorage.removeItem('oauth_state')
     this.currentTokens = null
+  }
+
+  // Active tenant: the tenant the user has selected for subsequent requests.
+  // Sent as the X-Tenant header by the API client; persisted so a reload keeps
+  // the chosen tenant. Cleared together with the token on logout.
+  getActiveTenant(): string | null {
+    return localStorage.getItem(this.tenantKey)
+  }
+
+  setActiveTenant(tenant: string | null) {
+    if (tenant) localStorage.setItem(this.tenantKey, tenant)
+    else localStorage.removeItem(this.tenantKey)
   }
 
   // Get access token

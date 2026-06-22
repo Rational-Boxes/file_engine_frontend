@@ -8,6 +8,11 @@ export interface Identity {
   roles: string[]
 }
 
+export interface TenantList {
+  tenants: string[]
+  current: string
+}
+
 function storeToken(token: string, expiresInSeconds: number) {
   tokenStorage.storeTokens({
     accessToken: token,
@@ -56,6 +61,12 @@ export const authService = {
   // Resolved identity for the current token.
   async whoami(): Promise<Identity> {
     const { data } = await apiClient.get<Identity>('/v1/whoami')
+    return data
+  },
+
+  // Tenants the current user can access, plus the tenant active on the request.
+  async listTenants(): Promise<TenantList> {
+    const { data } = await apiClient.get<TenantList>('/v1/tenants')
     return data
   },
 
