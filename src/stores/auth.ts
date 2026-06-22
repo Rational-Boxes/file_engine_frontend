@@ -20,6 +20,9 @@ interface AuthState {
   token: string | null
   user: string | null
   tenant: string | null
+  // Tenants this user may operate in; populated by loadTenants(), drives the
+  // tenant selector.
+  tenants: string[]
   roles: string[]
   accessLevel: AccessLevel
   loading: boolean
@@ -31,6 +34,7 @@ export const useAuthStore = defineStore('auth', {
     token: tokenStorage.getAccessToken(),
     user: null,
     tenant: null,
+    tenants: [],
     roles: [],
     accessLevel: 'user',
     loading: false,
@@ -62,10 +66,32 @@ export const useAuthStore = defineStore('auth', {
       if (!this.token) return
       try {
         this.applyIdentity(await authService.whoami())
+        await this.loadTenants()
       } catch {
         tokenStorage.clearTokens()
         this.token = null
       }
+    },
+
+    // Fetch the tenants the user can access. Best-effort: on failure we keep at
+    // least the active tenant so the selector still renders.
+    async loadTenants() {
+      try {
+        const { tenants } = await authService.listTenants()
+        this.tenants = tenants
+      } catch {
+        this.tenants = this.tenant ? [this.tenant] : []
+      }
+    },
+
+    // Switch the active tenant for all subsequent requests. Persists the choice
+    // (sent as X-Tenant by the API client) and updates the reactive identity so
+    // watchers (e.g. the file browser) can react. Returns false if unchanged.
+    switchTenant(tenant: string): boolean {
+      if (!tenant || tenant === this.tenant) return false
+      tokenStorage.setActiveTenant(tenant)
+      this.tenant = tenant
+      return true
     },
 
     async ldapLogin(username: string, password: string, tenant?: string) {
@@ -75,6 +101,7 @@ export const useAuthStore = defineStore('auth', {
         await authService.ldapLogin(username, password, tenant)
         this.syncToken()
         this.applyIdentity(await authService.whoami())
+        await this.loadTenants()
         return true
       } catch (e) {
         this.error = errorMessage(e, 'Login failed')
@@ -93,6 +120,7 @@ export const useAuthStore = defineStore('auth', {
       this.syncToken()
       try {
         this.applyIdentity(await authService.whoami())
+        await this.loadTenants()
         return true
       } catch (e) {
         this.error = errorMessage(e, 'Login failed')
@@ -107,6 +135,7 @@ export const useAuthStore = defineStore('auth', {
       this.token = null
       this.user = null
       this.tenant = null
+      this.tenants = []
       this.roles = []
       this.accessLevel = 'user'
     },

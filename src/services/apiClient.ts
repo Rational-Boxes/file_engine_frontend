@@ -19,6 +19,12 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  // Scope every request to the user's selected tenant (the bridge honors
+  // X-Tenant per request, overriding the token's issue-time tenant).
+  const tenant = tokenStorage.getActiveTenant()
+  if (tenant) {
+    config.headers['X-Tenant'] = tenant
+  }
   return config
 })
 

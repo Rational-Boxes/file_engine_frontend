@@ -3,6 +3,7 @@
     <header class="topbar">
       <div class="brand">FileEngine</div>
       <div class="user">
+        <TenantSelector />
         <span v-if="auth.user" class="who">{{ auth.user }} · {{ auth.tenant }} · {{ auth.accessLevel }}</span>
         <button class="link" @click="logout">Sign out</button>
       </div>
@@ -64,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/files'
@@ -74,6 +75,7 @@ import { formatSize } from '@/utils/format'
 import KebabMenu, { type KebabItem } from '@/components/KebabMenu.vue'
 import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
 import UploadTray from '@/components/UploadTray.vue'
+import TenantSelector from '@/components/TenantSelector.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -86,6 +88,17 @@ const dragOver = ref(false)
 const canModify = computed(() => auth.hasAccessLevel('editor'))
 
 files.openRoot()
+
+// Reload from the root whenever the active tenant changes: UIDs (including the
+// breadcrumb trail) are tenant-scoped, so the current path is meaningless in the
+// newly selected tenant. Skip the initial null->value hydration (the openRoot()
+// above already covers first load) and only react to real switches.
+watch(
+  () => auth.tenant,
+  (next, prev) => {
+    if (prev && next && next !== prev) files.openRoot()
+  },
+)
 
 // Build the per-row action menu from the user's access level.
 const menuFor = (item: FileItem): KebabItem[] => {
