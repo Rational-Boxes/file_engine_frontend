@@ -25,15 +25,26 @@ describe('fileService (REST)', () => {
       data: {
         entries: [
           { uid: 'd1', name: 'docs', type: 'directory', size: 0, version_count: 0 },
-          { uid: 'f1', name: 'a.txt', type: 'file', size: 12, version_count: 1 },
+          { uid: 'f1', name: 'a.txt', type: 'file', size: 12, version_count: 1, rendition_count: 2, has_renditions: true },
         ],
       },
     })
     const items = await fileService.listDirectory('root')
     expect(get).toHaveBeenCalledWith('/v1/dirs/root')
     expect(items).toEqual([
-      { uid: 'd1', name: 'docs', type: 'directory', size: 0, isDirectory: true },
-      { uid: 'f1', name: 'a.txt', type: 'file', size: 12, isDirectory: false },
+      { uid: 'd1', name: 'docs', type: 'directory', size: 0, isDirectory: true, renditionCount: 0, hasRenditions: false },
+      { uid: 'f1', name: 'a.txt', type: 'file', size: 12, isDirectory: false, renditionCount: 2, hasRenditions: true },
+    ])
+  })
+
+  it('lists a file\'s renditions on demand', async () => {
+    get.mockResolvedValue({
+      data: { entries: [{ uid: 'r1', name: '20260101-pdf.pdf', type: 'file', size: 50, version_count: 1 }] },
+    })
+    const items = await fileService.listRenditions('f1')
+    expect(get).toHaveBeenCalledWith('/v1/files/f1/renditions')
+    expect(items).toEqual([
+      { uid: 'r1', name: '20260101-pdf.pdf', type: 'file', size: 50, isDirectory: false, renditionCount: 0, hasRenditions: false },
     ])
   })
 

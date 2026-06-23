@@ -19,6 +19,11 @@ interface FilesState {
   loading: boolean
   error: string | null
   viewMode: 'list' | 'grid'
+  // Hidden renditions of a file, fetched on demand.
+  renditionsFor: FileItem | null
+  renditions: FileItem[]
+  renditionsOpen: boolean
+  renditionsLoading: boolean
 }
 
 const ROOT_CRUMB: Crumb = { uid: ROOT_UID, name: 'Home' }
@@ -33,6 +38,10 @@ export const useFileStore = defineStore('files', {
     loading: false,
     error: null,
     viewMode: 'grid',
+    renditionsFor: null,
+    renditions: [],
+    renditionsOpen: false,
+    renditionsLoading: false,
   }),
 
   actions: {
@@ -41,6 +50,8 @@ export const useFileStore = defineStore('files', {
       this.error = null
       this.drawerOpen = false
       this.detailItem = null
+      this.renditionsOpen = false
+      this.renditionsFor = null
       try {
         this.items = await fileService.listDirectory(this.currentUid)
       } catch (e) {
@@ -59,6 +70,27 @@ export const useFileStore = defineStore('files', {
     closeDetails() {
       this.drawerOpen = false
       this.detailItem = null
+    },
+
+    // Fetch and show a file's hidden renditions (alternate formats).
+    async openRenditions(item: FileItem) {
+      this.renditionsFor = item
+      this.renditionsOpen = true
+      this.renditionsLoading = true
+      this.renditions = []
+      try {
+        this.renditions = await fileService.listRenditions(item.uid)
+      } catch (e) {
+        this.error = errorMessage(e, 'Failed to load renditions')
+      } finally {
+        this.renditionsLoading = false
+      }
+    },
+
+    closeRenditions() {
+      this.renditionsOpen = false
+      this.renditionsFor = null
+      this.renditions = []
     },
 
     // Open the root and reset breadcrumbs.
