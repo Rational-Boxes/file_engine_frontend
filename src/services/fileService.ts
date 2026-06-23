@@ -6,6 +6,10 @@ export interface FileItem {
   type: 'file' | 'directory' | 'symlink'
   size: number
   isDirectory: boolean
+  // Hidden alternate-format renditions live as children of a file. They never
+  // appear in normal listings; hasRenditions lets the UI offer to fetch them.
+  renditionCount: number
+  hasRenditions: boolean
 }
 
 export interface NodeInfo {
@@ -24,11 +28,22 @@ interface DirEntry {
   type: string
   size: number
   version_count: number
+  rendition_count?: number
+  has_renditions?: boolean
 }
 
 function toItem(e: DirEntry): FileItem {
   const type = (e.type as FileItem['type']) || 'file'
-  return { uid: e.uid, name: e.name, type, size: e.size ?? 0, isDirectory: type === 'directory' }
+  const renditionCount = e.rendition_count ?? 0
+  return {
+    uid: e.uid,
+    name: e.name,
+    type,
+    size: e.size ?? 0,
+    isDirectory: type === 'directory',
+    renditionCount,
+    hasRenditions: e.has_renditions ?? renditionCount > 0,
+  }
 }
 
 // REST client for the bridge filesystem. The bridge is UID-native, so every
@@ -37,6 +52,12 @@ function toItem(e: DirEntry): FileItem {
 export const fileService = {
   async listDirectory(uid: string): Promise<FileItem[]> {
     const { data } = await apiClient.get<{ entries: DirEntry[] }>(`/v1/dirs/${uid}`)
+    return (data.entries || []).map(toItem)
+  },
+
+  // List a file's hidden renditions (alternate-format children) on demand.
+  async listRenditions(uid: string): Promise<FileItem[]> {
+    const { data } = await apiClient.get<{ entries: DirEntry[] }>(`/v1/files/${uid}/renditions`)
     return (data.entries || []).map(toItem)
   },
 

@@ -41,6 +41,12 @@
           <tr v-for="item in files.items" :key="item.uid" @dblclick="open(item)">
             <td class="name" @click="open(item)">
               <span class="icon">{{ item.isDirectory ? '📁' : '📄' }}</span>{{ item.name }}
+              <button
+                v-if="item.hasRenditions"
+                class="rendition-badge"
+                :title="`${item.renditionCount} alternate format(s)`"
+                @click.stop="files.openRenditions(item)"
+              >⧉ {{ item.renditionCount }}</button>
             </td>
             <td class="size">{{ item.isDirectory ? '—' : formatSize(item.size) }}</td>
             <td class="row-actions">
@@ -53,6 +59,25 @@
 
     <FileDetailsDrawer />
     <UploadTray />
+
+    <!-- Hidden renditions of a file, fetched on demand -->
+    <div v-if="files.renditionsOpen" class="rend-overlay" @click.self="files.closeRenditions()">
+      <div class="rend-panel">
+        <header class="rend-head">
+          <span class="rend-title">Renditions · {{ files.renditionsFor?.name }}</span>
+          <button class="link" @click="files.closeRenditions()">Close</button>
+        </header>
+        <div v-if="files.renditionsLoading" class="empty">Loading…</div>
+        <div v-else-if="!files.renditions.length" class="empty">No renditions.</div>
+        <ul v-else class="rend-list">
+          <li v-for="r in files.renditions" :key="r.uid">
+            <span class="icon">📄</span><span class="rend-name">{{ r.name }}</span>
+            <span class="size">{{ formatSize(r.size) }}</span>
+            <button class="link" @click="files.downloadItem(r)">Download</button>
+          </li>
+        </ul>
+      </div>
+    </div>
 
     <!-- Full-window drag-and-drop target overlay -->
     <div v-if="dragOver" class="drop-overlay">
@@ -105,6 +130,8 @@ const menuFor = (item: FileItem): KebabItem[] => {
   const m: KebabItem[] = []
   if (item.isDirectory) m.push({ action: 'open', label: 'Open' })
   else if (canDo('download', auth.accessLevel)) m.push({ action: 'download', label: 'Download' })
+  if (!item.isDirectory && item.hasRenditions)
+    m.push({ action: 'renditions', label: `Renditions (${item.renditionCount})` })
   if (canDo('rename', auth.accessLevel)) m.push({ action: 'rename', label: 'Rename' })
   if (canDo('delete', auth.accessLevel)) m.push({ action: 'delete', label: 'Delete', danger: true })
   m.push({ action: 'info', label: 'Info' })
@@ -121,6 +148,7 @@ const onAction = (action: string, item: FileItem) => {
     case 'open': return files.openDirectory(item)
     case 'download': return files.downloadItem(item)
     case 'info': return files.openDetails(item)
+    case 'renditions': return files.openRenditions(item)
     case 'rename': return rename(item)
     case 'delete': return remove(item)
   }
@@ -389,5 +417,71 @@ const logout = async () => {
 .row-actions {
   width: 60px;
   text-align: right;
+}
+
+/* renditions */
+.rendition-badge {
+  margin-left: 8px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--muted);
+}
+.rendition-badge:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.rend-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rend-panel {
+  width: min(520px, 92vw);
+  max-height: 70vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  padding: 16px 18px;
+}
+.rend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.rend-title {
+  font-weight: 600;
+}
+.rend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rend-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.rend-list li:last-child {
+  border-bottom: none;
+}
+.rend-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
