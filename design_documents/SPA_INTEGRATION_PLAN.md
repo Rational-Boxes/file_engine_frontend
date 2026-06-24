@@ -81,16 +81,21 @@ Frontend implications (much simpler than originally planned):
 The motivation for the new `/v1/principals` endpoint. Lives in (or beside) the
 existing `FileDetailsDrawer.vue` as a "Permissions" tab/modal.
 
-- **`services/aclService.ts`**
-  - `getAcls(uid)` → `GET /v1/nodes/{uid}/permissions`
-  - `grant(uid, {principal, permission, effect})` → `POST …/permissions`
-  - `revoke(uid, {principal, permission, effect})` → `DELETE …/permissions`
-  - `searchPrincipals(q, types?, limit?)` → `GET /v1/principals?q=&types=role,claim,user&limit=`
-    returning `{ users, roles, claims }`.
-- **`components/PrincipalPicker.vue`** — debounced type-ahead input that calls
-  `searchPrincipals`, renders the three categories (user / role / `key=value`
-  claim) with distinct iconography, and emits the chosen principal in the wire
-  form the bridge expects (bare user, `role:NAME`, `claim:key=value`).
+- **`services/aclService.ts`** — ✅ **implemented** (`searchPrincipals` +
+  `suggestionsToPrincipals`).
+  - `searchPrincipals(q, {types?, limit?})` → `GET /v1/principals?q=&types=role,claim,user&limit=`
+    returning `{ users, roles, claims }`. ✅
+  - `grant` / `revoke` / point-`check` already live on `fileService`
+    (`POST`/`DELETE`/`GET /v1/nodes/{uid}/permissions`). ✅
+  - `getAcls(uid)` (list a node's ACL entries) — **backend dependency:** the core
+    exposes only Grant/Revoke/Check/GetEffective, not a "list ACLs for resource"
+    RPC (the DB has `get_acls_for_resource`, unexposed). Needs a core RPC +
+    bridge `GET /v1/nodes/{uid}/acls` before the editor can show existing grants.
+- **`components/PrincipalPicker.vue`** — ✅ **implemented**: debounced type-ahead
+  (race-guarded) that calls `searchPrincipals`, renders the three categories
+  (user / role / `key=value` claim) with distinct badges, and emits the chosen
+  typed `Principal`. `encodePrincipal()` (in `types/`) maps it to the bridge wire
+  form (bare user, `role:NAME`, `claim:key=value`).
 - **`components/AclEditor.vue`** — lists current ACLs (principal · permission
   bits · ALLOW/DENY), supports add (via `PrincipalPicker`) and revoke, shows
   DENY-overrides-ALLOW precedence, and a "check access" probe

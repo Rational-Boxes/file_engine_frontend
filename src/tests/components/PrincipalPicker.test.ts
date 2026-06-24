@@ -1,0 +1,63 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+
+const { searchPrincipals } = vi.hoisted(() => ({ searchPrincipals: vi.fn() }))
+
+// Keep the real suggestionsToPrincipals; only stub the network call.
+vi.mock('@/services/aclService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/aclService')>()
+  return { ...actual, aclService: { searchPrincipals } }
+})
+
+import PrincipalPicker from '@/components/PrincipalPicker.vue'
+
+describe('PrincipalPicker', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('debounces, searches, renders typed results, and emits the chosen principal', async () => {
+    searchPrincipals.mockResolvedValue({ users: ['alice'], roles: ['editors'], claims: ['dept=eng'] })
+    const wrapper = mount(PrincipalPicker, { props: { debounceMs: 50 } })
+
+    await wrapper.find('input').setValue('e')
+    expect(searchPrincipals).not.toHaveBeenCalled() // debounced
+
+    vi.advanceTimersByTime(50)
+    await flushPromises()
+
+    expect(searchPrincipals).toHaveBeenCalledWith('e', { types: undefined, limit: 8 })
+    const items = wrapper.findAll('.pp-item')
+    expect(items).toHaveLength(3)
+    expect(items[0].text()).toContain('alice')
+
+    await items[1].trigger('mousedown') // the role "editors"
+    expect(wrapper.emitted('select')?.[0]?.[0]).toEqual({ kind: 'role', value: 'editors' })
+    // selection clears the query
+    expect((wrapper.find('input').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('forwards a restricted type filter and limit', async () => {
+    searchPrincipals.mockResolvedValue({ users: [], roles: [], claims: ['k=v'] })
+    const wrapper = mount(PrincipalPicker, {
+      props: { types: ['claim'], limit: 3, debounceMs: 0 },
+    })
+    await wrapper.find('input').setValue('k')
+    vi.advanceTimersByTime(0)
+    await flushPromises()
+    expect(searchPrincipals).toHaveBeenCalledWith('k', { types: ['claim'], limit: 3 })
+  })
+
+  it('clearing the query cancels the pending search', async () => {
+    const wrapper = mount(PrincipalPicker, { props: { debounceMs: 50 } })
+    await wrapper.find('input').setValue('abc')
+    await wrapper.find('input').setValue('')
+    vi.advanceTimersByTime(100)
+    await flushPromises()
+    expect(searchPrincipals).not.toHaveBeenCalled()
+  })
+})
