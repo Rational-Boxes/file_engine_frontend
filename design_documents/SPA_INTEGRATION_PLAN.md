@@ -141,12 +141,15 @@ Surfaces the new rendition set (icon `thumbnail`, larger `preview`, inline `pdf`
 - **Metadata** ✅ — already present (the drawer's "Metadata" tab: editable
   key/value grid on `/v1/nodes/{uid}/metadata`).
 
-## 6. Workstream D — Role management (admin)
+## 6. Workstream D — Role management (admin) — ✅ implemented
 
-- **`services/roleService.ts`:** `listRoles`, `createRole`, `deleteRole`,
-  `usersInRole`, `assign/removeUser`, `rolesForUser`.
-- **`views/AdminRolesView.vue`** (route `/admin/roles`, guarded by `system_admin`):
-  role list + membership editor (reusing `PrincipalPicker` for user lookup).
+- **`services/roleService.ts`** ✅ — `listRoles`, `createRole`, `deleteRole`,
+  `usersInRole`, `assignUser`/`removeUser`, `rolesForUser`.
+- **`views/AdminRolesView.vue`** ✅ (route `/admin/roles`) — two-pane: role
+  list (create/delete) + the selected role's members (add via `PrincipalPicker`
+  restricted to `types=['user']`, remove). Route gated by `requiresAdmin` in the
+  router (`hasAccessLevel('admin')` → else redirect to `/files`); `AppNav` shows
+  the **Admin** link only to admins. The core still enforces `system_admin`.
 
 ## 7. Workstream E — Search (semantic + full-text) — ✅ implemented
 
