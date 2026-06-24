@@ -1,12 +1,14 @@
 <template>
   <div id="app">
     <router-view />
+    <PdfPreviewOverlay />
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import PdfPreviewOverlay from '@/components/PdfPreviewOverlay.vue'
 
 const authStore = useAuthStore()
 

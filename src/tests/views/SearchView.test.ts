@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount, flushPromises, RouterLinkStub } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 
 const { search } = vi.hoisted(() => ({ search: vi.fn() }))
 vi.mock('@/services/searchService', () => ({ searchService: { search } }))
 vi.mock('@/services/csaiClient', () => ({ errorMessage: (e: unknown) => String(e) }))
+const { open } = vi.hoisted(() => ({ open: vi.fn() }))
+vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open }) }))
 
 import SearchView from '@/views/SearchView.vue'
 
-const mountView = () =>
-  mount(SearchView, { global: { stubs: { AppNav: true, RouterLink: RouterLinkStub } } })
+const mountView = () => mount(SearchView, { global: { stubs: { AppNav: true } } })
 
 describe('SearchView', () => {
   beforeEach(() => {
@@ -25,8 +26,9 @@ describe('SearchView', () => {
     expect(w.text()).toContain('a.md')
     expect(w.text()).toContain('…north…')
     expect(w.text()).toContain('0.91')
-    // result deep-links to the standalone preview
-    expect(w.findComponent(RouterLinkStub).props('to')).toBe('/preview/f1')
+    // clicking a result raises the preview overlay (no navigation, no view reset)
+    await w.find('.result-link').trigger('click')
+    expect(open).toHaveBeenCalledWith('f1', 'a.md')
   })
 
   it('shows "No results" when the search is empty', async () => {

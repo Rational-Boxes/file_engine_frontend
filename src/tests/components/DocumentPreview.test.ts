@@ -14,8 +14,8 @@ vi.mock('@/services/renditions', () => ({
   revokeRenditionUrl,
 }))
 vi.mock('@/services/searchService', () => ({ searchService: { generatePreview } }))
-const { push } = vi.hoisted(() => ({ push: vi.fn() }))
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+const { open } = vi.hoisted(() => ({ open: vi.fn() }))
+vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open }) }))
 
 import DocumentPreview from '@/components/DocumentPreview.vue'
 
@@ -41,13 +41,13 @@ describe('DocumentPreview', () => {
     expect(w.find('.btn').exists()).toBe(true) // "Open document (PDF)"
   })
 
-  it('in the drawer, opening the PDF navigates to the full-width review (no embed/fetch)', async () => {
+  it('in the drawer, opening the PDF raises the overlay (no embed/fetch, no navigation)', async () => {
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx' } })
     await flushPromises()
 
     await w.find('.btn').trigger('click') // "Open document (PDF)"
-    expect(push).toHaveBeenCalledWith('/preview/f1')
+    expect(open).toHaveBeenCalledWith('f1', 'report.docx') // overlay, not a route change
     expect(w.find('iframe').exists()).toBe(false)
     expect(renditionObjectUrl).not.toHaveBeenCalledWith('pdf1') // PDF never fetched in the drawer
   })
@@ -61,7 +61,7 @@ describe('DocumentPreview', () => {
     const frame = w.find('iframe.dp-frame-full')
     expect(frame.exists()).toBe(true)
     expect(frame.attributes('src')).toBe('blob:pdf1')
-    expect(push).not.toHaveBeenCalled()
+    expect(open).not.toHaveBeenCalled()
   })
 
   it('on the full-width review page, opens a native PDF by loading the source itself', async () => {

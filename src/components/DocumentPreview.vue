@@ -40,7 +40,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
 import {
   loadRenditionSet,
   renditionObjectUrl,
@@ -48,14 +47,16 @@ import {
   type RenditionSet,
 } from '@/services/renditions'
 import { searchService } from '@/services/searchService'
+import { usePreviewStore } from '@/stores/preview'
 import { errorMessage } from '@/services/apiClient'
 
-// `fullWidth` = the standalone review page (PreviewView): the PDF is embedded
-// in a full-width iframe and auto-opened. Otherwise (the narrow drawer), opening
-// the PDF navigates to that page instead of cramming an iframe into the drawer.
+// `fullWidth` = the overlay review (PdfPreviewOverlay): the PDF is embedded in a
+// full-width iframe and auto-opened. Otherwise (the narrow drawer), opening the
+// PDF raises that overlay instead of cramming an iframe into the drawer — an
+// overlay, NOT a route change, so the underlying view never resets.
 const props = defineProps<{ uid: string; name?: string; hasRenditions?: boolean; fullWidth?: boolean }>()
 
-const router = useRouter()
+const preview = usePreviewStore()
 
 const set = ref<RenditionSet>({})
 const previewUrl = ref('') // object URL for the first-page preview image
@@ -95,10 +96,11 @@ async function reload() {
 }
 
 async function openPdf() {
-  // In the drawer, hand off to the full-width review page rather than embed a
-  // cramped iframe; the PDF is fetched there (still only on this explicit action).
+  // In the drawer, raise the full-width review overlay rather than embed a
+  // cramped iframe; the PDF is fetched there (still only on this explicit
+  // action). An overlay — not navigation — so the Files/Chat view is preserved.
   if (!props.fullWidth) {
-    router.push(`/preview/${props.uid}`)
+    preview.open(props.uid, props.name)
     return
   }
   // Full-width page: fetch the PDF bytes and embed them in the iframe.

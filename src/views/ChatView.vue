@@ -7,15 +7,16 @@
           <div class="bubble">
             <p class="text">{{ display(m) }}</p>
             <div v-if="m.citations && m.citations.length" class="cites">
-              <router-link
+              <button
                 v-for="c in m.citations"
                 :key="c.fileUid"
+                type="button"
                 class="cite"
-                :to="`/preview/${c.fileUid}`"
                 :title="c.fileUid"
+                @click="preview.open(c.fileUid)"
               >
                 [{{ c.marker }}] {{ c.fileUid }}
-              </router-link>
+              </button>
             </div>
           </div>
         </div>
@@ -42,7 +43,10 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import { ChatSession } from '@/services/chatService'
+import { usePreviewStore } from '@/stores/preview'
 import type { Citation } from '@/types'
+
+const preview = usePreviewStore()
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -161,6 +165,7 @@ function display(m: Msg): string {
   display: inline-block;
   font-size: 11px;
   padding: 1px 6px;
+  border: none;
   border-radius: 999px;
   background: var(--bg);
   color: var(--muted);
@@ -169,6 +174,7 @@ function display(m: Msg): string {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .cite:hover {

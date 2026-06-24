@@ -20,14 +20,14 @@
 
       <ul v-if="hits.length" class="results">
         <li v-for="h in hits" :key="h.fileUid" class="result">
-          <router-link class="result-link" :to="`/preview/${h.fileUid}`">
+          <button type="button" class="result-link" @click="preview.open(h.fileUid, h.name)">
             <div class="result-head">
               <span class="result-name">{{ h.name || h.fileUid }}</span>
               <span class="result-score">{{ h.score?.toFixed(2) }}</span>
             </div>
             <p v-if="h.snippet" class="result-snippet">{{ h.snippet }}</p>
             <span class="result-uid mono">{{ h.fileUid }}</span>
-          </router-link>
+          </button>
         </li>
       </ul>
     </main>
@@ -38,7 +38,10 @@
 import { ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import { searchService } from '@/services/searchService'
+import { usePreviewStore } from '@/stores/preview'
 import { errorMessage } from '@/services/csaiClient'
+
+const preview = usePreviewStore()
 import type { SearchHit } from '@/types'
 
 const query = ref('')
@@ -126,7 +129,13 @@ async function run() {
 
 .result-link {
   display: block;
+  width: 100%;
   padding: 12px 14px;
+  text-align: left;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
   text-decoration: none;
   color: inherit;
 }
