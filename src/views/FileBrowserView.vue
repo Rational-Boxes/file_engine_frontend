@@ -37,10 +37,18 @@
 
       <table v-else class="files">
         <thead>
-          <tr><th>Name</th><th class="size">Size</th><th class="row-actions"></th></tr>
+          <tr>
+            <th class="sortable" :aria-sort="ariaSort('name')" @click="sortBy('name')">
+              Name <span class="caret">{{ caret('name') }}</span>
+            </th>
+            <th class="size sortable" :aria-sort="ariaSort('size')" @click="sortBy('size')">
+              Size <span class="caret">{{ caret('size') }}</span>
+            </th>
+            <th class="row-actions"></th>
+          </tr>
         </thead>
         <tbody>
-          <tr v-for="item in files.items" :key="item.uid" @dblclick="open(item)">
+          <tr v-for="item in displayItems" :key="item.uid" @dblclick="open(item)">
             <td class="name" @click="open(item)">
               <FileThumbnail :item="item" />{{ item.name }}
               <button
@@ -104,6 +112,7 @@ import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
 import UploadTray from '@/components/UploadTray.vue'
 import AppNav from '@/components/AppNav.vue'
 import FileThumbnail from '@/components/FileThumbnail.vue'
+import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
 
 const auth = useAuthStore()
 const files = useFileStore()
@@ -113,6 +122,26 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const dragOver = ref(false)
 
 const canModify = computed(() => auth.hasAccessLevel('editor'))
+
+// Column sorting. Folders always sort before files (independent of direction),
+// then the active column decides the order within each group.
+const sortKey = ref<SortKey>('name')
+const sortDir = ref<SortDir>('asc')
+
+const displayItems = computed(() => sortFiles(files.items, sortKey.value, sortDir.value))
+
+const sortBy = (key: SortKey) => {
+  if (sortKey.value === key) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  else {
+    sortKey.value = key
+    sortDir.value = 'asc'
+  }
+}
+
+const caret = (key: SortKey) =>
+  sortKey.value !== key ? '↕' : sortDir.value === 'asc' ? '▲' : '▼'
+const ariaSort = (key: SortKey) =>
+  sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending'
 
 files.openRoot()
 
@@ -374,6 +403,24 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
+}
+
+.files th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.files th.sortable:hover {
+  color: var(--fg);
+}
+
+.caret {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.files th.sortable[aria-sort='none'] .caret {
+  opacity: 0.4;
 }
 
 .files tbody tr:last-child td {
