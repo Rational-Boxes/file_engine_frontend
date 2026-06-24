@@ -175,13 +175,23 @@ Surfaces the new rendition set (icon `thumbnail`, larger `preview`, inline `pdf`
 - **Shell:** new `components/AppNav.vue` (Files / Search / Chat + tenant + sign
   out), now used by all authenticated views.
 
-## 9. Workstream G — Admin / ops (optional, lightweight)
+## 9. Workstream G — Admin / ops — ✅ implemented
 
-- Storage usage + trigger sync (`GET /v1/storage`, `POST /v1/sync`) on an
-  `AdminView`.
-- Optional ops widget reading the bridges' `/healthz` `/readyz` `/poolz`
-  (monitoring port) for an at-a-glance pool-saturation indicator. Likely behind
-  `system_admin` and off by default.
+- **`services/adminService.ts`** ✅ — `storageUsage()` (`GET /v1/storage`) +
+  `triggerSync()` (`POST /v1/sync`).
+- **`views/AdminOpsView.vue`** ✅ (route `/admin/ops`, admin-gated) — storage
+  usage bar + stats and a "Trigger sync" action. `components/AdminTabs.vue`
+  sub-nav links it with `/admin/roles`.
+- *Follow-on (deferred):* a `/poolz` pool-saturation widget — it lives on the
+  bridges' separate monitoring port, so it needs that port CORS-enabled for the
+  SPA; left off by default.
+
+## 10b. Deep-linking — ✅ implemented
+
+- **`views/PreviewView.vue`** (route `/preview/:uid`) — standalone page: file
+  name (`stat`) + `DocumentPreview` + extracted Markdown (`searchService.getText`,
+  404 tolerated). **Search hits** and **chat citation chips** link to it, so a
+  result/citation jumps straight to the document's preview + text.
 
 ---
 

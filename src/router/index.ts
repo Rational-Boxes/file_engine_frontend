@@ -7,6 +7,8 @@ const FileBrowserView = () => import('@/views/FileBrowserView.vue')
 const SearchView = () => import('@/views/SearchView.vue')
 const ChatView = () => import('@/views/ChatView.vue')
 const AdminRolesView = () => import('@/views/AdminRolesView.vue')
+const AdminOpsView = () => import('@/views/AdminOpsView.vue')
+const PreviewView = () => import('@/views/PreviewView.vue')
 
 const routes = [
   { path: '/login', name: 'Login', component: LoginView, meta: { requiresAuth: false } },
@@ -14,10 +16,17 @@ const routes = [
   { path: '/files', name: 'FileBrowser', component: FileBrowserView, meta: { requiresAuth: true } },
   { path: '/search', name: 'Search', component: SearchView, meta: { requiresAuth: true } },
   { path: '/chat', name: 'Chat', component: ChatView, meta: { requiresAuth: true } },
+  { path: '/preview/:uid', name: 'Preview', component: PreviewView, meta: { requiresAuth: true } },
   {
     path: '/admin/roles',
     name: 'AdminRoles',
     component: AdminRolesView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/ops',
+    name: 'AdminOps',
+    component: AdminOpsView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   { path: '/', redirect: '/files' },

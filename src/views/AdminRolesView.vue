@@ -2,6 +2,7 @@
   <div class="admin-roles">
     <AppNav />
     <main class="content">
+      <AdminTabs />
       <h1 class="title">Role management</h1>
       <p v-if="error" class="err">{{ error }}</p>
 
@@ -55,6 +56,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import AppNav from '@/components/AppNav.vue'
+import AdminTabs from '@/components/AdminTabs.vue'
 import PrincipalPicker from '@/components/PrincipalPicker.vue'
 import { roleService } from '@/services/roleService'
 import { errorMessage } from '@/services/apiClient'

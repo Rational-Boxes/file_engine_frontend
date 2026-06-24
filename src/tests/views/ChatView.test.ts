@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, RouterLinkStub } from '@vue/test-utils'
 import type { ChatHandlers } from '@/services/chatService'
 
 const { sendMock, closeMock } = vi.hoisted(() => ({ sendMock: vi.fn(), closeMock: vi.fn() }))
@@ -14,7 +14,8 @@ vi.mock('@/services/chatService', () => ({
 
 import ChatView from '@/views/ChatView.vue'
 
-const mountView = () => mount(ChatView, { global: { stubs: { AppNav: true } } })
+const mountView = () =>
+  mount(ChatView, { global: { stubs: { AppNav: true, RouterLink: RouterLinkStub } } })
 
 describe('ChatView', () => {
   beforeEach(() => {
@@ -37,6 +38,8 @@ describe('ChatView', () => {
     expect(w.text()).toContain('Northern revenue reached $175M.')
     expect(w.text()).not.toContain('let me check the table') // <think> hidden
     expect(w.text()).toContain('[1] report.md')
+    // citation chip deep-links to the cited file's preview
+    expect(w.findComponent(RouterLinkStub).props('to')).toBe('/preview/report.md')
     // input re-enabled after done
     expect((w.find('input').element as HTMLInputElement).disabled).toBe(false)
   })

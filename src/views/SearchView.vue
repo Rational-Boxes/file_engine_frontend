@@ -20,12 +20,14 @@
 
       <ul v-if="hits.length" class="results">
         <li v-for="h in hits" :key="h.fileUid" class="result">
-          <div class="result-head">
-            <span class="result-name">{{ h.name || h.fileUid }}</span>
-            <span class="result-score">{{ h.score?.toFixed(2) }}</span>
-          </div>
-          <p v-if="h.snippet" class="result-snippet">{{ h.snippet }}</p>
-          <span class="result-uid mono">{{ h.fileUid }}</span>
+          <router-link class="result-link" :to="`/preview/${h.fileUid}`">
+            <div class="result-head">
+              <span class="result-name">{{ h.name || h.fileUid }}</span>
+              <span class="result-score">{{ h.score?.toFixed(2) }}</span>
+            </div>
+            <p v-if="h.snippet" class="result-snippet">{{ h.snippet }}</p>
+            <span class="result-uid mono">{{ h.fileUid }}</span>
+          </router-link>
         </li>
       </ul>
     </main>
@@ -117,9 +119,20 @@ async function run() {
 }
 
 .result {
-  padding: 12px 14px;
   background: #fff;
   border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.result-link {
+  display: block;
+  padding: 12px 14px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.result-link:hover {
+  background: var(--bg);
   border-radius: 10px;
 }
 

@@ -7,9 +7,15 @@
           <div class="bubble">
             <p class="text">{{ display(m) }}</p>
             <div v-if="m.citations && m.citations.length" class="cites">
-              <span v-for="c in m.citations" :key="c.fileUid" class="cite" :title="c.fileUid">
+              <router-link
+                v-for="c in m.citations"
+                :key="c.fileUid"
+                class="cite"
+                :to="`/preview/${c.fileUid}`"
+                :title="c.fileUid"
+              >
                 [{{ c.marker }}] {{ c.fileUid }}
-              </span>
+              </router-link>
             </div>
           </div>
         </div>
@@ -152,6 +158,7 @@ function display(m: Msg): string {
 }
 
 .cite {
+  display: inline-block;
   font-size: 11px;
   padding: 1px 6px;
   border-radius: 999px;
@@ -161,6 +168,11 @@ function display(m: Msg): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-decoration: none;
+}
+
+.cite:hover {
+  color: var(--primary);
 }
 
 .muted {
