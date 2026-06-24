@@ -112,21 +112,19 @@ Surfaces the new rendition set (icon `thumbnail`, larger `preview`, inline `pdf`
 - Renditions are **hidden children** of a file; list with
   `fileService.listRenditions(uid)` (already present), fetch each rendition's
   bytes via `GET /v1/files/{childUid}/content` (auth'd; use a blob URL).
-- **`services/renditions.ts`** maps children by name suffix → `{ thumbnail,
-  preview, pdf }` (latest source version wins).
-- **Browser grid:** when `hasRenditions`, lazy-load the `thumbnail` as the tile
-  image (fallback to a type icon). Avoid N+1 by fetching renditions only for the
-  visible page / on hover.
-- **`components/PreviewModal.vue` — progressive, fetch-on-demand:** click a file
-  → show the larger **`preview` image** (one small PNG). The full **`pdf` is NOT
-  fetched at this point** — only the cheap preview image is. The `pdf` rendition
-  (or a native PDF source) is loaded **only when the user explicitly asks for it**
-  — clicking the large preview image (or an explicit "View document" / "Open PDF"
-  control) — at which point we fetch the `pdf` bytes and embed the **inline PDF
-  viewer** (browser-native `<embed>` first; `pdf.js` if we need controls). This
-  keeps the default open lightweight (image-only) and never pulls a potentially
-  large PDF unless the user is actually going to read it. For images/video, reuse
-  the existing rendition images / poster.
+- **`services/renditions.ts`** — ✅ maps children by name suffix → `{ thumbnail,
+  preview, pdf, poster }` (latest source version wins); `loadRenditionSet()` +
+  on-demand auth'd object URLs.
+- **`components/DocumentPreview.vue`** — ✅ **implemented**, in the drawer's
+  "Preview" tab. Progressive, fetch-on-demand: on open it loads only the cheap
+  **`preview` image**; the full **PDF is fetched only on explicit user action** —
+  clicking the preview image (or the "Open document (PDF)" button) — then embedded
+  in an inline `<iframe>` (Office docs use the `pdf` rendition; a native `.pdf`
+  opens the source itself). Object URLs are revoked on unmount / back. Shows
+  "No preview available yet" until ingest produces renditions.
+- **Browser grid (follow-on):** when `hasRenditions`, lazy-load the `thumbnail`
+  as the tile image (fallback to a type icon); fetch only for the visible
+  page / on hover to avoid N+1.
 - **Text/markdown:** also offer the extracted Markdown via convert_search_ai
   `GET /documents/{uid}/text` (READ-gated) rendered with a markdown component.
 

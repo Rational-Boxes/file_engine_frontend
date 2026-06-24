@@ -62,9 +62,15 @@
       </div>
     </section>
 
-    <!-- Preview (future) -->
+    <!-- Preview -->
     <section v-show="tab === 'Preview'" class="pane">
-      <p class="muted">Live preview coming soon.</p>
+      <DocumentPreview
+        v-if="item && !item.isDirectory"
+        :uid="item.uid"
+        :name="item.name"
+        :has-renditions="item.hasRenditions"
+      />
+      <p v-else class="muted">No preview for folders.</p>
     </section>
   </aside>
 </template>
@@ -78,6 +84,7 @@ import { errorMessage } from '@/services/apiClient'
 import { formatSize } from '@/utils/format'
 import { PERMS } from '@/utils/permissions'
 import AclEditor from '@/components/AclEditor.vue'
+import DocumentPreview from '@/components/DocumentPreview.vue'
 
 const files = useFileStore()
 const auth = useAuthStore()
