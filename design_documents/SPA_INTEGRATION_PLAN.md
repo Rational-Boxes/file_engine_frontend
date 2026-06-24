@@ -111,10 +111,16 @@ Surfaces the new rendition set (icon `thumbnail`, larger `preview`, inline `pdf`
 - **Browser grid:** when `hasRenditions`, lazy-load the `thumbnail` as the tile
   image (fallback to a type icon). Avoid N+1 by fetching renditions only for the
   visible page / on hover.
-- **`components/PreviewModal.vue`:** click a file → show the larger `preview`
-  image; for the `pdf` rendition (or a native PDF source), embed an **inline PDF
-  viewer** (browser-native `<embed>` first; `pdf.js` if we need controls). For
-  images/video, reuse the existing rendition images / poster.
+- **`components/PreviewModal.vue` — progressive, fetch-on-demand:** click a file
+  → show the larger **`preview` image** (one small PNG). The full **`pdf` is NOT
+  fetched at this point** — only the cheap preview image is. The `pdf` rendition
+  (or a native PDF source) is loaded **only when the user explicitly asks for it**
+  — clicking the large preview image (or an explicit "View document" / "Open PDF"
+  control) — at which point we fetch the `pdf` bytes and embed the **inline PDF
+  viewer** (browser-native `<embed>` first; `pdf.js` if we need controls). This
+  keeps the default open lightweight (image-only) and never pulls a potentially
+  large PDF unless the user is actually going to read it. For images/video, reuse
+  the existing rendition images / poster.
 - **Text/markdown:** also offer the extracted Markdown via convert_search_ai
   `GET /documents/{uid}/text` (READ-gated) rendered with a markdown component.
 
