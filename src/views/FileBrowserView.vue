@@ -2,6 +2,7 @@
   <div class="browser">
     <AppNav />
 
+    <main class="browser-body">
     <div class="toolbar">
       <nav class="breadcrumbs">
         <template v-for="(c, i) in files.breadcrumbs" :key="c.uid + i">
@@ -57,6 +58,7 @@
         </tbody>
       </table>
     </div>
+    </main>
 
     <FileDetailsDrawer />
     <UploadTray />
@@ -223,6 +225,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .browser {
+  /* full-width so AppNav's heading bar spans the page, like the other views */
+}
+
+.browser-body {
   max-width: 960px;
   margin: 0 auto;
   padding: 0 20px 40px;
