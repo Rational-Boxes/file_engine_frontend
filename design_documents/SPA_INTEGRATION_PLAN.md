@@ -144,26 +144,29 @@ Surfaces the new rendition set (icon `thumbnail`, larger `preview`, inline `pdf`
 - **`views/AdminRolesView.vue`** (route `/admin/roles`, guarded by `system_admin`):
   role list + membership editor (reusing `PrincipalPicker` for user lookup).
 
-## 7. Workstream E — Search (semantic + full-text)
+## 7. Workstream E — Search (semantic + full-text) — ✅ implemented
 
-- **`services/searchService.ts`:** `POST {csai}/search { query, limit, fuzzy }`
-  → `{ hits: [{ file_uid, name, score, snippet, … }] }` (permission-gated
-  server-side). Uses the **CSAI token**.
-- **`views/SearchView.vue`** (route `/search`) + a global search box in the shell:
-  results link into the file browser (navigate to `file_uid`) and offer "open
-  preview" (Workstream B). Show FTS vs. vector provenance if exposed.
+- **`services/searchService.ts`** ✅ — `search(query, {limit, fuzzy})` →
+  `POST {csai}/search`, maps hits to `{ fileUid, name, snippet, score }`
+  (permission-gated server-side); `getText(uid)` for `GET /documents/{uid}/text`.
+  Uses `csaiClient` (one shared token).
+- **`views/SearchView.vue`** ✅ (route `/search`) — search bar + ranked results
+  (name · score · highlighted snippet). *Follow-on:* deep-link a result into the
+  file browser / open its preview.
 
-## 8. Workstream F — RAG chat with citations
+## 8. Workstream F — RAG chat with citations — ✅ implemented
 
-- **`services/chatService.ts`:** opens the `/chat` **WebSocket** (`?token=`),
-  sends `{ message, system_prompt?, history?, k? }`, and streams typed events:
-  `token` (append), `citations` (render source chips), `done`. Buffers history
-  client-side.
-- **`components/ChatPanel.vue` / `views/ChatView.vue`** (route `/chat`):
-  streaming answer, **citation chips** that deep-link to the cited file's
-  preview/text, model-agnostic (works with the Ollama/Claude backends). Handle
-  reasoning-model output (e.g. strip/segregate `<think>…</think>`).
-- **Pinia:** `stores/chat.ts` (conversation state, streaming buffer).
+- **`services/chatService.ts`** ✅ — `ChatSession` over the `/chat` WebSocket
+  (`chatSocketUrl`, `?token=`): sends `{ message, system_prompt?, history?, k? }`
+  (buffered until the socket opens) and dispatches typed events via
+  `parseChatEvent` (`token` / `citations` / `done` / `error`).
+- **`views/ChatView.vue`** ✅ (route `/chat`) — streaming answer bubbles,
+  **citation chips**, sends prior turns as history, model-agnostic (Ollama/Claude),
+  and **hides reasoning-model `<think>…</think>`** from the displayed answer.
+  *Follow-on:* citation chips deep-linking to the cited file's preview/text;
+  optional `stores/chat.ts` for multi-view conversation state.
+- **Shell:** new `components/AppNav.vue` (Files / Search / Chat + tenant + sign
+  out), now used by all authenticated views.
 
 ## 9. Workstream G — Admin / ops (optional, lightweight)
 

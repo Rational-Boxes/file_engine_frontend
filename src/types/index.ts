@@ -59,8 +59,7 @@ export interface SearchHit {
 // --- RAG chat (WS {csai}/chat) ---
 export interface Citation {
   fileUid: string
-  name?: string
-  ordinal?: number
+  marker?: number // 1-based [n] reference used in the answer
 }
 
 // Discriminated union of the server's streamed chat events.

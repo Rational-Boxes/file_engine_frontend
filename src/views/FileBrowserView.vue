@@ -1,13 +1,6 @@
 <template>
   <div class="browser">
-    <header class="topbar">
-      <div class="brand">FileEngine</div>
-      <div class="user">
-        <TenantSelector />
-        <span v-if="auth.user" class="who">{{ auth.user }} · {{ auth.tenant }} · {{ auth.accessLevel }}</span>
-        <button class="link" @click="logout">Sign out</button>
-      </div>
-    </header>
+    <AppNav />
 
     <div class="toolbar">
       <nav class="breadcrumbs">
@@ -91,7 +84,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/files'
 import { useUploadStore } from '@/stores/upload'
@@ -100,9 +92,8 @@ import { formatSize } from '@/utils/format'
 import KebabMenu, { type KebabItem } from '@/components/KebabMenu.vue'
 import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
 import UploadTray from '@/components/UploadTray.vue'
-import TenantSelector from '@/components/TenantSelector.vue'
+import AppNav from '@/components/AppNav.vue'
 
-const router = useRouter()
 const auth = useAuthStore()
 const files = useFileStore()
 const upload = useUploadStore()
@@ -217,11 +208,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('dragleave', onWinDragLeave)
   window.removeEventListener('drop', onWinDrop)
 })
-
-const logout = async () => {
-  await auth.logout()
-  router.push('/login')
-}
 </script>
 
 <style scoped>
