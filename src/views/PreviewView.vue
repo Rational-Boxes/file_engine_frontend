@@ -6,7 +6,7 @@
       <h1 class="title">{{ name || uid }}</h1>
       <p v-if="error" class="err">{{ error }}</p>
 
-      <DocumentPreview :uid="uid" :name="name" />
+      <DocumentPreview :uid="uid" :name="name" full-width />
 
       <section v-if="text" class="text-pane">
         <h2 class="th">Extracted text</h2>
@@ -61,9 +61,10 @@ function back() {
 
 <style scoped>
 .content {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 16px 18px;
+  /* Full-width review so the PDF iframe spans the page. */
+  max-width: none;
+  margin: 0;
+  padding: 12px 18px;
 }
 
 .back {
@@ -88,6 +89,7 @@ function back() {
 
 .text-pane {
   margin-top: 18px;
+  max-width: 900px;
 }
 
 .th {

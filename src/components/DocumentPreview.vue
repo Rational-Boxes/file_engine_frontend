@@ -6,7 +6,7 @@
     <template v-else>
       <!-- Inline PDF viewer — shown only after the user explicitly asks for it. -->
       <div v-if="pdfUrl" class="dp-pdf">
-        <iframe :src="pdfUrl" title="Document" class="dp-frame"></iframe>
+        <iframe :src="pdfUrl" title="Document" class="dp-frame" :class="{ 'dp-frame-full': fullWidth }"></iframe>
         <button class="link" @click="closePdf">← Back to preview</button>
       </div>
 
@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   loadRenditionSet,
   renditionObjectUrl,
@@ -49,7 +50,12 @@ import {
 import { searchService } from '@/services/searchService'
 import { errorMessage } from '@/services/apiClient'
 
-const props = defineProps<{ uid: string; name?: string; hasRenditions?: boolean }>()
+// `fullWidth` = the standalone review page (PreviewView): the PDF is embedded
+// in a full-width iframe and auto-opened. Otherwise (the narrow drawer), opening
+// the PDF navigates to that page instead of cramming an iframe into the drawer.
+const props = defineProps<{ uid: string; name?: string; hasRenditions?: boolean; fullWidth?: boolean }>()
+
+const router = useRouter()
 
 const set = ref<RenditionSet>({})
 const previewUrl = ref('') // object URL for the first-page preview image
@@ -79,6 +85,8 @@ async function reload() {
     if (set.value.preview) {
       previewUrl.value = await renditionObjectUrl(set.value.preview.uid)
     }
+    // On the full-width review page, open the PDF straight away.
+    if (props.fullWidth && canOpenPdf.value) await openPdf()
   } catch (e) {
     error.value = errorMessage(e, 'Failed to load preview')
   } finally {
@@ -87,8 +95,13 @@ async function reload() {
 }
 
 async function openPdf() {
-  // Fetch the PDF bytes ONLY now (explicit user action) — never on open, so a
-  // potentially large PDF is not pulled unless the user wants to read it.
+  // In the drawer, hand off to the full-width review page rather than embed a
+  // cramped iframe; the PDF is fetched there (still only on this explicit action).
+  if (!props.fullWidth) {
+    router.push(`/preview/${props.uid}`)
+    return
+  }
+  // Full-width page: fetch the PDF bytes and embed them in the iframe.
   const pdfUid = set.value.pdf?.uid ?? (isNativePdf.value ? props.uid : '')
   if (!pdfUid || pdfUrl.value) return
   opening.value = true
@@ -173,6 +186,10 @@ function cleanup() {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
+}
+
+.dp-frame-full {
+  height: calc(100vh - 150px);
 }
 
 .btn {

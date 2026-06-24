@@ -14,6 +14,8 @@ vi.mock('@/services/renditions', () => ({
   revokeRenditionUrl,
 }))
 vi.mock('@/services/searchService', () => ({ searchService: { generatePreview } }))
+const { push } = vi.hoisted(() => ({ push: vi.fn() }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 
 import DocumentPreview from '@/components/DocumentPreview.vue'
 
@@ -39,26 +41,32 @@ describe('DocumentPreview', () => {
     expect(w.find('.btn').exists()).toBe(true) // "Open document (PDF)"
   })
 
-  it('fetches and embeds the Office pdf rendition only when the user clicks', async () => {
+  it('in the drawer, opening the PDF navigates to the full-width review (no embed/fetch)', async () => {
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx' } })
     await flushPromises()
 
-    await w.find('.btn').trigger('click')
+    await w.find('.btn').trigger('click') // "Open document (PDF)"
+    expect(push).toHaveBeenCalledWith('/preview/f1')
+    expect(w.find('iframe').exists()).toBe(false)
+    expect(renditionObjectUrl).not.toHaveBeenCalledWith('pdf1') // PDF never fetched in the drawer
+  })
+
+  it('on the full-width review page, embeds the Office pdf rendition (auto-opens)', async () => {
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
     await flushPromises()
 
     expect(renditionObjectUrl).toHaveBeenCalledWith('pdf1')
-    const frame = w.find('iframe')
+    const frame = w.find('iframe.dp-frame-full')
     expect(frame.exists()).toBe(true)
     expect(frame.attributes('src')).toBe('blob:pdf1')
+    expect(push).not.toHaveBeenCalled()
   })
 
-  it('opens a native PDF by loading the source itself (no pdf rendition)', async () => {
+  it('on the full-width review page, opens a native PDF by loading the source itself', async () => {
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') }) // no pdf rendition
-    const w = mount(DocumentPreview, { props: { uid: 'src-uid', name: 'manual.pdf' } })
-    await flushPromises()
-
-    await w.find('.btn').trigger('click')
+    const w = mount(DocumentPreview, { props: { uid: 'src-uid', name: 'manual.pdf', fullWidth: true } })
     await flushPromises()
 
     expect(renditionObjectUrl).toHaveBeenCalledWith('src-uid') // the source is the PDF
