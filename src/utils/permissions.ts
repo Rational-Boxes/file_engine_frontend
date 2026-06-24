@@ -13,6 +13,33 @@ export const PERMS: { key: string; label: string }[] = [
   { key: 'm', label: 'Manage ACL' },
 ]
 
+// Full permission bit table — mirrors the core Permission enum (acl_manager.h).
+// An ACL entry's `permissions` field (GET /v1/nodes/{uid}/acls) is a bitmask of
+// these, so the editor can decode a stored entry into its constituent letters.
+export interface PermBit {
+  key: string
+  label: string
+  bit: number
+}
+export const PERM_BITS: PermBit[] = [
+  { key: 'r', label: 'Read', bit: 0x400 },
+  { key: 'w', label: 'Write', bit: 0x200 },
+  { key: 'x', label: 'Execute', bit: 0x001 },
+  { key: 'd', label: 'Delete', bit: 0x100 },
+  { key: 'l', label: 'List deleted', bit: 0x080 },
+  { key: 'u', label: 'Undelete', bit: 0x040 },
+  { key: 'v', label: 'View versions', bit: 0x020 },
+  { key: 'b', label: 'Retrieve version', bit: 0x010 },
+  { key: 's', label: 'Restore version', bit: 0x008 },
+  { key: 'm', label: 'Manage ACL', bit: 0x800 },
+  { key: 'i', label: 'Inherit', bit: 0x1000 },
+]
+
+// The set bits of a permission bitmask, in display order.
+export function decodePermissions(mask: number): PermBit[] {
+  return PERM_BITS.filter((p) => (mask & p.bit) !== 0)
+}
+
 // File operations and the minimum access level that may attempt each. Coarse
 // UI gating; the backend still enforces the real ACL.
 export type FileAction = 'open' | 'download' | 'info' | 'rename' | 'delete'

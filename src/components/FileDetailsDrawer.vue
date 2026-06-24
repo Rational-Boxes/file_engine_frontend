@@ -56,22 +56,9 @@
         </span>
       </div>
 
-      <div v-if="isAdmin" class="acl">
-        <p class="muted">Grant / revoke (admin)</p>
-        <form class="acl-form" @submit.prevent>
-          <input v-model="aclPrincipal" placeholder="user or role:NAME" />
-          <select v-model="aclPerm">
-            <option v-for="p in PERMS" :key="p.key" :value="p.key">{{ p.label }}</option>
-          </select>
-          <select v-model="aclEffect">
-            <option value="allow">allow</option>
-            <option value="deny">deny</option>
-          </select>
-          <div class="acl-actions">
-            <button class="btn" :disabled="!aclPrincipal.trim()" @click="applyAcl('grant')">Grant</button>
-            <button class="btn" :disabled="!aclPrincipal.trim()" @click="applyAcl('revoke')">Revoke</button>
-          </div>
-        </form>
+      <div v-if="item" class="acl">
+        <p class="muted">Access control list</p>
+        <AclEditor :uid="item.uid" :can-manage="isAdmin" @changed="loadAll(item.uid)" />
       </div>
     </section>
 
@@ -90,6 +77,7 @@ import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
 import { formatSize } from '@/utils/format'
 import { PERMS } from '@/utils/permissions'
+import AclEditor from '@/components/AclEditor.vue'
 
 const files = useFileStore()
 const auth = useAuthStore()
@@ -110,9 +98,6 @@ const error = ref<string | null>(null)
 
 const newKey = ref('')
 const newValue = ref('')
-const aclPrincipal = ref('')
-const aclPerm = ref('r')
-const aclEffect = ref<'allow' | 'deny'>('allow')
 
 async function loadAll(uid: string) {
   error.value = null
@@ -164,19 +149,6 @@ async function removeMeta(key: string) {
   }
 }
 
-async function applyAcl(op: 'grant' | 'revoke') {
-  if (!item.value || !aclPrincipal.value.trim()) return
-  const body = { principal: aclPrincipal.value.trim(), permission: aclPerm.value, effect: aclEffect.value }
-  try {
-    if (op === 'grant') await fileService.grantPermission(item.value.uid, body)
-    else await fileService.revokePermission(item.value.uid, body)
-    // Re-check the current user's effective perms (the change may affect them).
-    await loadAll(item.value.uid)
-    tab.value = 'Access'
-  } catch (e) {
-    error.value = errorMessage(e, `Failed to ${op} permission`)
-  }
-}
 </script>
 
 <style scoped>

@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { canDo } from '@/utils/permissions'
+import { canDo, decodePermissions } from '@/utils/permissions'
+
+describe('decodePermissions (bitmask → permission bits)', () => {
+  it('decodes Read+Write+Manage', () => {
+    expect(decodePermissions(0x400 | 0x200 | 0x800).map((p) => p.key)).toEqual(['r', 'w', 'm'])
+  })
+
+  it('decodes a single bit and an empty mask', () => {
+    expect(decodePermissions(0x001).map((p) => p.key)).toEqual(['x'])
+    expect(decodePermissions(0)).toEqual([])
+  })
+})
 
 describe('access-level → action gating', () => {
   it('lets everyone open/download/info', () => {

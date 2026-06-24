@@ -87,21 +87,22 @@ existing `FileDetailsDrawer.vue` as a "Permissions" tab/modal.
     returning `{ users, roles, claims }`. ✅
   - `grant` / `revoke` / point-`check` already live on `fileService`
     (`POST`/`DELETE`/`GET /v1/nodes/{uid}/permissions`). ✅
-  - `getAcls(uid)` (list a node's ACL entries) — **backend dependency:** the core
-    exposes only Grant/Revoke/Check/GetEffective, not a "list ACLs for resource"
-    RPC (the DB has `get_acls_for_resource`, unexposed). Needs a core RPC +
-    bridge `GET /v1/nodes/{uid}/acls` before the editor can show existing grants.
+  - `getAcls(uid)` (list a node's ACL entries) → `GET /v1/nodes/{uid}/acls`. ✅
+    Backed by the new core `GetResourceAcls` RPC + bridge endpoint (both shipped),
+    MANAGE_ACL-gated. Returns typed `AclEntry[]` (effect mapped to allow/deny).
 - **`components/PrincipalPicker.vue`** — ✅ **implemented**: debounced type-ahead
   (race-guarded) that calls `searchPrincipals`, renders the three categories
   (user / role / `key=value` claim) with distinct badges, and emits the chosen
   typed `Principal`. `encodePrincipal()` (in `types/`) maps it to the bridge wire
   form (bare user, `role:NAME`, `claim:key=value`).
-- **`components/AclEditor.vue`** — lists current ACLs (principal · permission
-  bits · ALLOW/DENY), supports add (via `PrincipalPicker`) and revoke, shows
-  DENY-overrides-ALLOW precedence, and a "check access" probe
-  (`GET …/permissions?user=&permission=&roles=`).
-- **Gating:** only show the editor when the user holds MANAGE_ACL on the node
-  (derive from `/v1/whoami` role + a permission check).
+- **`components/AclEditor.vue`** — ✅ **implemented** and embedded in the
+  `FileDetailsDrawer` "Access" tab: lists current ACL entries (principal + kind
+  badge · ALLOW/DENY · permission chips decoded from the bitmask via
+  `decodePermissions`), per-permission revoke, add via `PrincipalPicker`, and a
+  DENY-overrides-ALLOW note. Editing controls show only when `canManage`.
+- **Gating:** the drawer passes `canManage` from the admin access level; the core
+  still enforces MANAGE_ACL (a non-admin gets 403 / empty). A future refinement
+  is a per-node MANAGE_ACL check rather than the coarse admin level.
 - **Pinia:** `stores/acl.ts` (per-node ACL cache, principal-search cache).
 
 ## 4. Workstream B — Document previews & inline viewer (renditions)
