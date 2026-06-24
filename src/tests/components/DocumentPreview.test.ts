@@ -35,7 +35,7 @@ describe('DocumentPreview', () => {
     expect(loadRenditionSet).toHaveBeenCalledWith('f1')
     // Only the preview image is fetched — the PDF is NOT pulled yet.
     expect(renditionObjectUrl).toHaveBeenCalledTimes(1)
-    expect(renditionObjectUrl).toHaveBeenCalledWith('p1')
+    expect(renditionObjectUrl).toHaveBeenCalledWith('p1', 'image/png')
     expect(w.find('img.dp-img').attributes('src')).toBe('blob:p1')
     expect(w.find('iframe').exists()).toBe(false)
     expect(w.find('.btn').exists()).toBe(true) // "Open document (PDF)"
@@ -57,7 +57,7 @@ describe('DocumentPreview', () => {
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
     await flushPromises()
 
-    expect(renditionObjectUrl).toHaveBeenCalledWith('pdf1')
+    expect(renditionObjectUrl).toHaveBeenCalledWith('pdf1', 'application/pdf')
     const frame = w.find('iframe.dp-frame-full')
     expect(frame.exists()).toBe(true)
     expect(frame.attributes('src')).toBe('blob:pdf1')
@@ -69,7 +69,7 @@ describe('DocumentPreview', () => {
     const w = mount(DocumentPreview, { props: { uid: 'src-uid', name: 'manual.pdf', fullWidth: true } })
     await flushPromises()
 
-    expect(renditionObjectUrl).toHaveBeenCalledWith('src-uid') // the source is the PDF
+    expect(renditionObjectUrl).toHaveBeenCalledWith('src-uid', 'application/pdf') // the source is the PDF
     expect(w.find('iframe').attributes('src')).toBe('blob:src-uid')
   })
 

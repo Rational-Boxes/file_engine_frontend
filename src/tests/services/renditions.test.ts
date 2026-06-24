@@ -79,6 +79,14 @@ describe('renditions: object URLs', () => {
     expect(url).toBe('blob:fake-url')
   })
 
+  it('re-types the blob to the given MIME (so a PDF renders inline, not downloads)', async () => {
+    // The bridge serves content as application/octet-stream; force application/pdf.
+    downloadFile.mockResolvedValue(new Blob(['%PDF'], { type: 'application/octet-stream' }))
+    await renditionObjectUrl('r1', 'application/pdf')
+    const passed = (globalThis.URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0][0] as Blob
+    expect(passed.type).toBe('application/pdf')
+  })
+
   it('revokes only blob URLs', () => {
     revokeRenditionUrl('blob:fake-url')
     expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith('blob:fake-url')

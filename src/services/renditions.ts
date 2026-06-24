@@ -65,9 +65,13 @@ export async function loadRenditionSet(fileUid: string): Promise<RenditionSet> {
 // Download a rendition's bytes (auth'd) and wrap them in an object URL suitable
 // for <img src> / <embed src>. The caller MUST revokeRenditionUrl() it when done
 // to avoid leaking blob URLs.
-export async function renditionObjectUrl(uid: string): Promise<string> {
+// `mime` re-types the blob (the bridge serves content as application/octet-stream,
+// which makes a blob: URL download instead of render inline — e.g. a PDF in an
+// <iframe>, or a PNG in an <img>). Pass the rendition's real type to force inline.
+export async function renditionObjectUrl(uid: string, mime?: string): Promise<string> {
   const blob = await fileService.downloadFile(uid)
-  return URL.createObjectURL(blob)
+  const typed = mime && blob.type !== mime ? new Blob([blob], { type: mime }) : blob
+  return URL.createObjectURL(typed)
 }
 
 export function revokeRenditionUrl(url: string): void {

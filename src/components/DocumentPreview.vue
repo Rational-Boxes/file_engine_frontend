@@ -83,7 +83,7 @@ async function reload() {
   try {
     set.value = await loadRenditionSet(props.uid)
     if (set.value.preview) {
-      previewUrl.value = await renditionObjectUrl(set.value.preview.uid)
+      previewUrl.value = await renditionObjectUrl(set.value.preview.uid, 'image/png')
     }
     // On the full-width review page, open the PDF straight away.
     if (props.fullWidth && canOpenPdf.value) await openPdf()
@@ -107,7 +107,7 @@ async function openPdf() {
   opening.value = true
   error.value = ''
   try {
-    pdfUrl.value = await renditionObjectUrl(pdfUid)
+    pdfUrl.value = await renditionObjectUrl(pdfUid, 'application/pdf')
   } catch (e) {
     error.value = errorMessage(e, 'Failed to open document')
   } finally {
