@@ -37,4 +37,21 @@ export const searchService = {
     )
     return { text: data?.text ?? '', truncated: !!data?.truncated }
   },
+
+  // Ask CSAI to (re)generate a document's renditions (preview/thumbnail/inline
+  // PDF) + index on demand — used when a file has no preview yet. READ-gated.
+  async generatePreview(
+    fileUid: string,
+  ): Promise<{ status: string; renditions: string[]; hasMarkdown: boolean }> {
+    const { data } = await csaiClient.post<{
+      status: string
+      renditions: string[]
+      has_markdown: boolean
+    }>(`/documents/${fileUid}/convert`, {})
+    return {
+      status: data?.status ?? '',
+      renditions: data?.renditions ?? [],
+      hasMarkdown: !!data?.has_markdown,
+    }
+  },
 }

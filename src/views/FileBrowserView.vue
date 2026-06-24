@@ -12,6 +12,14 @@
         </template>
       </nav>
       <div class="actions">
+        <button
+          class="btn"
+          :disabled="files.loading"
+          title="Reload listing (picks up changes from WebDAV, sync, or other users)"
+          @click="files.load()"
+        >
+          ↻ Reload
+        </button>
         <button v-if="canModify" class="btn" @click="newFolder">New folder</button>
         <button v-if="canModify" class="btn btn-primary" @click="fileInput?.click()">Upload</button>
         <input ref="fileInput" type="file" multiple hidden @change="onPick" />
@@ -131,8 +139,10 @@ const menuFor = (item: FileItem): KebabItem[] => {
 }
 
 const open = (item: FileItem) => {
+  // Directories navigate; clicking a file opens its details (download stays on
+  // the kebab menu) so a single click previews/inspects rather than downloads.
   if (item.isDirectory) files.openDirectory(item)
-  else files.downloadItem(item)
+  else files.openDetails(item)
 }
 
 const onAction = (action: string, item: FileItem) => {

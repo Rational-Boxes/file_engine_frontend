@@ -6,12 +6,14 @@ const { loadRenditionSet, renditionObjectUrl, revokeRenditionUrl } = vi.hoisted(
   renditionObjectUrl: vi.fn(),
   revokeRenditionUrl: vi.fn(),
 }))
+const { generatePreview } = vi.hoisted(() => ({ generatePreview: vi.fn() }))
 
 vi.mock('@/services/renditions', () => ({
   loadRenditionSet,
   renditionObjectUrl,
   revokeRenditionUrl,
 }))
+vi.mock('@/services/searchService', () => ({ searchService: { generatePreview } }))
 
 import DocumentPreview from '@/components/DocumentPreview.vue'
 
@@ -71,10 +73,28 @@ describe('DocumentPreview', () => {
     expect(w.find('img.dp-img').exists()).toBe(true)
   })
 
-  it('shows a "not yet" message when there are no renditions', async () => {
+  it('shows a "not yet" message + Generate button when there are no renditions', async () => {
     loadRenditionSet.mockResolvedValue({})
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'todo.txt', hasRenditions: false } })
     await flushPromises()
     expect(w.text()).toContain('No preview available yet')
+    expect(w.find('.btn').text()).toContain('Generate preview')
+  })
+
+  it('re-requests preview generation from CSAI, then reloads to show it', async () => {
+    // First load: no renditions; after generate(): a preview appears.
+    loadRenditionSet
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ preview: ref_('p1', 'preview', 'png') })
+    generatePreview.mockResolvedValue({ status: 'converted', renditions: ['v-preview.png'], hasMarkdown: true })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'doc.pdf' } })
+    await flushPromises()
+    expect(w.find('img.dp-img').exists()).toBe(false)
+
+    await w.find('.btn').trigger('click') // "Generate preview"
+    await flushPromises()
+
+    expect(generatePreview).toHaveBeenCalledWith('f1')
+    expect(w.find('img.dp-img').attributes('src')).toBe('blob:p1')
   })
 })

@@ -21,9 +21,16 @@
           :title="canOpenPdf ? 'Open the full document' : ''"
           @click="canOpenPdf && openPdf()"
         />
-        <p v-else class="dp-muted">No preview available{{ hasRenditions ? '' : ' yet' }}.</p>
+        <!-- No rendition yet: ask CSAI to (re)generate the preview on demand. -->
+        <template v-else>
+          <p class="dp-muted">{{ generating ? 'Generating preview…' : 'No preview available yet.' }}</p>
+          <button class="btn" :disabled="generating" @click="generate">
+            {{ generating ? 'Generating…' : 'Generate preview' }}
+          </button>
+          <p v-if="genError" class="dp-err">{{ genError }}</p>
+        </template>
 
-        <button v-if="canOpenPdf" class="btn" :disabled="opening" @click="openPdf">
+        <button v-if="previewUrl && canOpenPdf" class="btn" :disabled="opening" @click="openPdf">
           {{ opening ? 'Opening…' : 'Open document (PDF)' }}
         </button>
       </template>
@@ -39,6 +46,7 @@ import {
   revokeRenditionUrl,
   type RenditionSet,
 } from '@/services/renditions'
+import { searchService } from '@/services/searchService'
 import { errorMessage } from '@/services/apiClient'
 
 const props = defineProps<{ uid: string; name?: string; hasRenditions?: boolean }>()
@@ -48,6 +56,8 @@ const previewUrl = ref('') // object URL for the first-page preview image
 const pdfUrl = ref('') // object URL for the inline PDF (loaded on demand)
 const loading = ref(false)
 const opening = ref(false)
+const generating = ref(false)
+const genError = ref('')
 const error = ref('')
 
 // A native PDF is its own inline document, so it has no `pdf` rendition — open
@@ -89,6 +99,20 @@ async function openPdf() {
     error.value = errorMessage(e, 'Failed to open document')
   } finally {
     opening.value = false
+  }
+}
+
+// Ask CSAI to (re)generate this file's renditions, then reload to show them.
+async function generate() {
+  generating.value = true
+  genError.value = ''
+  try {
+    await searchService.generatePreview(props.uid)
+    await reload()
+  } catch (e) {
+    genError.value = errorMessage(e, 'Failed to generate preview')
+  } finally {
+    generating.value = false
   }
 }
 

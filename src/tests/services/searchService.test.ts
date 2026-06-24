@@ -33,4 +33,16 @@ describe('searchService', () => {
     expect(await searchService.getText('f1')).toEqual({ text: '# Title', truncated: true })
     expect(get).toHaveBeenCalledWith('/documents/f1/text')
   })
+
+  it('requests on-demand preview generation', async () => {
+    post.mockResolvedValue({
+      data: { status: 'converted', renditions: ['v-preview.png'], has_markdown: true },
+    })
+    expect(await searchService.generatePreview('f1')).toEqual({
+      status: 'converted',
+      renditions: ['v-preview.png'],
+      hasMarkdown: true,
+    })
+    expect(post).toHaveBeenCalledWith('/documents/f1/convert', {})
+  })
 })
