@@ -77,6 +77,25 @@ describe('fileService (REST)', () => {
     expect(out).toBe(blob)
   })
 
+  it('handles versions: list / get / restore / purge', async () => {
+    get.mockResolvedValueOnce({ data: { versions: ['v1', 'v2'] } })
+    expect(await fileService.listVersions('f1')).toEqual(['v1', 'v2'])
+    expect(get).toHaveBeenCalledWith('/v1/files/f1/versions')
+
+    const blob = new Blob(['v'])
+    get.mockResolvedValueOnce({ data: blob })
+    expect(await fileService.getVersion('f1', 'v2')).toBe(blob)
+    expect(get).toHaveBeenLastCalledWith('/v1/files/f1/versions/v2', { responseType: 'blob' })
+
+    post.mockResolvedValueOnce({ data: { restored_version: 'v3' } })
+    expect(await fileService.restoreVersion('f1', 'v2')).toBe('v3')
+    expect(post).toHaveBeenCalledWith('/v1/files/f1/restore', { version_timestamp: 'v2' })
+
+    post.mockResolvedValueOnce({ data: {} })
+    await fileService.purgeVersions('f1', 3)
+    expect(post).toHaveBeenLastCalledWith('/v1/files/f1/purge', { keep_count: 3 })
+  })
+
   it('reads and writes metadata', async () => {
     get.mockResolvedValue({ data: { metadata: { color: 'blue' } } })
     expect(await fileService.getMetadata('f1')).toEqual({ color: 'blue' })

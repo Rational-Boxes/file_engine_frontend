@@ -93,6 +93,30 @@ export const fileService = {
     return data as Blob
   },
 
+  // --- versions ---
+  async listVersions(uid: string): Promise<string[]> {
+    const { data } = await apiClient.get<{ versions: string[] }>(`/v1/files/${uid}/versions`)
+    return data.versions || []
+  },
+
+  async getVersion(uid: string, ts: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/v1/files/${uid}/versions/${encodeURIComponent(ts)}`, {
+      responseType: 'blob',
+    })
+    return data as Blob
+  },
+
+  async restoreVersion(uid: string, ts: string): Promise<string> {
+    const { data } = await apiClient.post<{ restored_version: string }>(`/v1/files/${uid}/restore`, {
+      version_timestamp: ts,
+    })
+    return data.restored_version
+  },
+
+  async purgeVersions(uid: string, keepCount: number): Promise<void> {
+    await apiClient.post(`/v1/files/${uid}/purge`, { keep_count: keepCount })
+  },
+
   // --- metadata ---
   async getMetadata(uid: string): Promise<Record<string, string>> {
     const { data } = await apiClient.get<{ metadata: Record<string, string> }>(

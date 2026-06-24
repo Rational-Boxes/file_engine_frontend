@@ -130,14 +130,16 @@ Surfaces the new rendition set (icon `thumbnail`, larger `preview`, inline `pdf`
 - **Text/markdown:** also offer the extracted Markdown via convert_search_ai
   `GET /documents/{uid}/text` (READ-gated) rendered with a markdown component.
 
-## 5. Workstream C — Versioning & metadata
+## 5. Workstream C — Versioning & metadata — ✅ implemented
 
-- **`services/versionService.ts`:** `listVersions`, `getVersion(ts)`, `restore`,
-  `purge` (`/v1/files/{uid}/versions[...]`).
-- **`services/metadataService.ts`:** get-all / get / set / delete
-  (`/v1/nodes/{uid}/metadata[/{key}]`).
-- UI: "Versions" and "Metadata" tabs in `FileDetailsDrawer.vue` (timeline of
-  versions with restore/download; editable key/value metadata grid).
+- **Versions** ✅ — `fileService` gained `listVersions` / `getVersion(ts)` /
+  `restoreVersion(ts)` / `purgeVersions(keep)` (`/v1/files/{uid}/versions[...]`,
+  `/restore`, `/purge`). `components/FileVersions.vue` (drawer "Versions" tab):
+  versions newest-first with the current one marked, per-version download +
+  restore, and a keep-N purge — restore/purge gated by `canManage`, reloads on
+  change.
+- **Metadata** ✅ — already present (the drawer's "Metadata" tab: editable
+  key/value grid on `/v1/nodes/{uid}/metadata`).
 
 ## 6. Workstream D — Role management (admin)
 

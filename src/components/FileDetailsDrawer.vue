@@ -46,6 +46,18 @@
       </form>
     </section>
 
+    <!-- Versions -->
+    <section v-show="tab === 'Versions'" class="pane">
+      <FileVersions
+        v-if="item && !item.isDirectory"
+        :uid="item.uid"
+        :current="info?.version"
+        :can-manage="canEdit"
+        @changed="loadAll(item.uid)"
+      />
+      <p v-else class="muted">Folders are not versioned.</p>
+    </section>
+
     <!-- Access -->
     <section v-show="tab === 'Access'" class="pane">
       <dl><dt>Owner</dt><dd>{{ info?.owner || '—' }}</dd></dl>
@@ -85,11 +97,12 @@ import { formatSize } from '@/utils/format'
 import { PERMS } from '@/utils/permissions'
 import AclEditor from '@/components/AclEditor.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
+import FileVersions from '@/components/FileVersions.vue'
 
 const files = useFileStore()
 const auth = useAuthStore()
 
-const tabs = ['Info', 'Metadata', 'Access', 'Preview'] as const
+const tabs = ['Info', 'Metadata', 'Versions', 'Access', 'Preview'] as const
 type Tab = (typeof tabs)[number]
 const tab = ref<Tab>('Info')
 
