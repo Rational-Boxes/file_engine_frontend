@@ -16,6 +16,14 @@
 
     <!-- Info -->
     <section v-show="tab === 'Info'" class="pane">
+      <!-- First-page preview lives in the general Info tab (no separate tab). -->
+      <DocumentPreview
+        v-if="item && !item.isDirectory"
+        class="info-preview"
+        :uid="item.uid"
+        :name="item.name"
+        :has-renditions="item.hasRenditions"
+      />
       <dl v-if="info">
         <dt>Type</dt><dd>{{ info.type }}</dd>
         <dt>Size</dt><dd>{{ formatSize(info.size) }}</dd>
@@ -73,17 +81,6 @@
         <AclEditor :uid="item.uid" :can-manage="isAdmin" @changed="loadAll(item.uid)" />
       </div>
     </section>
-
-    <!-- Preview -->
-    <section v-show="tab === 'Preview'" class="pane">
-      <DocumentPreview
-        v-if="item && !item.isDirectory"
-        :uid="item.uid"
-        :name="item.name"
-        :has-renditions="item.hasRenditions"
-      />
-      <p v-else class="muted">No preview for folders.</p>
-    </section>
   </aside>
 </template>
 
@@ -102,7 +99,7 @@ import FileVersions from '@/components/FileVersions.vue'
 const files = useFileStore()
 const auth = useAuthStore()
 
-const tabs = ['Info', 'Metadata', 'Versions', 'Access', 'Preview'] as const
+const tabs = ['Info', 'Metadata', 'Versions', 'Access'] as const
 type Tab = (typeof tabs)[number]
 const tab = ref<Tab>('Info')
 
@@ -238,6 +235,10 @@ async function removeMeta(key: string) {
 
 .pane {
   overflow: auto;
+}
+
+.info-preview {
+  margin-bottom: 16px;
 }
 
 dl {
