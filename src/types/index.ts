@@ -25,14 +25,20 @@ export function encodePrincipal(p: Principal): string {
   return p.value
 }
 
-// --- ACLs (GET/POST/DELETE /v1/nodes/{uid}/permissions) ---
+// --- ACLs (GET /v1/nodes/{uid}/acls; grant/revoke via …/permissions) ---
 export type AclEffect = 'allow' | 'deny'
 
 export interface AclEntry {
-  principal: string // wire form as stored ("dave", "role:editors", "claim:dept=eng")
+  principal: string // bare principal as stored ("dave", "editors", "dept=eng")
   type: number // PrincipalType enum (0 user, 1 role, 2 group, 3 other, 4 claim)
-  permission: string // permission bits / letters
+  permissions: number // permission bitmask
   effect: AclEffect
+}
+
+// Map a stored ACL principal type to a type-ahead PrincipalKind (group/other
+// collapse to 'user' — the editor's three categories are user/role/claim).
+export function principalKindFromType(type: number): PrincipalKind {
+  return type === 1 ? 'role' : type === 4 ? 'claim' : 'user'
 }
 
 // --- Versioning (GET /v1/files/{uid}/versions[...]) ---

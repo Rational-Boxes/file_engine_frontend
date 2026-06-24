@@ -35,6 +35,36 @@ describe('aclService.searchPrincipals', () => {
   })
 })
 
+describe('aclService.getAcls', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('lists ACL entries and maps the effect int to allow/deny', async () => {
+    get.mockResolvedValue({
+      data: {
+        acls: [
+          { principal: 'dave', type: 0, permissions: 1, effect: 0 },
+          { principal: 'editors', type: 1, permissions: 7, effect: 0 },
+          { principal: 'erin', type: 0, permissions: 1, effect: 1 },
+        ],
+      },
+    })
+    const acls = await aclService.getAcls('f1')
+    expect(get).toHaveBeenCalledWith('/v1/nodes/f1/acls')
+    expect(acls).toEqual([
+      { principal: 'dave', type: 0, permissions: 1, effect: 'allow' },
+      { principal: 'editors', type: 1, permissions: 7, effect: 'allow' },
+      { principal: 'erin', type: 0, permissions: 1, effect: 'deny' },
+    ])
+  })
+
+  it('tolerates a missing acls array', async () => {
+    get.mockResolvedValue({ data: {} })
+    expect(await aclService.getAcls('f1')).toEqual([])
+  })
+})
+
 describe('suggestionsToPrincipals', () => {
   it('flattens to typed principals: users, then roles, then claims', () => {
     expect(

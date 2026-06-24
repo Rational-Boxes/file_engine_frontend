@@ -1,20 +1,35 @@
 import apiClient from '@/services/apiClient'
-import type { Principal, PrincipalSuggestions } from '@/types'
+import type { AclEntry, Principal, PrincipalSuggestions } from '@/types'
 
-// ACL-editor support. The grant / revoke / point-check operations already live
-// on fileService (POST/DELETE/GET /v1/nodes/{uid}/permissions); this module adds
-// the principal **type-ahead** that backs the ACL editor's add-principal control,
-// powered by the bridge's GET /v1/principals (users via LDAP, roles via the role
-// registry, claims via the core claim catalog).
-//
-// NOTE: listing a node's existing ACL entries needs a bridge endpoint that does
-// not exist yet (the core exposes Grant/Revoke/Check/GetEffective, but not a
-// "list ACLs for resource" RPC) — tracked as a backend dependency in the SPA
-// integration plan (§3).
+interface RawAclEntry {
+  principal: string
+  type: number
+  permissions: number
+  effect: number
+}
+
+// ACL-editor support:
+//   - getAcls(uid)        list a node's current ACL entries (GET …/acls)
+//   - searchPrincipals()  the add-principal type-ahead (GET /v1/principals)
+// grant / revoke / point-check live on fileService (POST/DELETE/GET
+// /v1/nodes/{uid}/permissions). Type-ahead sources: users via LDAP, roles via
+// the role registry, claims via the core claim catalog.
 
 export type PrincipalType = 'user' | 'role' | 'claim'
 
 export const aclService = {
+  // List a node's ACL entries (backs the editor's "current grants" view).
+  // Requires MANAGE_ACL on the node (enforced by the core → 403 otherwise).
+  async getAcls(uid: string): Promise<AclEntry[]> {
+    const { data } = await apiClient.get<{ acls?: RawAclEntry[] }>(`/v1/nodes/${uid}/acls`)
+    return (data?.acls ?? []).map((a) => ({
+      principal: a.principal,
+      type: a.type,
+      permissions: a.permissions,
+      effect: a.effect === 1 ? 'deny' : 'allow',
+    }))
+  },
+
   // Type-ahead over roles, claims, and users for the ACL editor. `query` is a
   // case-insensitive prefix; `types` selects categories (default all three);
   // `limit` caps each category.
