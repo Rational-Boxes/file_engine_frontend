@@ -122,9 +122,11 @@ Surfaces the new rendition set (icon `thumbnail`, larger `preview`, inline `pdf`
   in an inline `<iframe>` (Office docs use the `pdf` rendition; a native `.pdf`
   opens the source itself). Object URLs are revoked on unmount / back. Shows
   "No preview available yet" until ingest produces renditions.
-- **Browser grid (follow-on):** when `hasRenditions`, lazy-load the `thumbnail`
-  as the tile image (fallback to a type icon); fetch only for the visible
-  page / on hover to avoid N+1.
+- **Browser grid thumbnails** — ✅ `components/FileThumbnail.vue` replaces the
+  file row's type glyph: when `hasRenditions`, it lazily loads the `thumbnail`
+  rendition (deferred via `IntersectionObserver` until the row scrolls into
+  view, so a long listing doesn't fire N rendition requests up front) and falls
+  back to the type icon on absence/failure; blob URL revoked on unmount.
 - **Text/markdown:** also offer the extracted Markdown via convert_search_ai
   `GET /documents/{uid}/text` (READ-gated) rendered with a markdown component.
 

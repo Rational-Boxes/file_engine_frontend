@@ -33,7 +33,7 @@
         <tbody>
           <tr v-for="item in files.items" :key="item.uid" @dblclick="open(item)">
             <td class="name" @click="open(item)">
-              <span class="icon">{{ item.isDirectory ? '📁' : '📄' }}</span>{{ item.name }}
+              <FileThumbnail :item="item" />{{ item.name }}
               <button
                 v-if="item.hasRenditions"
                 class="rendition-badge"
@@ -93,6 +93,7 @@ import KebabMenu, { type KebabItem } from '@/components/KebabMenu.vue'
 import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
 import UploadTray from '@/components/UploadTray.vue'
 import AppNav from '@/components/AppNav.vue'
+import FileThumbnail from '@/components/FileThumbnail.vue'
 
 const auth = useAuthStore()
 const files = useFileStore()
