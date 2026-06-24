@@ -234,26 +234,6 @@ onBeforeUnmount(() => {
   padding: 0 20px 40px;
 }
 
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 0;
-}
-
-.brand {
-  font-weight: 600;
-  font-size: 18px;
-}
-
-.user {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
 .toolbar {
   display: flex;
   justify-content: space-between;
