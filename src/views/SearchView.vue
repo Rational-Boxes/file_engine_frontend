@@ -20,13 +20,13 @@
 
       <ul v-if="hits.length" class="results">
         <li v-for="h in hits" :key="h.fileUid" class="result">
-          <button type="button" class="result-link" @click="preview.open(h.fileUid, h.name)">
+          <button type="button" class="result-link" @click="preview.open(h.fileUid, displayName(h))">
             <div class="result-head">
-              <span class="result-name">{{ h.name || h.fileUid }}</span>
+              <span class="result-name">{{ displayName(h) }}</span>
               <span class="result-score">{{ h.score?.toFixed(2) }}</span>
             </div>
-            <p v-if="h.snippet" class="result-snippet">{{ h.snippet }}</p>
-            <span class="result-uid mono">{{ h.fileUid }}</span>
+            <!-- Excerpts may contain Markdown — render inline to sanitized HTML. -->
+            <p v-if="h.snippet" class="result-snippet" v-html="renderMarkdownInline(h.snippet)"></p>
           </button>
         </li>
       </ul>
@@ -39,16 +39,23 @@ import { ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import { searchService } from '@/services/searchService'
 import { usePreviewStore } from '@/stores/preview'
+import { useFileNames } from '@/composables/useFileNames'
+import { renderMarkdownInline } from '@/utils/markdown'
 import { errorMessage } from '@/services/csaiClient'
+import type { SearchHit } from '@/types'
 
 const preview = usePreviewStore()
-import type { SearchHit } from '@/types'
+const { names, resolve: resolveNames } = useFileNames()
 
 const query = ref('')
 const hits = ref<SearchHit[]>([])
 const loading = ref(false)
 const error = ref('')
 const searched = ref(false)
+
+// Prefer the hit's own name, then a resolved name, then the UID (the UID is
+// always shown separately beneath the result).
+const displayName = (h: SearchHit) => h.name || names.value[h.fileUid] || h.fileUid
 
 async function run() {
   const q = query.value.trim()
@@ -58,6 +65,8 @@ async function run() {
   try {
     hits.value = await searchService.search(q, { limit: 50 })
     searched.value = true
+    // Fill in file names for any hit the search didn't already name.
+    resolveNames(hits.value.filter((h) => !h.name).map((h) => h.fileUid))
   } catch (e) {
     error.value = errorMessage(e, 'Search failed')
     hits.value = []
@@ -168,12 +177,4 @@ async function run() {
   color: var(--fg);
 }
 
-.result-uid {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
 </style>

@@ -13,6 +13,8 @@ vi.mock('@/services/chatService', () => ({
 }))
 const { open } = vi.hoisted(() => ({ open: vi.fn() }))
 vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open }) }))
+const { stat } = vi.hoisted(() => ({ stat: vi.fn() }))
+vi.mock('@/services/fileService', () => ({ fileService: { stat } }))
 
 import ChatView from '@/views/ChatView.vue'
 
@@ -22,6 +24,7 @@ describe('ChatView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     handlers = {}
+    stat.mockResolvedValue({ name: 'report.md' }) // citation name resolution
   })
 
   it('sends with history, streams the answer (stripping <think>), and shows citations', async () => {
@@ -31,14 +34,16 @@ describe('ChatView', () => {
     expect(sendMock).toHaveBeenCalledWith('What were northern revenues?', { history: [] })
 
     handlers.onToken?.('<think>let me check the table</think>')
-    handlers.onToken?.('Northern revenue reached $175M.')
+    handlers.onToken?.('Northern revenue reached **$175M**.')
     handlers.onCitations?.([{ fileUid: 'report.md', marker: 1 }])
     handlers.onDone?.()
     await flushPromises()
 
     expect(w.text()).toContain('Northern revenue reached $175M.')
     expect(w.text()).not.toContain('let me check the table') // <think> hidden
-    expect(w.text()).toContain('[1] report.md')
+    expect(w.find('.md').html()).toContain('<strong>$175M</strong>') // Markdown -> HTML
+    // citation chip shows the resolved file name (not the UUID)
+    expect(w.find('.cite').text()).toContain('[1] report.md')
     // citation chip raises the preview overlay (no navigation, chat is preserved)
     await w.find('.cite').trigger('click')
     expect(open).toHaveBeenCalledWith('report.md')

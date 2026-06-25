@@ -5,17 +5,20 @@
       <div class="messages">
         <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
           <div class="bubble">
-            <p class="text">{{ display(m) }}</p>
+            <!-- Assistant answers may contain Markdown — render to sanitized HTML.
+                 User messages stay plain text (escaped by interpolation). -->
+            <div v-if="m.role === 'assistant'" class="text md" v-html="assistantHtml(m)"></div>
+            <p v-else class="text">{{ m.content }}</p>
             <div v-if="m.citations && m.citations.length" class="cites">
               <button
                 v-for="c in m.citations"
                 :key="c.fileUid"
                 type="button"
                 class="cite"
-                :title="c.fileUid"
+                :title="names[c.fileUid] || ''"
                 @click="preview.open(c.fileUid)"
               >
-                [{{ c.marker }}] {{ c.fileUid }}
+                {{ citeLabel(c) }}
               </button>
             </div>
           </div>
@@ -44,9 +47,21 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import { ChatSession } from '@/services/chatService'
 import { usePreviewStore } from '@/stores/preview'
+import { useFileNames } from '@/composables/useFileNames'
+import { renderMarkdown } from '@/utils/markdown'
 import type { Citation } from '@/types'
 
 const preview = usePreviewStore()
+
+// Citation chips show resolved file names instead of raw UUIDs.
+const { names, resolve: resolveNames } = useFileNames()
+
+// Chip label: the [n] marker, plus the resolved file name once available (never
+// the raw UUID).
+function citeLabel(c: Citation): string {
+  const name = names.value[c.fileUid]
+  return name ? `[${c.marker}] ${name}` : `[${c.marker}]`
+}
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -68,6 +83,7 @@ onMounted(() => {
     },
     onCitations: (c) => {
       if (current >= 0) messages.value[current].citations = c
+      resolveNames(c.map((x) => x.fileUid))
     },
     onDone: () => {
       busy.value = false
@@ -97,13 +113,15 @@ function send() {
   input.value = ''
 }
 
-// Reasoning models (e.g. deepseek-r1) emit <think>…</think> before the answer —
-// keep it out of the displayed bubble.
-function display(m: Msg): string {
-  if (m.role !== 'assistant') return m.content
+// Render an assistant answer to sanitized HTML. Reasoning models (e.g.
+// deepseek-r1) emit <think>…</think> before the answer — keep it out of the
+// bubble; show a placeholder while only the hidden reasoning has streamed in.
+function assistantHtml(m: Msg): string {
   const stripped = m.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
-  if (!stripped && m.content.includes('<think>')) return '…thinking…'
-  return stripped || m.content
+  if (!stripped) {
+    return m.content.includes('<think>') ? '<p class="thinking">…thinking…</p>' : ''
+  }
+  return renderMarkdown(stripped)
 }
 </script>
 
@@ -152,6 +170,66 @@ function display(m: Msg): string {
 .text {
   margin: 0;
   white-space: pre-wrap;
+}
+
+/* Rendered Markdown (assistant answers). v-html content is outside the scoped
+   styles, so reach it with :deep(). */
+.md {
+  white-space: normal;
+}
+.md :deep(p) {
+  margin: 0 0 8px;
+}
+.md :deep(> :last-child) {
+  margin-bottom: 0;
+}
+.md :deep(ul),
+.md :deep(ol) {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.md :deep(h1),
+.md :deep(h2),
+.md :deep(h3) {
+  font-size: 14px;
+  margin: 8px 0 4px;
+}
+.md :deep(code) {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.md :deep(pre) {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow: auto;
+  margin: 0 0 8px;
+}
+.md :deep(pre code) {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+.md :deep(a) {
+  color: var(--primary);
+}
+.md :deep(table) {
+  border-collapse: collapse;
+  margin: 0 0 8px;
+}
+.md :deep(th),
+.md :deep(td) {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+}
+.md :deep(.thinking) {
+  color: var(--muted);
+  font-style: italic;
+  margin: 0;
 }
 
 .cites {
