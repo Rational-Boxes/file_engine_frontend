@@ -201,7 +201,10 @@ async function applyRoute() {
   }
 }
 applyRoute()
-watch(() => [route.query.file, route.query.tenant], applyRoute)
+// Watch a stable key (not a fresh array) so this only fires when the deep-link
+// params actually change — otherwise every route change (incl. returning to the
+// kept-alive /files tab) would re-run applyRoute and reset the view.
+watch(() => [route.query.file, route.query.tenant].join(' '), applyRoute)
 
 // Reload from the root whenever the active tenant changes: UIDs (including the
 // breadcrumb trail) are tenant-scoped, so the current path is meaningless in the
