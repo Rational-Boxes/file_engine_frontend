@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { fileService, type FileItem } from '@/services/fileService'
 import { ROOT_UID } from '@/services/apiClient'
-import { errorMessage } from '@/services/apiClient'
+import { errorMessage, errorStatus } from '@/services/apiClient'
 
 export type { FileItem }
 
@@ -111,8 +111,12 @@ export const useFileStore = defineStore('files', {
     // Deep-link: reveal a node by UID. Rebuilds the breadcrumb trail by walking
     // parents, navigates to the containing folder (or into the folder itself if
     // the UID is a directory), and for a file selects it + opens the drawer.
-    async revealFile(uid: string) {
-      if (!uid) return this.openRoot()
+    // Returns { ok, status } so callers can react to e.g. a 403 (no access).
+    async revealFile(uid: string): Promise<{ ok: boolean; status?: number }> {
+      if (!uid) {
+        await this.openRoot()
+        return { ok: true }
+      }
       try {
         const info = await fileService.stat(uid)
         const isDir = (info.type || '').toLowerCase() === 'directory'
@@ -134,8 +138,10 @@ export const useFileStore = defineStore('files', {
           const item = this.items.find((it) => it.uid === uid)
           if (item) this.openDetails(item)
         }
+        return { ok: true }
       } catch (e) {
         this.error = errorMessage(e, 'Failed to open file location')
+        return { ok: false, status: errorStatus(e) }
       }
     },
 

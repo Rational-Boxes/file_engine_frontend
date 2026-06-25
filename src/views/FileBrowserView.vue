@@ -156,27 +156,49 @@ const route = useRoute()
 // Set while applyRoute drives a tenant switch, so the tenant watch below doesn't
 // ALSO reset to root and race with revealFile().
 let deepLinkTenantSwitch = false
+function tenantNoAccessMsg(t: string): string {
+  return (
+    `This link points to the “${t}” tenant, which you don’t have access to. ` +
+    `Ask an administrator to grant access, then reopen the link.`
+  )
+}
+
 async function applyRoute() {
   // The view is kept alive, so these watchers also fire when leaving /files —
   // only (re)load when we're actually on the Files route.
   if (route.name !== 'FileBrowser') return
-  const tenant = route.query.tenant
-  if (typeof tenant === 'string' && tenant && tenant !== auth.tenant) {
-    // A shared link may point at a tenant this user can't access — give a clear
-    // message instead of a wall of failed requests, and show their own workspace.
+  const tenant = typeof route.query.tenant === 'string' ? route.query.tenant : ''
+  const file = route.query.file
+  const prevTenant = auth.tenant
+  const switching = !!tenant && tenant !== auth.tenant
+
+  if (switching) {
+    // Proactive: a tenant we already know (from the user's tenant list) is off
+    // limits — clear message + their own workspace, no failed requests.
     if (auth.tenants.length && !auth.tenants.includes(tenant)) {
       await files.openRoot()
-      files.error =
-        `This link points to the “${tenant}” tenant, which you don’t have access to. ` +
-        `Ask an administrator to grant access, then reopen the link.`
+      files.error = tenantNoAccessMsg(tenant)
       return
     }
     deepLinkTenantSwitch = true
-    auth.switchTenant(tenant) // updates X-Tenant for the reveal requests below
+    auth.switchTenant(tenant) // updates X-Tenant for the reveal below
   }
-  const file = route.query.file
-  if (typeof file === 'string' && file) files.revealFile(file)
-  else files.openRoot()
+
+  if (typeof file === 'string' && file) {
+    const res = await files.revealFile(file)
+    // Reactive: the reveal was forbidden just after a tenant switch (e.g. the
+    // tenant list was stale/unavailable). Revert to a usable workspace + explain.
+    if (!res.ok && switching && (res.status === 401 || res.status === 403)) {
+      if (prevTenant && prevTenant !== auth.tenant) {
+        deepLinkTenantSwitch = true
+        auth.switchTenant(prevTenant)
+        await files.openRoot()
+      }
+      files.error = tenantNoAccessMsg(tenant)
+    }
+  } else {
+    await files.openRoot()
+  }
 }
 applyRoute()
 watch(() => [route.query.file, route.query.tenant], applyRoute)

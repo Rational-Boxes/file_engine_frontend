@@ -50,4 +50,9 @@ export function errorMessage(error: unknown, fallback = 'Request failed'): strin
   return error instanceof Error ? error.message : fallback
 }
 
+// HTTP status of an axios error, if any (undefined for transport/non-axios).
+export function errorStatus(error: unknown): number | undefined {
+  return axios.isAxiosError(error) ? error.response?.status : undefined
+}
+
 export default apiClient

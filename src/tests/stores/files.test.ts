@@ -6,6 +6,7 @@ const ROOT = '00000000-0000-0000-0000-000000000000'
 vi.mock('@/services/apiClient', () => ({
   ROOT_UID: '00000000-0000-0000-0000-000000000000',
   errorMessage: (e: unknown) => String(e),
+  errorStatus: (e: any) => e?.status,
   default: {},
 }))
 
@@ -106,5 +107,12 @@ describe('files store (UID-native)', () => {
     expect(store.currentUid).toBe('d1')
     expect(store.breadcrumbs.map((c) => c.name)).toEqual(['Home', 'docs'])
     expect(store.drawerOpen).toBe(false)
+  })
+
+  it('revealFile reports {ok:false, status} on failure (e.g. 403 forbidden)', async () => {
+    const store = useFileStore()
+    ;(fileService.stat as any).mockRejectedValue({ status: 403 })
+    const res = await store.revealFile('f1')
+    expect(res).toEqual({ ok: false, status: 403 })
   })
 })
