@@ -10,11 +10,6 @@
         <div class="ov-body">
           <p v-if="error" class="ov-err">{{ error }}</p>
           <DocumentPreview :uid="preview.uid" :name="name" full-width />
-
-          <section v-if="text" class="ov-text">
-            <h2 class="ov-th">Extracted text</h2>
-            <pre class="ov-md">{{ text }}</pre>
-          </section>
         </div>
       </div>
     </div>
@@ -26,22 +21,19 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import { usePreviewStore } from '@/stores/preview'
 import { fileService } from '@/services/fileService'
-import { searchService } from '@/services/searchService'
 
 const preview = usePreviewStore()
 
 const name = ref('')
-const text = ref('')
 const error = ref('')
 
 const title = computed(() => name.value || preview.name || preview.uid)
 
-// Reload the title/extracted-text whenever the previewed file changes.
+// Resolve the title whenever the previewed file changes.
 watch(
   () => preview.uid,
   async (uid) => {
     name.value = preview.name
-    text.value = ''
     error.value = ''
     if (!uid) return
     // Name (for the title + native-PDF detection); best-effort.
@@ -51,12 +43,6 @@ watch(
       } catch {
         /* name is optional */
       }
-    }
-    // Extracted Markdown from convert_search_ai (404 when none — not an error).
-    try {
-      text.value = (await searchService.getText(uid)).text
-    } catch {
-      /* no extracted text is fine */
     }
   },
   { immediate: true },
@@ -126,28 +112,5 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .ov-err {
   color: var(--danger);
   font-size: 13px;
-}
-
-.ov-text {
-  margin-top: 18px;
-  max-width: 900px;
-}
-
-.ov-th {
-  font-size: 14px;
-  margin: 0 0 8px;
-}
-
-.ov-md {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin: 0;
-  max-height: 40vh;
-  overflow: auto;
 }
 </style>

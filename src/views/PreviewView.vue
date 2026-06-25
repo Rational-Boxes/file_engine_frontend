@@ -7,11 +7,6 @@
       <p v-if="error" class="err">{{ error }}</p>
 
       <DocumentPreview :uid="uid" :name="name" full-width />
-
-      <section v-if="text" class="text-pane">
-        <h2 class="th">Extracted text</h2>
-        <pre class="md">{{ text }}</pre>
-      </section>
     </main>
   </div>
 </template>
@@ -22,21 +17,18 @@ import { useRoute, useRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import { fileService } from '@/services/fileService'
-import { searchService } from '@/services/searchService'
 
 const route = useRoute()
 const router = useRouter()
 
 const uid = computed(() => String(route.params.uid || ''))
 const name = ref('')
-const text = ref('')
 const error = ref('')
 
 watch(uid, load, { immediate: true })
 
 async function load() {
   name.value = ''
-  text.value = ''
   error.value = ''
   if (!uid.value) return
   // Name (for the title + native-PDF detection); best-effort.
@@ -44,12 +36,6 @@ async function load() {
     name.value = (await fileService.stat(uid.value)).name
   } catch {
     /* name is optional */
-  }
-  // Extracted Markdown from convert_search_ai (404 when none — not an error).
-  try {
-    text.value = (await searchService.getText(uid.value)).text
-  } catch {
-    /* no extracted text is fine */
   }
 }
 
@@ -85,28 +71,5 @@ function back() {
 .err {
   color: var(--danger);
   font-size: 13px;
-}
-
-.text-pane {
-  margin-top: 18px;
-  max-width: 900px;
-}
-
-.th {
-  font-size: 14px;
-  margin: 0 0 8px;
-}
-
-.md {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin: 0;
-  max-height: 60vh;
-  overflow: auto;
 }
 </style>
