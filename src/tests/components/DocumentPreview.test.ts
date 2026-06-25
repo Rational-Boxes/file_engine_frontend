@@ -98,7 +98,8 @@ describe('DocumentPreview', () => {
 
     expect(renditionObjectUrl).toHaveBeenCalledWith('pf', 'image/png') // poster, not the mp4
     expect(w.find('img.dp-img').attributes('src')).toBe('blob:pf')
-    expect(w.find('.btn').text()).toContain('Play video')
+    expect(w.find('.btn').text()).toContain('Preview 10 seconds')
+    expect(w.find('.btn').text()).toContain('▶') // play icon
 
     await w.find('.btn').trigger('click') // raises the overlay; clip not fetched in the drawer
     expect(open).toHaveBeenCalledWith('f1', 'clip.mp4')

@@ -105,7 +105,7 @@ const mediaKind = computed<'pdf' | 'video' | null>(() =>
   canOpenPdf.value ? 'pdf' : videoRef.value ? 'video' : null,
 )
 const canOpen = computed(() => mediaKind.value !== null)
-const openLabel = computed(() => (mediaKind.value === 'video' ? 'Play video' : 'Open document (PDF)'))
+const openLabel = computed(() => (mediaKind.value === 'video' ? '▶ Preview 10 seconds' : 'Open document (PDF)'))
 const openHint = computed(() => (mediaKind.value === 'video' ? 'Play the video' : 'Open the full document'))
 
 watch(() => props.uid, reload, { immediate: true })
