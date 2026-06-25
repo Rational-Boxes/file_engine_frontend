@@ -250,6 +250,8 @@ async function removeMeta(key: string) {
 
 .dl-btn {
   margin-top: 14px;
+  width: 100%;
+  text-align: center;
 }
 
 dl {
