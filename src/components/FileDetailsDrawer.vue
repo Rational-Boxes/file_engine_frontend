@@ -130,7 +130,10 @@ const canDownload = computed(() => canDo('download', auth.accessLevel))
 const linkCopied = ref(false)
 async function copyDeepLink() {
   if (!item.value) return
-  const href = router.resolve({ name: 'FileBrowser', query: { file: item.value.uid } }).href
+  // Include the tenant — UIDs are tenant-scoped, so a shared link must carry it.
+  const query: Record<string, string> = { file: item.value.uid }
+  if (auth.tenant) query.tenant = auth.tenant
+  const href = router.resolve({ name: 'FileBrowser', query }).href
   try {
     await navigator.clipboard.writeText(window.location.origin + href)
     linkCopied.value = true

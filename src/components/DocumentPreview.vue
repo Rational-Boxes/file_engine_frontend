@@ -76,9 +76,11 @@ import { useRouter } from 'vue-router'
 import { searchService } from '@/services/searchService'
 import { fileService } from '@/services/fileService'
 import { usePreviewStore } from '@/stores/preview'
+import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
 
 const router = useRouter()
+const auth = useAuthStore()
 
 // `fullWidth` = the overlay review (PdfPreviewOverlay): the PDF is embedded in a
 // full-width iframe and auto-opened. Otherwise (the narrow drawer), opening the
@@ -204,7 +206,9 @@ async function generate() {
 // Closes the preview overlay (if open) and navigates the Files view there.
 function openLocation() {
   preview.close()
-  router.push({ name: 'FileBrowser', query: { file: props.uid } })
+  const query: Record<string, string> = { file: props.uid }
+  if (auth.tenant) query.tenant = auth.tenant // UIDs are tenant-scoped
+  router.push({ name: 'FileBrowser', query })
 }
 
 // Download the original source file (with its real filename).

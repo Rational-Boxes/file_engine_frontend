@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { safeRedirect } from '@/utils/redirect'
 
 const LoginView = () => import('@/views/LoginView.vue')
 const OAuthCallbackView = () => import('@/views/OAuthCallbackView.vue')
@@ -40,13 +41,15 @@ const router = createRouter({
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    return { path: '/login' }
+    // Remember where they were headed (e.g. a shared deep link) so login can
+    // return them there afterwards.
+    return { path: '/login', query: { redirect: to.fullPath } }
   }
   if (to.meta.requiresAdmin && !auth.hasAccessLevel('admin')) {
     return { path: '/files' }
   }
   if (to.path === '/login' && auth.isAuthenticated) {
-    return { path: '/files' }
+    return { path: safeRedirect(to.query.redirect) }
   }
 })
 

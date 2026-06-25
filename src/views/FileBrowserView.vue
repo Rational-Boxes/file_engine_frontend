@@ -149,27 +149,41 @@ const caret = (key: SortKey) =>
 const ariaSort = (key: SortKey) =>
   sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending'
 
-// Honor a `?file=<uid>` deep link: reveal that node (folder + select + drawer);
-// otherwise open the root. Re-applied whenever the deep-link target changes.
+// Honor a `?file=<uid>&tenant=<t>` deep link: switch to the tenant, then reveal
+// that node (folder + select + drawer); otherwise open the root. Re-applied
+// whenever the deep-link target changes.
 const route = useRoute()
+// Set while applyRoute drives a tenant switch, so the tenant watch below doesn't
+// ALSO reset to root and race with revealFile().
+let deepLinkTenantSwitch = false
 function applyRoute() {
-  // The view is kept alive, so this watcher also fires when leaving /files —
+  // The view is kept alive, so these watchers also fire when leaving /files —
   // only (re)load when we're actually on the Files route.
   if (route.name !== 'FileBrowser') return
+  const tenant = route.query.tenant
+  if (typeof tenant === 'string' && tenant && tenant !== auth.tenant) {
+    deepLinkTenantSwitch = true
+    auth.switchTenant(tenant) // updates X-Tenant for the reveal requests below
+  }
   const file = route.query.file
   if (typeof file === 'string' && file) files.revealFile(file)
   else files.openRoot()
 }
 applyRoute()
-watch(() => route.query.file, applyRoute)
+watch(() => [route.query.file, route.query.tenant], applyRoute)
 
 // Reload from the root whenever the active tenant changes: UIDs (including the
 // breadcrumb trail) are tenant-scoped, so the current path is meaningless in the
 // newly selected tenant. Skip the initial null->value hydration and only react
-// to real switches.
+// to real switches — and not when a deep link is driving the switch (applyRoute
+// handles that load itself).
 watch(
   () => auth.tenant,
   (next, prev) => {
+    if (deepLinkTenantSwitch) {
+      deepLinkTenantSwitch = false
+      return
+    }
     if (prev && next && next !== prev) files.openRoot()
   },
 )

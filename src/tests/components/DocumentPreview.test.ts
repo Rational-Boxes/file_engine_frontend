@@ -26,6 +26,7 @@ const { open, close } = vi.hoisted(() => ({ open: vi.fn(), close: vi.fn() }))
 vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open, close }) }))
 const { push } = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ tenant: 'default' }) }))
 
 import DocumentPreview from '@/components/DocumentPreview.vue'
 
@@ -97,7 +98,7 @@ describe('DocumentPreview', () => {
     const loc = w.findAll('.link').find((b) => b.text().includes('Open file location'))
     expect(loc).toBeTruthy()
     await loc!.trigger('click')
-    expect(push).toHaveBeenCalledWith({ name: 'FileBrowser', query: { file: 'f1' } })
+    expect(push).toHaveBeenCalledWith({ name: 'FileBrowser', query: { file: 'f1', tenant: 'default' } })
     expect(close).toHaveBeenCalled()
   })
 

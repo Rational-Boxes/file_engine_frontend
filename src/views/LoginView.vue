@@ -37,12 +37,18 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
+import { stashRedirect, takeRedirect } from '@/utils/redirect'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
+
+// Persist the intended post-login destination (e.g. a shared deep link) so it
+// survives both LDAP login and the OAuth round-trip through the IdP.
+stashRedirect(route.query.redirect)
 
 const username = ref('')
 const password = ref('')
@@ -54,11 +60,14 @@ const providers = (import.meta.env.VITE_OAUTH_PROVIDERS || '')
 
 const label = (p: string) => p.charAt(0).toUpperCase() + p.slice(1)
 
-const loginWithProvider = (p: string) => authService.oauthRedirect(p)
+const loginWithProvider = (p: string) => {
+  stashRedirect(route.query.redirect) // ensure it's saved right before leaving the SPA
+  authService.oauthRedirect(p)
+}
 
 const loginLdap = async () => {
   if (await auth.ldapLogin(username.value, password.value)) {
-    router.push('/files')
+    router.push(takeRedirect())
   }
 }
 </script>

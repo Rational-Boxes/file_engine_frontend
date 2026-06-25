@@ -8,6 +8,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { takeRedirect } from '@/utils/redirect'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -15,7 +16,7 @@ const message = ref('Completing sign-in…')
 
 onMounted(async () => {
   if (await auth.completeOAuth()) {
-    router.replace('/files')
+    router.replace(takeRedirect()) // resume the deep link stashed before the IdP round-trip
   } else {
     message.value = 'Sign-in failed. Redirecting…'
     router.replace('/login')
