@@ -7,7 +7,7 @@
       <!-- Inline PDF viewer — shown only after the user explicitly asks for it. -->
       <div v-if="pdfUrl" class="dp-pdf">
         <iframe :src="pdfUrl" title="Document" class="dp-frame" :class="{ 'dp-frame-full': fullWidth }"></iframe>
-        <button class="link" @click="closeMedia">← Back to preview</button>
+        <button class="link" @click="downloadOriginal">⬇ Download original</button>
       </div>
 
       <!-- Inline video player — the poster frame becomes the <video> poster. -->
@@ -20,7 +20,7 @@
           controls
           autoplay
         ></video>
-        <button class="link" @click="closeMedia">← Back to preview</button>
+        <button class="link" @click="downloadOriginal">⬇ Download original</button>
       </div>
 
       <!-- Lightweight still preview image (PDF/video not fetched yet). -->
@@ -67,6 +67,7 @@ import {
   type RenditionSet,
 } from '@/services/renditions'
 import { searchService } from '@/services/searchService'
+import { fileService } from '@/services/fileService'
 import { usePreviewStore } from '@/stores/preview'
 import { errorMessage } from '@/services/apiClient'
 
@@ -187,6 +188,23 @@ async function generate() {
     genError.value = errorMessage(e, 'Failed to generate preview')
   } finally {
     generating.value = false
+  }
+}
+
+// Download the original source file (with its real filename).
+async function downloadOriginal() {
+  try {
+    const blob = await fileService.downloadFile(props.uid)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = props.name || props.uid
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    error.value = errorMessage(e, 'Failed to download')
   }
 }
 

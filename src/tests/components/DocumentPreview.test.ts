@@ -20,6 +20,8 @@ vi.mock('@/services/renditions', () => ({
   },
 }))
 vi.mock('@/services/searchService', () => ({ searchService: { generatePreview } }))
+const { downloadFile } = vi.hoisted(() => ({ downloadFile: vi.fn() }))
+vi.mock('@/services/fileService', () => ({ fileService: { downloadFile } }))
 const { open } = vi.hoisted(() => ({ open: vi.fn() }))
 vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open }) }))
 
@@ -68,6 +70,21 @@ describe('DocumentPreview', () => {
     expect(frame.exists()).toBe(true)
     expect(frame.attributes('src')).toBe('blob:pdf1')
     expect(open).not.toHaveBeenCalled()
+  })
+
+  it('the modal offers a "Download original" link (and no back-to-preview)', async () => {
+    downloadFile.mockResolvedValue(new Blob(['data']))
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:dl')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
+    await flushPromises()
+
+    expect(w.text()).not.toContain('Back to preview')
+    const dl = w.findAll('.link').find((b) => b.text().includes('Download original'))
+    expect(dl).toBeTruthy()
+    await dl!.trigger('click')
+    expect(downloadFile).toHaveBeenCalledWith('f1') // fetches the original source bytes
   })
 
   it('on the full-width review page, opens a native PDF by loading the source itself', async () => {
