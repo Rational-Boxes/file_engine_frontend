@@ -28,11 +28,17 @@
         <dt>Type</dt><dd>{{ info.type }}</dd>
         <dt>Size</dt><dd>{{ formatSize(info.size) }}</dd>
         <dt>Owner</dt><dd>{{ info.owner || '—' }}</dd>
-        <dt>Version</dt><dd>{{ info.version || '—' }}</dd>
-        <dt>UID</dt><dd class="mono">{{ info.uid }}</dd>
-        <dt>Parent</dt><dd class="mono">{{ info.parent_uid || '—' }}</dd>
+        <dt>Version</dt><dd>{{ info.version ? formatVersionTimestamp(info.version) : '—' }}</dd>
       </dl>
       <p v-else class="muted">Loading…</p>
+
+      <button
+        v-if="item && !item.isDirectory && canDownload"
+        class="btn dl-btn"
+        @click="files.downloadItem(item)"
+      >
+        ⬇ Download original
+      </button>
     </section>
 
     <!-- Metadata -->
@@ -90,8 +96,8 @@ import { fileService, type NodeInfo } from '@/services/fileService'
 import { useFileStore } from '@/stores/files'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
-import { formatSize } from '@/utils/format'
-import { PERMS } from '@/utils/permissions'
+import { formatSize, formatVersionTimestamp } from '@/utils/format'
+import { PERMS, canDo } from '@/utils/permissions'
 import AclEditor from '@/components/AclEditor.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import FileVersions from '@/components/FileVersions.vue'
@@ -106,6 +112,7 @@ const tab = ref<Tab>('Info')
 const item = computed(() => files.detailItem)
 const canEdit = computed(() => auth.hasAccessLevel('editor'))
 const isAdmin = computed(() => auth.hasAccessLevel('admin'))
+const canDownload = computed(() => canDo('download', auth.accessLevel))
 
 const info = ref<NodeInfo | null>(null)
 const metadata = ref<Record<string, string>>({})
@@ -239,6 +246,10 @@ async function removeMeta(key: string) {
 
 .info-preview {
   margin-bottom: 16px;
+}
+
+.dl-btn {
+  margin-top: 14px;
 }
 
 dl {

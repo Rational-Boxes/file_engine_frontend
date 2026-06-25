@@ -6,8 +6,8 @@
     <table v-else-if="versions.length" class="v-list">
       <tbody>
         <tr v-for="ts in versions" :key="ts" :class="{ current: ts === current }">
-          <td class="v-ts mono">
-            {{ ts }}<span v-if="ts === current" class="v-cur">current</span>
+          <td class="v-ts">
+            {{ formatVersionTimestamp(ts) }}<span v-if="ts === current" class="v-cur">current</span>
           </td>
           <td class="v-act">
             <button class="link" :disabled="busy" @click="download(ts)">download</button>
@@ -39,6 +39,7 @@
 import { ref, watch } from 'vue'
 import { fileService } from '@/services/fileService'
 import { errorMessage } from '@/services/apiClient'
+import { formatVersionTimestamp } from '@/utils/format'
 
 const props = defineProps<{ uid: string; current?: string; canManage?: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
