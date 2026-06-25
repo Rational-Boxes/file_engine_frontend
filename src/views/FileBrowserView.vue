@@ -100,8 +100,13 @@
   </div>
 </template>
 
+<script lang="ts">
+// Named so <KeepAlive include> can cache it (listing/scroll persist across tabs).
+export default { name: 'FileBrowserView' }
+</script>
+
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/files'
@@ -148,6 +153,9 @@ const ariaSort = (key: SortKey) =>
 // otherwise open the root. Re-applied whenever the deep-link target changes.
 const route = useRoute()
 function applyRoute() {
+  // The view is kept alive, so this watcher also fires when leaving /files —
+  // only (re)load when we're actually on the Files route.
+  if (route.name !== 'FileBrowser') return
   const file = route.query.file
   if (typeof file === 'string' && file) files.revealFile(file)
   else files.openRoot()
@@ -248,13 +256,18 @@ const onWinDrop = (e: DragEvent) => {
   uploadFiles(e.dataTransfer?.files ?? null)
 }
 
-onMounted(() => {
+// Window-level drag listeners are tied to activation (not mount): under
+// <KeepAlive> this view stays alive in the background, and we must not handle
+// drops while another tab (Search/Chat) is showing.
+onActivated(() => {
   window.addEventListener('dragenter', onWinDragEnter)
   window.addEventListener('dragover', onWinDragOver)
   window.addEventListener('dragleave', onWinDragLeave)
   window.addEventListener('drop', onWinDrop)
 })
-onBeforeUnmount(() => {
+onDeactivated(() => {
+  dragOver.value = false
+  dragDepth.value = 0
   window.removeEventListener('dragenter', onWinDragEnter)
   window.removeEventListener('dragover', onWinDragOver)
   window.removeEventListener('dragleave', onWinDragLeave)

@@ -34,6 +34,11 @@
   </div>
 </template>
 
+<script lang="ts">
+// Named so <KeepAlive include> can cache it (state persists across tab switches).
+export default { name: 'SearchView' }
+</script>
+
 <script setup lang="ts">
 import { ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'

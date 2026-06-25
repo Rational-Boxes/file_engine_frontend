@@ -1,6 +1,12 @@
 <template>
   <div id="app">
-    <router-view />
+    <!-- Keep the main tab views alive so their state (file listing, search
+         results, chat history) persists when switching between tabs. -->
+    <router-view v-slot="{ Component }">
+      <KeepAlive :include="['FileBrowserView', 'SearchView', 'ChatView']">
+        <component :is="Component" />
+      </KeepAlive>
+    </router-view>
     <PdfPreviewOverlay />
   </div>
 </template>

@@ -42,6 +42,11 @@
   </div>
 </template>
 
+<script lang="ts">
+// Named so <KeepAlive include> can cache it (chat history persists across tabs).
+export default { name: 'ChatView' }
+</script>
+
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import AppNav from '@/components/AppNav.vue'
