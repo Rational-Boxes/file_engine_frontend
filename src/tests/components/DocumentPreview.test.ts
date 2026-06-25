@@ -12,6 +12,12 @@ vi.mock('@/services/renditions', () => ({
   loadRenditionSet,
   renditionObjectUrl,
   revokeRenditionUrl,
+  // Faithful reimpl: the preview still is a PNG preview, else a video poster.
+  previewImage: (set: { preview?: { ext: string }; poster?: unknown; thumbnail?: { ext: string } }) => {
+    const isImg = (r?: { ext: string }) => !!r && ['png', 'webp', 'jpg', 'jpeg', 'gif'].includes(r.ext)
+    if (isImg(set?.preview)) return set.preview
+    return set?.poster ?? (isImg(set?.thumbnail) ? set.thumbnail : undefined)
+  },
 }))
 vi.mock('@/services/searchService', () => ({ searchService: { generatePreview } }))
 const { open } = vi.hoisted(() => ({ open: vi.fn() }))
@@ -79,6 +85,20 @@ describe('DocumentPreview', () => {
     await flushPromises()
     expect(w.find('.btn').exists()).toBe(false)
     expect(w.find('img.dp-img').exists()).toBe(true)
+  })
+
+  it('for a video, shows the poster frame (not the .mp4 preview clip)', async () => {
+    // A video emits poster (PNG) + preview (MP4 clip); the still must be the poster.
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'mp4'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'clip.mp4', hasRenditions: true } })
+    await flushPromises()
+    expect(renditionObjectUrl).toHaveBeenCalledWith('pf', 'image/png') // poster, not the mp4
+    expect(renditionObjectUrl).not.toHaveBeenCalledWith('clip', 'image/png')
+    expect(w.find('img.dp-img').attributes('src')).toBe('blob:pf')
+    expect(w.find('.btn').exists()).toBe(false) // no PDF action for a video
   })
 
   it('shows a "not yet" message + Generate button when there are no renditions', async () => {

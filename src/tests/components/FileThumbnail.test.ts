@@ -7,7 +7,12 @@ const { loadRenditionSet, renditionObjectUrl, revokeRenditionUrl } = vi.hoisted(
   renditionObjectUrl: vi.fn(),
   revokeRenditionUrl: vi.fn(),
 }))
-vi.mock('@/services/renditions', () => ({ loadRenditionSet, renditionObjectUrl, revokeRenditionUrl }))
+vi.mock('@/services/renditions', () => ({
+  loadRenditionSet,
+  renditionObjectUrl,
+  revokeRenditionUrl,
+  thumbnailImage: (set: { thumbnail?: unknown; poster?: unknown }) => set?.thumbnail ?? set?.poster,
+}))
 
 import FileThumbnail from '@/components/FileThumbnail.vue'
 

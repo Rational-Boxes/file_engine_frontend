@@ -8,7 +8,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import type { FileItem } from '@/services/fileService'
-import { loadRenditionSet, renditionObjectUrl, revokeRenditionUrl } from '@/services/renditions'
+import {
+  loadRenditionSet,
+  renditionObjectUrl,
+  revokeRenditionUrl,
+  thumbnailImage,
+} from '@/services/renditions'
 
 // A file tile's leading glyph: a lazily-loaded icon-sized `thumbnail` rendition
 // when the file has one, else the plain type icon. Fetching is deferred until
@@ -53,7 +58,8 @@ async function loadThumb() {
   started = true
   try {
     const set = await loadRenditionSet(props.item.uid)
-    if (set.thumbnail) url.value = await renditionObjectUrl(set.thumbnail.uid)
+    const thumb = thumbnailImage(set) // thumbnail, or a video's poster frame
+    if (thumb) url.value = await renditionObjectUrl(thumb.uid)
   } catch {
     // Keep the fallback icon on any failure.
   }

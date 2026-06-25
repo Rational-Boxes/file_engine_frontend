@@ -56,6 +56,25 @@ export function toRenditionSet(children: Array<Pick<FileItem, 'uid' | 'name'>>):
   return set
 }
 
+const IMAGE_EXTS: readonly string[] = ['png', 'webp', 'jpg', 'jpeg', 'gif']
+const isImageRef = (r?: RenditionRef): r is RenditionRef =>
+  !!r && IMAGE_EXTS.includes(r.ext.toLowerCase())
+
+// The icon-sized still image for a file tile: the `thumbnail`, or the video
+// `poster` frame when there is no thumbnail.
+export function thumbnailImage(set: RenditionSet): RenditionRef | undefined {
+  return isImageRef(set.thumbnail) ? set.thumbnail : set.poster
+}
+
+// The larger still image for the preview pane: the `preview` image (documents /
+// images), or the video `poster` frame. A video's `preview` rendition is an MP4
+// clip — NOT an image — so it must never be used as the still; fall back to the
+// poster (and finally the thumbnail).
+export function previewImage(set: RenditionSet): RenditionRef | undefined {
+  if (isImageRef(set.preview)) return set.preview
+  return set.poster ?? (isImageRef(set.thumbnail) ? set.thumbnail : undefined)
+}
+
 // Fetch a file's renditions and return them as a typed set.
 export async function loadRenditionSet(fileUid: string): Promise<RenditionSet> {
   const children = await fileService.listRenditions(fileUid)

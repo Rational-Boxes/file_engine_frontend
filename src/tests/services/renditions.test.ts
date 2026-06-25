@@ -15,6 +15,8 @@ import {
   loadRenditionSet,
   renditionObjectUrl,
   revokeRenditionUrl,
+  previewImage,
+  thumbnailImage,
 } from '@/services/renditions'
 
 describe('renditions: name parsing', () => {
@@ -61,6 +63,33 @@ describe('renditions: set reduction', () => {
     expect(listRenditions).toHaveBeenCalledWith('file1')
     expect(set.preview?.uid).toBe('r1')
     expect(set.pdf?.uid).toBe('r2')
+  })
+})
+
+describe('renditions: still-image selection (incl. video posters)', () => {
+  it('documents/images use the preview/thumbnail images', () => {
+    const set = toRenditionSet([
+      { uid: 't', name: 'v1-thumbnail.png' },
+      { uid: 'p', name: 'v1-preview.png' },
+    ])
+    expect(previewImage(set)?.uid).toBe('p')
+    expect(thumbnailImage(set)?.uid).toBe('t')
+  })
+
+  it('videos use the poster frame (the preview rendition is an MP4 clip, not an image)', () => {
+    const set = toRenditionSet([
+      { uid: 'pf', name: 'v1-poster.png' },
+      { uid: 'mp4', name: 'v1-preview.mp4' }, // a video clip — never used as a still
+    ])
+    // preview pane + tile both fall back to the poster, not the .mp4
+    expect(previewImage(set)?.uid).toBe('pf')
+    expect(thumbnailImage(set)?.uid).toBe('pf')
+  })
+
+  it('returns undefined when there is no usable still image', () => {
+    const set = toRenditionSet([{ uid: 'd', name: 'v1-pdf.pdf' }])
+    expect(previewImage(set)).toBeUndefined()
+    expect(thumbnailImage(set)).toBeUndefined()
   })
 })
 

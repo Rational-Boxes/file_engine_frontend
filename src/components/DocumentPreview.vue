@@ -44,6 +44,7 @@ import {
   loadRenditionSet,
   renditionObjectUrl,
   revokeRenditionUrl,
+  previewImage,
   type RenditionSet,
 } from '@/services/renditions'
 import { searchService } from '@/services/searchService'
@@ -83,8 +84,10 @@ async function reload() {
   error.value = ''
   try {
     set.value = await loadRenditionSet(props.uid)
-    if (set.value.preview) {
-      previewUrl.value = await renditionObjectUrl(set.value.preview.uid, 'image/png')
+    // The still image: the preview (documents/images) or a video's poster frame.
+    const still = previewImage(set.value)
+    if (still) {
+      previewUrl.value = await renditionObjectUrl(still.uid, 'image/png')
     }
     // On the full-width review page, open the PDF straight away.
     if (props.fullWidth && canOpenPdf.value) await openPdf()
