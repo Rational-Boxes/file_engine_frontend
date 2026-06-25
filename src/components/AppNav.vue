@@ -37,6 +37,10 @@ async function logout() {
   padding: 10px 18px;
   background: #fff;
   border-bottom: 1px solid var(--border);
+  /* Keep the nav pinned to the top as content scrolls beneath it. */
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .brand {
