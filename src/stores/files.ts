@@ -108,6 +108,37 @@ export const useFileStore = defineStore('files', {
       await this.load()
     },
 
+    // Deep-link: reveal a node by UID. Rebuilds the breadcrumb trail by walking
+    // parents, navigates to the containing folder (or into the folder itself if
+    // the UID is a directory), and for a file selects it + opens the drawer.
+    async revealFile(uid: string) {
+      if (!uid) return this.openRoot()
+      try {
+        const info = await fileService.stat(uid)
+        const isDir = (info.type || '').toLowerCase() === 'directory'
+        const folderUid = isDir ? uid : info.parent_uid || ROOT_UID
+
+        // Walk from the folder up to root to rebuild the breadcrumb trail.
+        const trail: Crumb[] = []
+        let cur = folderUid
+        for (let i = 0; cur && cur !== ROOT_UID && i < 64; i++) {
+          const p = await fileService.stat(cur)
+          trail.unshift({ uid: cur, name: p.name })
+          cur = p.parent_uid || ROOT_UID
+        }
+        this.breadcrumbs = [ROOT_CRUMB, ...trail]
+        this.currentUid = folderUid
+        await this.load()
+
+        if (!isDir) {
+          const item = this.items.find((it) => it.uid === uid)
+          if (item) this.openDetails(item)
+        }
+      } catch (e) {
+        this.error = errorMessage(e, 'Failed to open file location')
+      }
+    },
+
     // Jump to a breadcrumb (truncates the trail after it).
     async navigateToCrumb(index: number) {
       const crumb = this.breadcrumbs[index]

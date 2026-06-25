@@ -16,6 +16,15 @@
 
     <!-- Info -->
     <section v-show="tab === 'Info'" class="pane">
+      <div v-if="item" class="info-top">
+        <button
+          class="copy-link"
+          :title="linkCopied ? 'Copied!' : 'Copy a deep link to this file'"
+          @click="copyDeepLink"
+        >
+          🔗 {{ linkCopied ? 'Copied!' : 'Copy link' }}
+        </button>
+      </div>
       <!-- First-page preview lives in the general Info tab (no separate tab). -->
       <DocumentPreview
         v-if="item && !item.isDirectory"
@@ -92,6 +101,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { fileService, type NodeInfo } from '@/services/fileService'
 import { useFileStore } from '@/stores/files'
 import { useAuthStore } from '@/stores/auth'
@@ -110,9 +120,25 @@ type Tab = (typeof tabs)[number]
 const tab = ref<Tab>('Info')
 
 const item = computed(() => files.detailItem)
+const router = useRouter()
 const canEdit = computed(() => auth.hasAccessLevel('editor'))
 const isAdmin = computed(() => auth.hasAccessLevel('admin'))
 const canDownload = computed(() => canDo('download', auth.accessLevel))
+
+// Copy a shareable deep link (opens the file's folder, selects it, opens this
+// drawer) to the clipboard.
+const linkCopied = ref(false)
+async function copyDeepLink() {
+  if (!item.value) return
+  const href = router.resolve({ name: 'FileBrowser', query: { file: item.value.uid } }).href
+  try {
+    await navigator.clipboard.writeText(window.location.origin + href)
+    linkCopied.value = true
+    setTimeout(() => (linkCopied.value = false), 1500)
+  } catch {
+    /* clipboard may be unavailable (insecure context) */
+  }
+}
 
 const info = ref<NodeInfo | null>(null)
 const metadata = ref<Record<string, string>>({})
@@ -242,6 +268,21 @@ async function removeMeta(key: string) {
 
 .pane {
   overflow: auto;
+}
+
+.info-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.copy-link {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
 }
 
 .info-preview {

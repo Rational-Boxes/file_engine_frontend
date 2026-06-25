@@ -102,6 +102,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/files'
 import { useUploadStore } from '@/stores/upload'
@@ -143,12 +144,21 @@ const caret = (key: SortKey) =>
 const ariaSort = (key: SortKey) =>
   sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending'
 
-files.openRoot()
+// Honor a `?file=<uid>` deep link: reveal that node (folder + select + drawer);
+// otherwise open the root. Re-applied whenever the deep-link target changes.
+const route = useRoute()
+function applyRoute() {
+  const file = route.query.file
+  if (typeof file === 'string' && file) files.revealFile(file)
+  else files.openRoot()
+}
+applyRoute()
+watch(() => route.query.file, applyRoute)
 
 // Reload from the root whenever the active tenant changes: UIDs (including the
 // breadcrumb trail) are tenant-scoped, so the current path is meaningless in the
-// newly selected tenant. Skip the initial null->value hydration (the openRoot()
-// above already covers first load) and only react to real switches.
+// newly selected tenant. Skip the initial null->value hydration and only react
+// to real switches.
 watch(
   () => auth.tenant,
   (next, prev) => {

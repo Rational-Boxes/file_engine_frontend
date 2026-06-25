@@ -17,6 +17,7 @@ vi.mock('@/services/fileService', () => ({
     removeFile: vi.fn(),
     rename: vi.fn(),
     downloadFile: vi.fn(),
+    stat: vi.fn(),
   },
 }))
 
@@ -75,5 +76,35 @@ describe('files store (UID-native)', () => {
     expect(fileService.rename).not.toHaveBeenCalled()
     await store.renameItem(file, 'b.txt')
     expect(fileService.rename).toHaveBeenCalledWith('f1', 'b.txt')
+  })
+
+  it('revealFile navigates to the file’s folder, rebuilds breadcrumbs, selects it, opens the drawer', async () => {
+    const store = useFileStore()
+    ;(fileService.stat as any).mockImplementation((uid: string) => {
+      if (uid === 'f1') return Promise.resolve({ uid: 'f1', name: 'a.txt', type: 'file', parent_uid: 'd1' })
+      if (uid === 'd1') return Promise.resolve({ uid: 'd1', name: 'docs', type: 'directory', parent_uid: ROOT })
+      return Promise.reject(new Error('unknown uid'))
+    })
+    ;(fileService.listDirectory as any).mockResolvedValue([file]) // listing of folder d1
+
+    await store.revealFile('f1')
+
+    expect(store.currentUid).toBe('d1')
+    expect(store.breadcrumbs.map((c) => c.name)).toEqual(['Home', 'docs'])
+    expect(fileService.listDirectory).toHaveBeenCalledWith('d1')
+    expect(store.drawerOpen).toBe(true)
+    expect(store.detailItem?.uid).toBe('f1')
+  })
+
+  it('revealFile opens a folder UID directly (into the folder, no drawer)', async () => {
+    const store = useFileStore()
+    ;(fileService.stat as any).mockResolvedValue({ uid: 'd1', name: 'docs', type: 'directory', parent_uid: ROOT })
+    ;(fileService.listDirectory as any).mockResolvedValue([file])
+
+    await store.revealFile('d1')
+
+    expect(store.currentUid).toBe('d1')
+    expect(store.breadcrumbs.map((c) => c.name)).toEqual(['Home', 'docs'])
+    expect(store.drawerOpen).toBe(false)
   })
 })

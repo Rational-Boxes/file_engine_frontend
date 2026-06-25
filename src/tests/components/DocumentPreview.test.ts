@@ -22,8 +22,10 @@ vi.mock('@/services/renditions', () => ({
 vi.mock('@/services/searchService', () => ({ searchService: { generatePreview } }))
 const { downloadFile } = vi.hoisted(() => ({ downloadFile: vi.fn() }))
 vi.mock('@/services/fileService', () => ({ fileService: { downloadFile } }))
-const { open } = vi.hoisted(() => ({ open: vi.fn() }))
-vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open }) }))
+const { open, close } = vi.hoisted(() => ({ open: vi.fn(), close: vi.fn() }))
+vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open, close }) }))
+const { push } = vi.hoisted(() => ({ push: vi.fn() }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 
 import DocumentPreview from '@/components/DocumentPreview.vue'
 
@@ -85,6 +87,18 @@ describe('DocumentPreview', () => {
     expect(dl).toBeTruthy()
     await dl!.trigger('click')
     expect(downloadFile).toHaveBeenCalledWith('f1') // fetches the original source bytes
+  })
+
+  it('the modal "Open file location" deep-links to the file (and closes the overlay)', async () => {
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
+    await flushPromises()
+
+    const loc = w.findAll('.link').find((b) => b.text().includes('Open file location'))
+    expect(loc).toBeTruthy()
+    await loc!.trigger('click')
+    expect(push).toHaveBeenCalledWith({ name: 'FileBrowser', query: { file: 'f1' } })
+    expect(close).toHaveBeenCalled()
   })
 
   it('on the full-width review page, opens a native PDF by loading the source itself', async () => {

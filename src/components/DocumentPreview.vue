@@ -7,7 +7,10 @@
       <!-- Inline PDF viewer — shown only after the user explicitly asks for it. -->
       <div v-if="pdfUrl" class="dp-pdf">
         <iframe :src="pdfUrl" title="Document" class="dp-frame" :class="{ 'dp-frame-full': fullWidth }"></iframe>
-        <button class="link" @click="downloadOriginal">⬇ Download original</button>
+        <div class="dp-actions">
+          <button class="link" @click="downloadOriginal">⬇ Download original</button>
+          <button class="link" @click="openLocation">📂 Open file location</button>
+        </div>
       </div>
 
       <!-- Inline video player — the poster frame becomes the <video> poster. -->
@@ -20,7 +23,10 @@
           controls
           autoplay
         ></video>
-        <button class="link" @click="downloadOriginal">⬇ Download original</button>
+        <div class="dp-actions">
+          <button class="link" @click="downloadOriginal">⬇ Download original</button>
+          <button class="link" @click="openLocation">📂 Open file location</button>
+        </div>
       </div>
 
       <!-- Lightweight still preview image (PDF/video not fetched yet). -->
@@ -66,10 +72,13 @@ import {
   previewImage,
   type RenditionSet,
 } from '@/services/renditions'
+import { useRouter } from 'vue-router'
 import { searchService } from '@/services/searchService'
 import { fileService } from '@/services/fileService'
 import { usePreviewStore } from '@/stores/preview'
 import { errorMessage } from '@/services/apiClient'
+
+const router = useRouter()
 
 // `fullWidth` = the overlay review (PdfPreviewOverlay): the PDF is embedded in a
 // full-width iframe and auto-opened. Otherwise (the narrow drawer), opening the
@@ -191,6 +200,13 @@ async function generate() {
   }
 }
 
+// Deep-link to this file's folder, select it, and open the details drawer.
+// Closes the preview overlay (if open) and navigates the Files view there.
+function openLocation() {
+  preview.close()
+  router.push({ name: 'FileBrowser', query: { file: props.uid } })
+}
+
 // Download the original source file (with its real filename).
 async function downloadOriginal() {
   try {
@@ -261,6 +277,11 @@ function cleanup() {
   flex-direction: column;
   gap: 6px;
   width: 100%;
+}
+
+.dp-actions {
+  display: flex;
+  gap: 16px;
 }
 
 .dp-frame {
