@@ -156,12 +156,21 @@ const route = useRoute()
 // Set while applyRoute drives a tenant switch, so the tenant watch below doesn't
 // ALSO reset to root and race with revealFile().
 let deepLinkTenantSwitch = false
-function applyRoute() {
+async function applyRoute() {
   // The view is kept alive, so these watchers also fire when leaving /files —
   // only (re)load when we're actually on the Files route.
   if (route.name !== 'FileBrowser') return
   const tenant = route.query.tenant
   if (typeof tenant === 'string' && tenant && tenant !== auth.tenant) {
+    // A shared link may point at a tenant this user can't access — give a clear
+    // message instead of a wall of failed requests, and show their own workspace.
+    if (auth.tenants.length && !auth.tenants.includes(tenant)) {
+      await files.openRoot()
+      files.error =
+        `This link points to the “${tenant}” tenant, which you don’t have access to. ` +
+        `Ask an administrator to grant access, then reopen the link.`
+      return
+    }
     deepLinkTenantSwitch = true
     auth.switchTenant(tenant) // updates X-Tenant for the reveal requests below
   }
