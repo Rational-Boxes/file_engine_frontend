@@ -7,19 +7,32 @@
       <!-- Inline PDF viewer — shown only after the user explicitly asks for it. -->
       <div v-if="pdfUrl" class="dp-pdf">
         <iframe :src="pdfUrl" title="Document" class="dp-frame" :class="{ 'dp-frame-full': fullWidth }"></iframe>
-        <button class="link" @click="closePdf">← Back to preview</button>
+        <button class="link" @click="closeMedia">← Back to preview</button>
       </div>
 
-      <!-- Lightweight first-page preview image (no PDF fetched yet). -->
+      <!-- Inline video player — the poster frame becomes the <video> poster. -->
+      <div v-else-if="videoUrl" class="dp-pdf">
+        <video
+          :src="videoUrl"
+          :poster="previewUrl || undefined"
+          class="dp-frame dp-video"
+          :class="{ 'dp-frame-full': fullWidth }"
+          controls
+          autoplay
+        ></video>
+        <button class="link" @click="closeMedia">← Back to preview</button>
+      </div>
+
+      <!-- Lightweight still preview image (PDF/video not fetched yet). -->
       <template v-else>
         <img
           v-if="previewUrl"
           :src="previewUrl"
           class="dp-img"
-          :class="{ clickable: canOpenPdf }"
-          alt="First-page preview"
-          :title="canOpenPdf ? 'Open the full document' : ''"
-          @click="canOpenPdf && openPdf()"
+          :class="{ clickable: canOpen }"
+          alt="Preview"
+          :title="canOpen ? openHint : ''"
+          @click="canOpen && openMedia()"
         />
         <!-- No rendition yet: ask CSAI to (re)generate the preview on demand. -->
         <template v-else>
@@ -30,8 +43,8 @@
           <p v-if="genError" class="dp-err">{{ genError }}</p>
         </template>
 
-        <button v-if="previewUrl && canOpenPdf" class="btn" :disabled="opening" @click="openPdf">
-          {{ opening ? 'Opening…' : 'Open document (PDF)' }}
+        <button v-if="previewUrl && canOpen" class="btn" :disabled="opening" @click="openMedia">
+          {{ opening ? 'Opening…' : openLabel }}
         </button>
       </template>
     </template>
@@ -59,9 +72,18 @@ const props = defineProps<{ uid: string; name?: string; hasRenditions?: boolean;
 
 const preview = usePreviewStore()
 
+const VIDEO_EXTS = ['mp4', 'webm', 'ogg', 'mov']
+const VIDEO_MIME: Record<string, string> = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  ogg: 'video/ogg',
+  mov: 'video/mp4',
+}
+
 const set = ref<RenditionSet>({})
-const previewUrl = ref('') // object URL for the first-page preview image
+const previewUrl = ref('') // object URL for the still preview/poster image
 const pdfUrl = ref('') // object URL for the inline PDF (loaded on demand)
+const videoUrl = ref('') // object URL for the inline video clip (loaded on demand)
 const loading = ref(false)
 const opening = ref(false)
 const generating = ref(false)
@@ -72,6 +94,19 @@ const error = ref('')
 // the source itself. Office docs expose a `pdf` rendition instead.
 const isNativePdf = computed(() => (props.name || '').toLowerCase().endsWith('.pdf'))
 const canOpenPdf = computed(() => !!set.value.pdf || isNativePdf.value)
+// Videos expose a web-optimized `preview` MP4 clip (the `poster` is the still).
+const videoRef = computed(() => {
+  const p = set.value.preview
+  return p && VIDEO_EXTS.includes(p.ext.toLowerCase()) ? p : undefined
+})
+
+// What clicking the still opens: an inline PDF, an inline video, or nothing.
+const mediaKind = computed<'pdf' | 'video' | null>(() =>
+  canOpenPdf.value ? 'pdf' : videoRef.value ? 'video' : null,
+)
+const canOpen = computed(() => mediaKind.value !== null)
+const openLabel = computed(() => (mediaKind.value === 'video' ? 'Play video' : 'Open document (PDF)'))
+const openHint = computed(() => (mediaKind.value === 'video' ? 'Play the video' : 'Open the full document'))
 
 watch(() => props.uid, reload, { immediate: true })
 onBeforeUnmount(cleanup)
@@ -89,8 +124,8 @@ async function reload() {
     if (still) {
       previewUrl.value = await renditionObjectUrl(still.uid, 'image/png')
     }
-    // On the full-width review page, open the PDF straight away.
-    if (props.fullWidth && canOpenPdf.value) await openPdf()
+    // On the full-width review overlay, open the media (PDF/video) straight away.
+    if (props.fullWidth && canOpen.value) await openMedia()
   } catch (e) {
     error.value = errorMessage(e, 'Failed to load preview')
   } finally {
@@ -98,25 +133,40 @@ async function reload() {
   }
 }
 
-async function openPdf() {
+async function openMedia() {
   // In the drawer, raise the full-width review overlay rather than embed a
-  // cramped iframe; the PDF is fetched there (still only on this explicit
-  // action). An overlay — not navigation — so the Files/Chat view is preserved.
+  // cramped player; the bytes are fetched there (only on this explicit action).
+  // An overlay — not navigation — so the Files/Chat view is preserved.
   if (!props.fullWidth) {
     preview.open(props.uid, props.name)
     return
   }
-  // Full-width page: fetch the PDF bytes and embed them in the iframe.
-  const pdfUid = set.value.pdf?.uid ?? (isNativePdf.value ? props.uid : '')
-  if (!pdfUid || pdfUrl.value) return
-  opening.value = true
-  error.value = ''
-  try {
-    pdfUrl.value = await renditionObjectUrl(pdfUid, 'application/pdf')
-  } catch (e) {
-    error.value = errorMessage(e, 'Failed to open document')
-  } finally {
-    opening.value = false
+  if (mediaKind.value === 'pdf') {
+    // Fetch the PDF bytes and embed them in the iframe.
+    const pdfUid = set.value.pdf?.uid ?? (isNativePdf.value ? props.uid : '')
+    if (!pdfUid || pdfUrl.value) return
+    opening.value = true
+    error.value = ''
+    try {
+      pdfUrl.value = await renditionObjectUrl(pdfUid, 'application/pdf')
+    } catch (e) {
+      error.value = errorMessage(e, 'Failed to open document')
+    } finally {
+      opening.value = false
+    }
+  } else if (mediaKind.value === 'video' && videoRef.value) {
+    // Fetch the preview clip and play it inline (poster = the still image).
+    if (videoUrl.value) return
+    const ref_ = videoRef.value
+    opening.value = true
+    error.value = ''
+    try {
+      videoUrl.value = await renditionObjectUrl(ref_.uid, VIDEO_MIME[ref_.ext.toLowerCase()] || 'video/mp4')
+    } catch (e) {
+      error.value = errorMessage(e, 'Failed to open video')
+    } finally {
+      opening.value = false
+    }
   }
 }
 
@@ -134,10 +184,14 @@ async function generate() {
   }
 }
 
-function closePdf() {
+function closeMedia() {
   if (pdfUrl.value) {
     revokeRenditionUrl(pdfUrl.value)
     pdfUrl.value = ''
+  }
+  if (videoUrl.value) {
+    revokeRenditionUrl(videoUrl.value)
+    videoUrl.value = ''
   }
 }
 
@@ -146,7 +200,7 @@ function cleanup() {
     revokeRenditionUrl(previewUrl.value)
     previewUrl.value = ''
   }
-  closePdf()
+  closeMedia()
 }
 </script>
 
@@ -195,6 +249,11 @@ function cleanup() {
 
 .dp-frame-full {
   height: calc(100vh - 150px);
+}
+
+.dp-video {
+  background: #000;
+  object-fit: contain;
 }
 
 .btn {

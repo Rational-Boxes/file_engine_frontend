@@ -87,18 +87,38 @@ describe('DocumentPreview', () => {
     expect(w.find('img.dp-img').exists()).toBe(true)
   })
 
-  it('for a video, shows the poster frame (not the .mp4 preview clip)', async () => {
-    // A video emits poster (PNG) + preview (MP4 clip); the still must be the poster.
+  it('for a video in the drawer: shows the poster + a "Play video" action that raises the overlay', async () => {
+    // A video emits poster (PNG) + preview (MP4 clip); the still is the poster.
     loadRenditionSet.mockResolvedValue({
       poster: ref_('pf', 'poster', 'png'),
       preview: ref_('clip', 'preview', 'mp4'),
     })
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'clip.mp4', hasRenditions: true } })
     await flushPromises()
+
     expect(renditionObjectUrl).toHaveBeenCalledWith('pf', 'image/png') // poster, not the mp4
-    expect(renditionObjectUrl).not.toHaveBeenCalledWith('clip', 'image/png')
     expect(w.find('img.dp-img').attributes('src')).toBe('blob:pf')
-    expect(w.find('.btn').exists()).toBe(false) // no PDF action for a video
+    expect(w.find('.btn').text()).toContain('Play video')
+
+    await w.find('.btn').trigger('click') // raises the overlay; clip not fetched in the drawer
+    expect(open).toHaveBeenCalledWith('f1', 'clip.mp4')
+    expect(renditionObjectUrl).not.toHaveBeenCalledWith('clip', 'video/mp4')
+    expect(w.find('video').exists()).toBe(false)
+  })
+
+  it('on the full-width review, plays the mp4 clip inline with the poster as <video> poster', async () => {
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'mp4'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'clip.mp4', fullWidth: true } })
+    await flushPromises()
+
+    expect(renditionObjectUrl).toHaveBeenCalledWith('clip', 'video/mp4')
+    const video = w.find('video.dp-video')
+    expect(video.exists()).toBe(true)
+    expect(video.attributes('src')).toBe('blob:clip')
+    expect(video.attributes('poster')).toBe('blob:pf')
   })
 
   it('shows a "not yet" message + Generate button when there are no renditions', async () => {
