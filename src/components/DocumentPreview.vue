@@ -43,7 +43,13 @@
           <p v-if="genError" class="dp-err">{{ genError }}</p>
         </template>
 
-        <button v-if="previewUrl && canOpen" class="btn" :disabled="opening" @click="openMedia">
+        <button
+          v-if="previewUrl && canOpen"
+          class="btn"
+          :class="{ 'btn-end': mediaKind === 'video' }"
+          :disabled="opening"
+          @click="openMedia"
+        >
           {{ opening ? 'Opening…' : openLabel }}
         </button>
       </template>
@@ -269,6 +275,11 @@ function cleanup() {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Right-align the video "Preview" action (the container is left-aligned). */
+.btn-end {
+  align-self: flex-end;
 }
 
 .link {
