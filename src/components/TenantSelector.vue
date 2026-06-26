@@ -9,14 +9,23 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
+import { subdomainTenancyEnabled, tenantUrl } from '@/utils/tenantHost'
 
 const auth = useAuthStore()
 
-// Switching only mutates the active tenant; the file browser watches
-// auth.tenant and reloads the listing from the root of the new tenant.
+// Switching tenants. When tenants are keyed by subdomain, each tenant is its own
+// origin, so we navigate to that tenant's host (full reload) — the subdomain is
+// authoritative. Otherwise (local dev / single-domain) we swap the active tenant
+// in-app; the file browser watches auth.tenant and reloads from the new root.
 const onChange = (e: Event) => {
   const value = (e.target as HTMLSelectElement).value
-  auth.switchTenant(value)
+  if (!value || value === auth.tenant) return
+  const url = subdomainTenancyEnabled() ? tenantUrl(value) : null
+  if (url) {
+    window.location.assign(url)
+  } else {
+    auth.switchTenant(value)
+  }
 }
 </script>
 

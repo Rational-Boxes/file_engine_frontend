@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { authService, type Identity } from '@/services/authService'
 import { tokenStorage } from '@/utils/tokenStorage'
 import { errorMessage } from '@/services/apiClient'
+import { activeTenantFromHost } from '@/utils/tenantHost'
 
 type AccessLevel = 'user' | 'editor' | 'admin'
 
@@ -58,6 +59,21 @@ export const useAuthStore = defineStore('auth', {
       this.tenant = id.tenant
       this.roles = id.roles || []
       this.accessLevel = levelFromRoles(this.roles)
+    },
+
+    // Adopt the tenant implied by the SPA's subdomain (someco.host.com → someco)
+    // as the active tenant, before any request goes out. The subdomain is
+    // authoritative for which tenant site we're on, so it overrides a previously
+    // persisted selection; on the apex / a non-tenant host we keep whatever was
+    // persisted. Call this first in app bootstrap so whoami() is scoped right.
+    initTenantFromHost() {
+      const fromHost = activeTenantFromHost()
+      if (fromHost) {
+        tokenStorage.setActiveTenant(fromHost)
+        this.tenant = fromHost
+      } else {
+        this.tenant = tokenStorage.getActiveTenant()
+      }
     },
 
     // On app start: if a valid token is present, hydrate the identity.

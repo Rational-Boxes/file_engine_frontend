@@ -19,6 +19,9 @@ import PdfPreviewOverlay from '@/components/PdfPreviewOverlay.vue'
 const authStore = useAuthStore()
 
 onMounted(() => {
+  // Adopt the tenant from the subdomain (someco.host.com → someco) before any
+  // request, so whoami() and tenant listing are scoped to the right tenant.
+  authStore.initTenantFromHost()
   // Hydrate identity from a stored token, if any.
   authStore.initialize()
 })

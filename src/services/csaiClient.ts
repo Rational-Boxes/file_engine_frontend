@@ -12,6 +12,9 @@ import { errorMessage } from '@/services/apiClient'
 // Unlike apiClient, a 401 here does NOT bounce the whole app to /login: the
 // bridge session may still be valid, so AI features simply degrade. Callers map
 // failures to a user message via errorMessage().
+//
+// VITE_CSAI_BASE may be an absolute URL (`http://localhost:8092`, local dev) or a
+// same-origin path (`/csai`, behind the unified nginx reverse proxy).
 export const CSAI_BASE = import.meta.env.VITE_CSAI_BASE || 'http://localhost:8092'
 
 const csaiClient: AxiosInstance = axios.create({ baseURL: CSAI_BASE })
@@ -34,7 +37,14 @@ export function chatSocketUrl(
   token: string | null = tokenStorage.getAccessToken(),
   tenant: string | null = tokenStorage.getActiveTenant(),
 ): string {
-  const ws = base.replace(/^http(s?):\/\//, (_m, s) => `ws${s}://`).replace(/\/+$/, '')
+  // Resolve to an absolute ws(s):// URL. An absolute http(s) base is rewritten in
+  // place; a same-origin path base (e.g. "/csai" behind the proxy) is resolved
+  // against the current page origin so it inherits ws vs wss from the page.
+  const httpUrl = /^https?:\/\//i.test(base)
+    ? base
+    : (typeof window !== 'undefined' ? window.location.origin : '') +
+      (base.startsWith('/') ? base : '/' + base)
+  const ws = httpUrl.replace(/^http(s?):\/\//i, (_m, s) => `ws${s}://`).replace(/\/+$/, '')
   const params = new URLSearchParams()
   if (token) params.set('token', token)
   if (tenant) params.set('tenant', tenant)
