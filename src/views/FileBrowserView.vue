@@ -24,7 +24,8 @@
         <button
           v-if="files.clipboard && canDo('paste', auth.accessLevel)"
           class="btn"
-          :title="clipboardTitle"
+          :disabled="!files.canPasteHere"
+          :title="files.canPasteHere ? clipboardTitle : 'Can’t paste a folder into itself or a subfolder'"
           @click="files.paste()"
         >
           Paste{{ files.clipboard.items.length > 1 ? ` (${files.clipboard.items.length})` : '' }}

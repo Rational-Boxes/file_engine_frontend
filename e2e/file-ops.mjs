@@ -79,6 +79,13 @@ async function main() {
   await rm(d1, false); await rm(d2, false)
   assert(!(await listDir(work)).some((e) => e.uid === d1 || e.uid === d2), 'batch-deleted files are gone')
 
+  console.log('name collisions auto-rename with a number suffix')
+  const cf = await touch(work, 'dup.txt'); await put(cf, 'orig')
+  await copy(cf, work) // copy into the SAME folder
+  const dupNames = (await listDir(work)).map((e) => e.name).filter((n) => n.startsWith('dup'))
+  assert(dupNames.includes('dup.txt') && dupNames.includes('dup (1).txt'),
+    'copy into the same folder yields "dup (1).txt" (no duplicate name)')
+
   await rm(work, true) // cleanup
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)

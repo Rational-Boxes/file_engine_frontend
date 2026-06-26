@@ -58,6 +58,16 @@ export const useFileStore = defineStore('files', {
       state.items.length > 0 && state.selected.size === state.items.length,
     someSelected: (state): boolean =>
       state.selected.size > 0 && state.selected.size < state.items.length,
+
+    // Whether the clipboard can be pasted into the current directory. Invalid to
+    // move/copy a folder into itself or one of its descendants — the current dir
+    // is inside that folder's subtree exactly when the folder's uid appears in
+    // the breadcrumb trail (root → … → currentUid).
+    canPasteHere(state): boolean {
+      if (!state.clipboard) return false
+      const trail = new Set(state.breadcrumbs.map((c) => c.uid))
+      return !state.clipboard.items.some((it) => it.isDirectory && trail.has(it.uid))
+    },
   },
 
   actions: {
@@ -247,7 +257,7 @@ export const useFileStore = defineStore('files', {
     },
 
     async paste() {
-      if (!this.clipboard) return
+      if (!this.clipboard || !this.canPasteHere) return
       const { mode, items } = this.clipboard
       const dest = this.currentUid
       const here = new Set(this.items.map((i) => i.uid)) // already in this folder

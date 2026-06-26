@@ -195,4 +195,16 @@ describe('files store (UID-native)', () => {
     expect(fileService.removeFile).toHaveBeenCalledWith('f1')
     expect(fileService.removeDirectory).toHaveBeenCalledWith('d1')
   })
+
+  it('canPasteHere blocks pasting a folder into itself or a descendant', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    await store.openDirectory(dir) // currentUid = d1; breadcrumbs include d1
+    store.setClipboard('cut', [dir]) // the folder being pasted IS the current dir
+    expect(store.canPasteHere).toBe(false)
+    await store.paste() // guarded → no-op
+    expect(fileService.move).not.toHaveBeenCalled()
+    store.setClipboard('copy', [file]) // a file is always pasteable here
+    expect(store.canPasteHere).toBe(true)
+  })
 })
