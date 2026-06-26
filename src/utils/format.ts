@@ -7,6 +7,17 @@ export function formatSize(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`
 }
 
+// Name a downloaded back-version after the file, with the version id in
+// parentheses:  ("report.pdf", "20260626_164538") -> "report (20260626_164538).pdf".
+// Without a name, falls back to the version id (never the blob-URL UUID).
+export function versionFilename(name: string, ts: string): string {
+  if (!name) return ts
+  const dot = name.lastIndexOf('.')
+  const base = dot > 0 ? name.slice(0, dot) : name
+  const ext = dot > 0 ? name.slice(dot) : ''
+  return `${base} (${ts})${ext}`
+}
+
 // Core version ids are timestamps of the form "YYYYMMDD_HHMMSS.mmm". Render them
 // as a localized, human-readable date-time. Falls back to the raw value if it
 // doesn't match (e.g. an unexpected id shape).

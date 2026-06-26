@@ -17,6 +17,8 @@ vi.mock('@/services/fileService', () => ({
     removeDirectory: vi.fn(),
     removeFile: vi.fn(),
     rename: vi.fn(),
+    move: vi.fn(),
+    copy: vi.fn(),
     downloadFile: vi.fn(),
     stat: vi.fn(),
   },
@@ -114,5 +116,83 @@ describe('files store (UID-native)', () => {
     ;(fileService.stat as any).mockRejectedValue({ status: 403 })
     const res = await store.revealFile('f1')
     expect(res).toEqual({ ok: false, status: 403 })
+  })
+
+  // --- clipboard (cut/copy/paste) ---
+  it('copy → paste calls copy() into the current dir and empties the clipboard', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    await store.openDirectory(dir) // currentUid = d1
+    store.setClipboard('copy', [file])
+    expect(store.clipboard).toEqual({ mode: 'copy', items: [file] })
+    await store.paste()
+    expect(fileService.copy).toHaveBeenCalledWith('f1', 'd1')
+    expect(fileService.move).not.toHaveBeenCalled()
+    expect(store.clipboard).toBeNull() // emptied after a clean paste
+  })
+
+  it('cut → paste calls move() and empties the clipboard', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    ;(fileService.listDirectory as any).mockResolvedValue([]) // destination d1 is empty
+    await store.openDirectory(dir)
+    store.setClipboard('cut', [file])
+    await store.paste()
+    expect(fileService.move).toHaveBeenCalledWith('f1', 'd1')
+    expect(store.clipboard).toBeNull()
+  })
+
+  it('paste skips a cut item already in the destination folder (no-op move)', async () => {
+    const store = useFileStore()
+    await store.openRoot() // currentUid = ROOT, items = [dir, file]
+    store.setClipboard('cut', [file])
+    await store.paste() // pasting into the same folder the item is in
+    expect(fileService.move).not.toHaveBeenCalled()
+    expect(store.clipboard).toBeNull()
+  })
+
+  it('paste keeps the clipboard and surfaces an error when a move fails (e.g. 403)', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    ;(fileService.listDirectory as any).mockResolvedValue([]) // destination d1 is empty
+    await store.openDirectory(dir)
+    ;(fileService.move as any).mockRejectedValueOnce({ status: 403 })
+    store.setClipboard('cut', [file])
+    await store.paste()
+    expect(store.clipboard).not.toBeNull() // not emptied on failure
+    expect(store.error).toBeTruthy()
+  })
+
+  // --- selection (batch operations) ---
+  it('toggleSelect / toggleSelectAll drive the selection getters', async () => {
+    const store = useFileStore()
+    await store.openRoot() // items = [dir, file]
+    store.toggleSelect('f1')
+    expect(store.selected.has('f1')).toBe(true)
+    expect(store.someSelected).toBe(true)
+    expect(store.allSelected).toBe(false)
+    store.toggleSelectAll() // selects all
+    expect(store.allSelected).toBe(true)
+    expect(store.selectedItems.map((i) => i.uid)).toEqual(['d1', 'f1'])
+    store.toggleSelectAll() // clears
+    expect(store.selected.size).toBe(0)
+  })
+
+  it('selection is cleared when the directory reloads', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    store.toggleSelect('f1')
+    await store.openDirectory(dir) // navigates → load() clears selection
+    expect(store.selected.size).toBe(0)
+  })
+
+  it('deleteSelected removes each selected item by type', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    store.toggleSelect('f1')
+    store.toggleSelect('d1')
+    await store.deleteSelected()
+    expect(fileService.removeFile).toHaveBeenCalledWith('f1')
+    expect(fileService.removeDirectory).toHaveBeenCalledWith('d1')
   })
 })

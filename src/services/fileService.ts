@@ -83,6 +83,18 @@ export const fileService = {
     await apiClient.post(`/v1/nodes/${uid}/rename`, { new_name: newName })
   },
 
+  // Move a node under a new parent directory (cut + paste). The backend enforces
+  // the ACL (delete on the source, write on the destination).
+  async move(uid: string, destinationParentUid: string): Promise<void> {
+    await apiClient.post(`/v1/nodes/${uid}/move`, { destination_parent_uid: destinationParentUid })
+  },
+
+  // Copy a node (tree) under a new parent directory (copy + paste). The backend
+  // enforces the ACL (read on the source, write on the destination).
+  async copy(uid: string, destinationParentUid: string): Promise<void> {
+    await apiClient.post(`/v1/nodes/${uid}/copy`, { destination_parent_uid: destinationParentUid })
+  },
+
   async stat(uid: string): Promise<NodeInfo> {
     const { data } = await apiClient.get<NodeInfo>(`/v1/nodes/${uid}`)
     return data

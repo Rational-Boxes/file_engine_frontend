@@ -42,7 +42,8 @@ export function decodePermissions(mask: number): PermBit[] {
 
 // File operations and the minimum access level that may attempt each. Coarse
 // UI gating; the backend still enforces the real ACL.
-export type FileAction = 'open' | 'download' | 'info' | 'rename' | 'delete'
+export type FileAction =
+  | 'open' | 'download' | 'info' | 'rename' | 'delete' | 'cut' | 'copy' | 'paste'
 
 const ACTION_MIN_LEVEL: Record<FileAction, AccessLevel> = {
   open: 'user',
@@ -50,6 +51,9 @@ const ACTION_MIN_LEVEL: Record<FileAction, AccessLevel> = {
   info: 'user',
   rename: 'editor',
   delete: 'editor',
+  copy: 'user', // copy only reads the source
+  cut: 'editor', // moving removes from the source
+  paste: 'editor', // writing into the target directory
 }
 
 const RANK: Record<AccessLevel, number> = { user: 1, editor: 2, admin: 3 }

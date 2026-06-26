@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest'
-import { formatSize, formatVersionTimestamp } from '@/utils/format'
+import { formatSize, formatVersionTimestamp, versionFilename } from '@/utils/format'
+
+describe('versionFilename', () => {
+  it('inserts the version id before the extension', () => {
+    expect(versionFilename('report.pdf', '20260626_164538')).toBe('report (20260626_164538).pdf')
+  })
+
+  it('handles names without an extension', () => {
+    expect(versionFilename('README', 'v2')).toBe('README (v2)')
+  })
+
+  it('handles a leading dot / no real extension', () => {
+    expect(versionFilename('.env', 'v1')).toBe('.env (v1)')
+  })
+
+  it('falls back to the version id when there is no name (never the blob UUID)', () => {
+    expect(versionFilename('', '20260626_164538')).toBe('20260626_164538')
+  })
+})
 
 describe('formatSize', () => {
   it('formats byte sizes', () => {

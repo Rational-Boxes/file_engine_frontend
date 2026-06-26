@@ -21,10 +21,48 @@
         >
           ↻ Reload
         </button>
+        <button
+          v-if="files.clipboard && canDo('paste', auth.accessLevel)"
+          class="btn"
+          :title="clipboardTitle"
+          @click="files.paste()"
+        >
+          Paste{{ files.clipboard.items.length > 1 ? ` (${files.clipboard.items.length})` : '' }}
+          <span class="clip-mode">{{ files.clipboard.mode === 'cut' ? '✂' : '⧉' }}</span>
+        </button>
+        <button
+          v-if="files.clipboard"
+          class="btn btn-ghost"
+          title="Clear clipboard"
+          @click="files.clearClipboard()"
+        >✕</button>
         <button v-if="canModify" class="btn" @click="newFolder">New folder</button>
         <button v-if="canModify" class="btn btn-primary" @click="fileInput?.click()">Upload</button>
         <input ref="fileInput" type="file" multiple hidden @change="onPick" />
       </div>
+    </div>
+
+    <div v-if="files.selected.size" class="selbar">
+      <span class="selcount">{{ files.selected.size }} selected</span>
+      <button
+        class="btn"
+        :disabled="!canDo('copy', auth.accessLevel)"
+        title="Copy selected"
+        @click="batchCopy"
+      >Copy</button>
+      <button
+        class="btn"
+        :disabled="!canDo('cut', auth.accessLevel)"
+        :title="canDo('cut', auth.accessLevel) ? 'Cut selected' : 'Requires editor access'"
+        @click="batchCut"
+      >Cut</button>
+      <button
+        class="btn btn-danger"
+        :disabled="!canDo('delete', auth.accessLevel)"
+        :title="canDo('delete', auth.accessLevel) ? 'Delete selected' : 'Requires editor access'"
+        @click="batchDelete"
+      >Delete</button>
+      <button class="btn btn-ghost" title="Clear selection" @click="files.clearSelection()">Clear</button>
     </div>
 
     <p v-if="files.error" class="banner error">{{ files.error }}</p>
@@ -38,6 +76,15 @@
       <table v-else class="files">
         <thead>
           <tr>
+            <th class="cb-col">
+              <input
+                type="checkbox"
+                title="Select all"
+                :checked="files.allSelected"
+                :indeterminate.prop="files.someSelected"
+                @change="files.toggleSelectAll()"
+              />
+            </th>
             <th class="sortable" :aria-sort="ariaSort('name')" @click="sortBy('name')">
               Name <span class="caret">{{ caret('name') }}</span>
             </th>
@@ -48,7 +95,19 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in displayItems" :key="item.uid" @dblclick="open(item)">
+          <tr
+            v-for="item in displayItems"
+            :key="item.uid"
+            :class="{ sel: files.selected.has(item.uid), cut: isCut(item) }"
+            @dblclick="open(item)"
+          >
+            <td class="cb-col" @click.stop>
+              <input
+                type="checkbox"
+                :checked="files.selected.has(item.uid)"
+                @change="files.toggleSelect(item.uid)"
+              />
+            </td>
             <td class="name" @click="open(item)">
               <FileThumbnail :item="item" />{{ item.name }}
               <button
@@ -230,10 +289,19 @@ const menuFor = (item: FileItem): KebabItem[] => {
   if (!item.isDirectory && item.hasRenditions)
     m.push({ action: 'renditions', label: `Renditions (${item.renditionCount})` })
   if (canDo('rename', auth.accessLevel)) m.push({ action: 'rename', label: 'Rename' })
+  if (canDo('copy', auth.accessLevel)) m.push({ action: 'copy', label: 'Copy' })
+  if (canDo('cut', auth.accessLevel)) m.push({ action: 'cut', label: 'Cut' })
   if (canDo('delete', auth.accessLevel)) m.push({ action: 'delete', label: 'Delete', danger: true })
   m.push({ action: 'info', label: 'Info' })
   return m
 }
+
+// Clipboard tooltip for the Paste button.
+const clipboardTitle = computed(() => {
+  const c = files.clipboard
+  if (!c) return ''
+  return `${c.mode === 'cut' ? 'Move' : 'Copy'} here: ${c.items.map((i) => i.name).join(', ')}`
+})
 
 const open = (item: FileItem) => {
   // Directories navigate; clicking a file opens its details (download stays on
@@ -249,6 +317,8 @@ const onAction = (action: string, item: FileItem) => {
     case 'info': return files.openDetails(item)
     case 'renditions': return files.openRenditions(item)
     case 'rename': return rename(item)
+    case 'copy': return files.setClipboard('copy', [item])
+    case 'cut': return files.setClipboard('cut', [item])
     case 'delete': return remove(item)
   }
 }
@@ -265,6 +335,24 @@ const rename = async (item: FileItem) => {
 
 const remove = async (item: FileItem) => {
   if (confirm(`Delete "${item.name}"?`)) await files.deleteItem(item)
+}
+
+// Dim rows whose items are staged for a move (cut).
+const isCut = (item: FileItem) =>
+  files.clipboard?.mode === 'cut' && files.clipboard.items.some((i) => i.uid === item.uid)
+
+// Batch operations over the checkbox selection.
+const batchCopy = () => {
+  files.setClipboard('copy', files.selectedItems)
+  files.clearSelection()
+}
+const batchCut = () => {
+  files.setClipboard('cut', files.selectedItems)
+  files.clearSelection()
+}
+const batchDelete = async () => {
+  const n = files.selected.size
+  if (n && confirm(`Delete ${n} item${n > 1 ? 's' : ''}?`)) await files.deleteSelected()
 }
 
 const uploadFiles = (list: FileList | null) => {
@@ -392,6 +480,62 @@ onDeactivated(() => {
 
 .btn-primary:hover {
   background: var(--primary-hover);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.btn-danger {
+  border-color: #fecaca;
+  color: var(--danger);
+}
+
+.btn-danger:hover {
+  background: #fef2f2;
+}
+
+.clip-mode {
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+/* checkbox column */
+.cb-col {
+  width: 32px;
+  text-align: center;
+}
+
+.files tr.sel {
+  background: #eff6ff;
+}
+
+.files tr.cut {
+  opacity: 0.55;
+}
+
+/* batch-operation bar */
+.selbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.selcount {
+  font-weight: 600;
+  font-size: 13px;
+  margin-right: 4px;
 }
 
 .link {

@@ -27,4 +27,12 @@ describe('access-level → action gating', () => {
     expect(canDo('rename', 'editor')).toBe(true)
     expect(canDo('delete', 'admin')).toBe(true)
   })
+
+  it('lets everyone copy (read-only), but gates cut/paste behind editor+', () => {
+    expect(canDo('copy', 'user')).toBe(true) // copy only reads the source
+    expect(canDo('cut', 'user')).toBe(false)
+    expect(canDo('paste', 'user')).toBe(false)
+    expect(canDo('cut', 'editor')).toBe(true)
+    expect(canDo('paste', 'editor')).toBe(true)
+  })
 })

@@ -74,6 +74,7 @@
       <FileVersions
         v-if="item && !item.isDirectory"
         :uid="item.uid"
+        :name="item.name"
         :current="info?.version"
         :can-manage="canEdit"
         @changed="loadAll(item.uid)"

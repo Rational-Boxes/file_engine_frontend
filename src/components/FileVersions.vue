@@ -39,9 +39,9 @@
 import { ref, watch } from 'vue'
 import { fileService } from '@/services/fileService'
 import { errorMessage } from '@/services/apiClient'
-import { formatVersionTimestamp } from '@/utils/format'
+import { formatVersionTimestamp, versionFilename } from '@/utils/format'
 
-const props = defineProps<{ uid: string; current?: string; canManage?: boolean }>()
+const props = defineProps<{ uid: string; name?: string; current?: string; canManage?: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const versions = ref<string[]>([])
@@ -75,8 +75,12 @@ async function download(ts: string) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = ts
+    a.download = versionFilename(props.name ?? '', ts)
+    // Must be in the DOM for the `download` filename to be honored (otherwise the
+    // browser falls back to the blob-URL's UUID).
+    document.body.appendChild(a)
     a.click()
+    a.remove()
     URL.revokeObjectURL(url)
   } catch (e) {
     error.value = errorMessage(e, 'Download failed')

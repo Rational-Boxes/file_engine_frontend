@@ -61,6 +61,14 @@ describe('fileService (REST)', () => {
     expect(post).toHaveBeenCalledWith('/v1/nodes/f1/rename', { new_name: 'b.txt' })
   })
 
+  it('moves and copies via /nodes/{uid}/move|copy with destination_parent_uid', async () => {
+    post.mockResolvedValue({ data: {} })
+    await fileService.move('f1', 'd2')
+    expect(post).toHaveBeenCalledWith('/v1/nodes/f1/move', { destination_parent_uid: 'd2' })
+    await fileService.copy('f1', 'd2')
+    expect(post).toHaveBeenCalledWith('/v1/nodes/f1/copy', { destination_parent_uid: 'd2' })
+  })
+
   it('deletes files and directories on the right routes', async () => {
     del.mockResolvedValue({ data: {} })
     await fileService.removeFile('f1')

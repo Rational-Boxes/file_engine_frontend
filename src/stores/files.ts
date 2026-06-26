@@ -24,6 +24,11 @@ interface FilesState {
   renditions: FileItem[]
   renditionsOpen: boolean
   renditionsLoading: boolean
+  // Cut/copy clipboard, pasted into the current directory. Persists across
+  // navigation so you can cut here and paste in another folder.
+  clipboard: { mode: 'cut' | 'copy'; items: FileItem[] } | null
+  // Checkbox selection (uids) for batch operations, scoped to the current dir.
+  selected: Set<string>
 }
 
 const ROOT_CRUMB: Crumb = { uid: ROOT_UID, name: 'Home' }
@@ -42,7 +47,18 @@ export const useFileStore = defineStore('files', {
     renditions: [],
     renditionsOpen: false,
     renditionsLoading: false,
+    clipboard: null,
+    selected: new Set<string>(),
   }),
+
+  getters: {
+    // The selected items in the current listing.
+    selectedItems: (state): FileItem[] => state.items.filter((i) => state.selected.has(i.uid)),
+    allSelected: (state): boolean =>
+      state.items.length > 0 && state.selected.size === state.items.length,
+    someSelected: (state): boolean =>
+      state.selected.size > 0 && state.selected.size < state.items.length,
+  },
 
   actions: {
     async load() {
@@ -52,6 +68,7 @@ export const useFileStore = defineStore('files', {
       this.detailItem = null
       this.renditionsOpen = false
       this.renditionsFor = null
+      this.selected.clear() // selection is per-directory
       try {
         this.items = await fileService.listDirectory(this.currentUid)
       } catch (e) {
@@ -184,6 +201,71 @@ export const useFileStore = defineStore('files', {
       } catch (e) {
         this.error = errorMessage(e, 'Failed to rename')
       }
+    },
+
+    // --- selection (batch operations) ---
+    toggleSelect(uid: string) {
+      if (this.selected.has(uid)) this.selected.delete(uid)
+      else this.selected.add(uid)
+    },
+
+    // Select all if not all selected, else clear (header checkbox).
+    toggleSelectAll() {
+      if (this.allSelected) this.selected.clear()
+      else this.selected = new Set(this.items.map((i) => i.uid))
+    },
+
+    clearSelection() {
+      this.selected.clear()
+    },
+
+    // Delete the selected items (best-effort; surfaces the last error).
+    async deleteSelected() {
+      const targets = this.selectedItems
+      let lastError: string | null = null
+      for (const it of targets) {
+        try {
+          if (it.isDirectory) await fileService.removeDirectory(it.uid)
+          else await fileService.removeFile(it.uid)
+        } catch (e) {
+          lastError = errorMessage(e, 'Failed to delete some items')
+        }
+      }
+      await this.load() // clears selection + error, then re-surface any error
+      if (lastError) this.error = lastError
+    },
+
+    // Stage items for a move (cut) or copy; paste() applies them in the current
+    // directory. The backend enforces the real ACL (delete-on-source for a move,
+    // read-on-source, and write-on-destination); a denied op surfaces as an error.
+    setClipboard(mode: 'cut' | 'copy', items: FileItem[]) {
+      this.clipboard = { mode, items: [...items] }
+    },
+
+    clearClipboard() {
+      this.clipboard = null
+    },
+
+    async paste() {
+      if (!this.clipboard) return
+      const { mode, items } = this.clipboard
+      const dest = this.currentUid
+      const here = new Set(this.items.map((i) => i.uid)) // already in this folder
+      let failed = 0
+      let lastError: string | null = null
+      for (const it of items) {
+        if (mode === 'cut' && here.has(it.uid)) continue // no-op: already here
+        try {
+          if (mode === 'cut') await fileService.move(it.uid, dest)
+          else await fileService.copy(it.uid, dest)
+        } catch (e) {
+          failed++
+          lastError = errorMessage(e, mode === 'cut' ? 'Failed to move' : 'Failed to copy')
+        }
+      }
+      if (failed === 0) this.clipboard = null // empty the clipboard after a clean paste
+      await this.load() // refresh (also clears error), so set any error after
+      if (lastError) this.error = lastError
     },
 
     async downloadItem(item: FileItem) {
