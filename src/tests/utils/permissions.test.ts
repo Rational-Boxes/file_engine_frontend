@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { canDo, decodePermissions } from '@/utils/permissions'
+import { canDo, decodePermissions, PERMS, PERM_BITS } from '@/utils/permissions'
 
 describe('decodePermissions (bitmask → permission bits)', () => {
   it('decodes Read+Write+Manage', () => {
@@ -9,6 +9,22 @@ describe('decodePermissions (bitmask → permission bits)', () => {
   it('decodes a single bit and an empty mask', () => {
     expect(decodePermissions(0x001).map((p) => p.key)).toEqual(['x'])
     expect(decodePermissions(0)).toEqual([])
+  })
+
+  it('decodes the CULL_VERSIONS bit (0x2000) the core added', () => {
+    expect(decodePermissions(0x2000).map((p) => p.key)).toEqual(['CULL_VERSIONS'])
+    // co-exists with the other version bits
+    expect(decodePermissions(0x2000 | 0x400).map((p) => p.key)).toEqual(['r', 'CULL_VERSIONS'])
+  })
+})
+
+describe('grantable permission vocabulary (PERMS)', () => {
+  it('exposes the full backend permission set, including CULL_VERSIONS', () => {
+    const keys = PERMS.map((p) => p.key)
+    expect(keys).toEqual(PERM_BITS.map((p) => p.key)) // PERMS derives from PERM_BITS
+    expect(keys).toContain('CULL_VERSIONS')
+    // every grantable key is decodable back from its bit
+    expect(keys).toContain('i') // ACL_INHERIT now grantable, not just decodable
   })
 })
 
