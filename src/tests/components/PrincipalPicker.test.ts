@@ -55,6 +55,34 @@ describe('PrincipalPicker', () => {
     expect(searchPrincipals).toHaveBeenCalledWith('k', { types: ['claim'], limit: 3 })
   })
 
+  it('offers the synthetic "Everyone" option when the query matches an alias', async () => {
+    searchPrincipals.mockResolvedValue({ users: [], roles: [], claims: [] })
+    const wrapper = mountPicker({ debounceMs: 0 })
+
+    await wrapper.find('input').setValue('every')
+    vi.advanceTimersByTime(0)
+    await flushPromises()
+
+    const items = wrapper.findAll('.pp-item')
+    expect(items).toHaveLength(1)
+    expect(items[0].text()).toContain('Everyone')
+
+    await items[0].trigger('mousedown')
+    expect(wrapper.emitted('select')?.[0]?.[0]).toEqual({ kind: 'everyone', value: 'everyone' })
+  })
+
+  it('does not inject Everyone for a single-letter query', async () => {
+    searchPrincipals.mockResolvedValue({ users: ['ed'], roles: [], claims: [] })
+    const wrapper = mountPicker({ debounceMs: 0 })
+    await wrapper.find('input').setValue('e')
+    vi.advanceTimersByTime(0)
+    await flushPromises()
+    const items = wrapper.findAll('.pp-item')
+    expect(items).toHaveLength(1)
+    expect(items[0].text()).toContain('ed')
+    expect(items[0].text()).not.toContain('Everyone')
+  })
+
   it('clearing the query cancels the pending search', async () => {
     const wrapper = mountPicker({ debounceMs: 50 })
     await wrapper.find('input').setValue('abc')

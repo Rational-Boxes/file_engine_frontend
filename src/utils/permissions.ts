@@ -16,11 +16,16 @@ export interface PermBit {
   key: string
   label: string
   bit: number
+  // Whether this bit is offered in the editor's grant dropdown. Some bits are
+  // decode-only — e.g. EXECUTE is kept for compatibility but is not a meaningful
+  // grant in this filesystem, so it still displays on stored entries but can't
+  // be newly granted. Defaults to true.
+  grantable?: boolean
 }
 export const PERM_BITS: PermBit[] = [
   { key: 'r', label: 'Read', bit: 0x400 },
   { key: 'w', label: 'Write', bit: 0x200 },
-  { key: 'x', label: 'Execute', bit: 0x001 },
+  { key: 'x', label: 'Execute', bit: 0x001, grantable: false }, // compat-only; not relevant to grant
   { key: 'd', label: 'Delete', bit: 0x100 },
   { key: 'l', label: 'List deleted', bit: 0x080 },
   { key: 'u', label: 'Undelete', bit: 0x040 },
@@ -34,12 +39,11 @@ export const PERM_BITS: PermBit[] = [
   { key: 'CULL_VERSIONS', label: 'Cull versions (destroys data)', bit: 0x2000 },
 ]
 
-// The grantable permissions shown in the editor's "add" dropdown — the full set
-// the backend manages, derived from PERM_BITS so the two never drift.
-export const PERMS: { key: string; label: string }[] = PERM_BITS.map(({ key, label }) => ({
-  key,
-  label,
-}))
+// The grantable permissions shown in the editor's "add" dropdown — derived from
+// PERM_BITS (minus decode-only bits) so the list never drifts from the decoder.
+export const PERMS: { key: string; label: string }[] = PERM_BITS.filter(
+  (p) => p.grantable !== false,
+).map(({ key, label }) => ({ key, label }))
 
 // The set bits of a permission bitmask, in display order.
 export function decodePermissions(mask: number): PermBit[] {
