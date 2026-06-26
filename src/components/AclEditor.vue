@@ -291,10 +291,14 @@ async function revoke(e: AclEntry, permKey: string) {
 
 .acl-add-row {
   display: flex;
+  flex-wrap: wrap; /* keep the Grant button on-screen even if the selects are wide */
+  align-items: center;
   gap: 6px;
 }
 
 .acl-add-row select {
+  flex: 1 1 120px; /* share the row and shrink rather than overflow */
+  min-width: 0; /* allow shrinking below content width (long option labels) */
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -303,6 +307,7 @@ async function revoke(e: AclEntry, permKey: string) {
 }
 
 .btn {
+  flex: 0 0 auto; /* never shrink or get pushed off the row edge */
   padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
