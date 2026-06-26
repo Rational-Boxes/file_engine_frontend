@@ -19,12 +19,15 @@ describe('decodePermissions (bitmask → permission bits)', () => {
 })
 
 describe('grantable permission vocabulary (PERMS)', () => {
-  it('exposes the full backend permission set, including CULL_VERSIONS', () => {
+  it('exposes the grantable set (CULL_VERSIONS in, EXECUTE decode-only)', () => {
     const keys = PERMS.map((p) => p.key)
-    expect(keys).toEqual(PERM_BITS.map((p) => p.key)) // PERMS derives from PERM_BITS
     expect(keys).toContain('CULL_VERSIONS')
-    // every grantable key is decodable back from its bit
-    expect(keys).toContain('i') // ACL_INHERIT now grantable, not just decodable
+    expect(keys).toContain('i') // ACL_INHERIT is grantable
+    expect(keys).not.toContain('x') // EXECUTE is compat-only, not grantable
+    // PERMS is exactly the grantable subset of PERM_BITS
+    expect(keys).toEqual(PERM_BITS.filter((p) => p.grantable !== false).map((p) => p.key))
+    // ...but EXECUTE still decodes so stored entries display it
+    expect(decodePermissions(0x001).map((p) => p.key)).toEqual(['x'])
   })
 })
 

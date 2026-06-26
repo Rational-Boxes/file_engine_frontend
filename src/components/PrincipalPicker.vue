@@ -17,9 +17,9 @@
       <ul v-if="menuVisible" class="pp-menu" :style="menuStyle">
         <li v-if="loading" class="pp-status">Searching…</li>
         <li v-else-if="error" class="pp-status pp-error">{{ error }}</li>
-        <li v-else-if="!results.length" class="pp-status">No matches</li>
+        <li v-else-if="!displayResults.length" class="pp-status">No matches</li>
         <li
-          v-for="p in results"
+          v-for="p in displayResults"
           :key="p.kind + ':' + p.value"
           class="pp-item"
           @mousedown.prevent="choose(p)"
@@ -60,12 +60,31 @@ const menuStyle = ref<Record<string, string>>({})
 let timer: ReturnType<typeof setTimeout> | undefined
 let seq = 0 // guards against out-of-order responses
 
+// The "everyone" (OTHER) catch-all is not a searchable directory entity, so it
+// is offered synthetically whenever the typed text is a prefix of one of these
+// aliases. Selecting it grants/denies to every user.
+const EVERYONE: Principal = { kind: 'everyone', value: 'everyone' }
+const EVERYONE_ALIASES = ['everyone', 'everybody', 'all', 'public', 'other']
+function matchesEveryone(q: string): boolean {
+  const s = q.trim().toLowerCase()
+  if (s.length < 2) return false // keep single-letter searches noise-free
+  return EVERYONE_ALIASES.some((a) => a.startsWith(s))
+}
+
+// Backend matches plus the synthetic Everyone option (pinned first when typed).
+const displayResults = computed<Principal[]>(() =>
+  matchesEveryone(query.value) ? [EVERYONE, ...results.value] : results.value,
+)
+
 // The dropdown is shown whenever the field is focused and there is something to
 // show (a spinner, an error, results, or a non-empty query awaiting results).
 const menuVisible = computed(
   () =>
     open.value &&
-    (loading.value || !!error.value || results.value.length > 0 || query.value.trim().length > 0),
+    (loading.value ||
+      !!error.value ||
+      displayResults.value.length > 0 ||
+      query.value.trim().length > 0),
 )
 
 // Anchor the teleported menu under the input using viewport coordinates.
@@ -144,7 +163,7 @@ function close() {
 }
 
 function kindLabel(k: PrincipalKind): string {
-  return k === 'user' ? 'User' : k === 'role' ? 'Role' : 'Claim'
+  return k === 'user' ? 'User' : k === 'role' ? 'Role' : k === 'claim' ? 'Claim' : 'Everyone'
 }
 </script>
 
@@ -225,6 +244,10 @@ function kindLabel(k: PrincipalKind): string {
 
 .pp-kind-claim {
   background: #0f766e;
+}
+
+.pp-kind-everyone {
+  background: #b45309;
 }
 
 .pp-value {

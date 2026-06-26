@@ -103,7 +103,7 @@ function kindOf(e: AclEntry): PrincipalKind {
 }
 
 function kindLabel(k: PrincipalKind): string {
-  return k === 'user' ? 'User' : k === 'role' ? 'Role' : 'Claim'
+  return k === 'user' ? 'User' : k === 'role' ? 'Role' : k === 'claim' ? 'Claim' : 'Everyone'
 }
 
 function decode(mask: number) {
@@ -219,6 +219,10 @@ async function revoke(e: AclEntry, permKey: string) {
 
 .acl-kind-claim {
   background: #0f766e;
+}
+
+.acl-kind-everyone {
+  background: #b45309;
 }
 
 .acl-eff {
