@@ -55,6 +55,15 @@ export const fileService = {
     return (data.entries || []).map(toItem)
   },
 
+  // The uid of a non-directory child of `parentUid` named `name`, or null. Used
+  // so re-uploading a file adds a new version to the existing one instead of
+  // creating a duplicate (matching WebDAV's replace-on-path semantics).
+  async findChildByName(parentUid: string, name: string): Promise<string | null> {
+    const items = await this.listDirectory(parentUid)
+    const match = items.find((i) => !i.isDirectory && i.name === name)
+    return match ? match.uid : null
+  },
+
   // List a file's hidden renditions (alternate-format children) on demand.
   async listRenditions(uid: string): Promise<FileItem[]> {
     const { data } = await apiClient.get<{ entries: DirEntry[] }>(`/v1/files/${uid}/renditions`)

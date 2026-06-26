@@ -86,6 +86,16 @@ async function main() {
   assert(dupNames.includes('dup.txt') && dupNames.includes('dup (1).txt'),
     'copy into the same folder yields "dup (1).txt" (no duplicate name)')
 
+  console.log('external add (upload) of a same-named file adds a NEW VERSION (contrast: copy renames)')
+  const uf = await touch(work, 'upload.txt'); await put(uf, 'u1')
+  // the upload service resolves the existing file by name, then PUTs a new version
+  const existing = (await listDir(work)).find((e) => e.name === 'upload.txt' && e.type !== 'directory')
+  assert(existing && existing.uid === uf, 'find-by-name resolves the existing file')
+  await put(existing.uid, 'u2')
+  assert((await listDir(work)).filter((e) => e.name === 'upload.txt').length === 1, 're-upload does not duplicate')
+  assert((await versions(existing.uid)).length === 2, 're-upload adds a new version')
+  assert((await content(existing.uid)) === 'u2', 're-upload updates the current content')
+
   await rm(work, true) // cleanup
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)

@@ -69,6 +69,16 @@ describe('fileService (REST)', () => {
     expect(post).toHaveBeenCalledWith('/v1/nodes/f1/copy', { destination_parent_uid: 'd2' })
   })
 
+  it('findChildByName matches a non-directory child by name (else null)', async () => {
+    get.mockResolvedValue({ data: { entries: [
+      { uid: 'd1', name: 'docs', type: 'directory' },
+      { uid: 'f1', name: 'a.txt', type: 'file' },
+    ] } })
+    expect(await fileService.findChildByName('p', 'a.txt')).toBe('f1')
+    expect(await fileService.findChildByName('p', 'docs')).toBeNull() // a directory, not a file
+    expect(await fileService.findChildByName('p', 'missing')).toBeNull()
+  })
+
   it('deletes files and directories on the right routes', async () => {
     del.mockResolvedValue({ data: {} })
     await fileService.removeFile('f1')
