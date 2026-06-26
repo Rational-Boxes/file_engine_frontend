@@ -211,7 +211,9 @@ async function removeMeta(key: string) {
   top: 0;
   right: 0;
   height: 100vh;
-  width: 340px;
+  /* Wide enough for the ACL editor's permission/effect/grant row; capped so it
+     stays usable on small viewports. */
+  width: min(440px, 92vw);
   background: #fff;
   border-left: 1px solid var(--border);
   box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
