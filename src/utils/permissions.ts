@@ -4,18 +4,14 @@
 
 export type AccessLevel = 'user' | 'editor' | 'admin'
 
-// The permission letters the bridge understands (subset shown in the UI).
-export const PERMS: { key: string; label: string }[] = [
-  { key: 'r', label: 'Read' },
-  { key: 'w', label: 'Write' },
-  { key: 'x', label: 'Execute' },
-  { key: 'd', label: 'Delete' },
-  { key: 'm', label: 'Manage ACL' },
-]
-
 // Full permission bit table — mirrors the core Permission enum (acl_manager.h).
 // An ACL entry's `permissions` field (GET /v1/nodes/{uid}/acls) is a bitmask of
-// these, so the editor can decode a stored entry into its constituent letters.
+// these, so the editor can decode a stored entry into its constituent bits.
+//
+// `key` is the token sent to the bridge for grant/revoke. The bridge accepts a
+// single-letter alias OR the full enum name (coercePermission), so CULL_VERSIONS
+// — which has no letter alias — uses its enum name as the key and still works
+// for both grant and revoke. New bits go at the END so decode order is stable.
 export interface PermBit {
   key: string
   label: string
@@ -33,7 +29,17 @@ export const PERM_BITS: PermBit[] = [
   { key: 's', label: 'Restore version', bit: 0x008 },
   { key: 'm', label: 'Manage ACL', bit: 0x800 },
   { key: 'i', label: 'Inherit', bit: 0x1000 },
+  // Destroy-data op: permanently purges old versions. Never granted by default;
+  // must be granted explicitly (core requires it for PurgeOldVersions).
+  { key: 'CULL_VERSIONS', label: 'Cull versions (destroys data)', bit: 0x2000 },
 ]
+
+// The grantable permissions shown in the editor's "add" dropdown — the full set
+// the backend manages, derived from PERM_BITS so the two never drift.
+export const PERMS: { key: string; label: string }[] = PERM_BITS.map(({ key, label }) => ({
+  key,
+  label,
+}))
 
 // The set bits of a permission bitmask, in display order.
 export function decodePermissions(mask: number): PermBit[] {

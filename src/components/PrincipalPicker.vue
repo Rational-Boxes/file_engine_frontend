@@ -1,33 +1,39 @@
 <template>
   <div class="principal-picker">
     <input
+      ref="inputEl"
       class="pp-input"
       type="text"
       :placeholder="placeholder"
       v-model="query"
       autocomplete="off"
-      @focus="open = true"
+      @focus="onFocus"
       @keydown.esc="close"
     />
-    <ul v-if="open && (loading || error || results.length || query.trim())" class="pp-menu">
-      <li v-if="loading" class="pp-status">Searching…</li>
-      <li v-else-if="error" class="pp-status pp-error">{{ error }}</li>
-      <li v-else-if="!results.length" class="pp-status">No matches</li>
-      <li
-        v-for="p in results"
-        :key="p.kind + ':' + p.value"
-        class="pp-item"
-        @mousedown.prevent="choose(p)"
-      >
-        <span class="pp-kind" :class="'pp-kind-' + p.kind">{{ kindLabel(p.kind) }}</span>
-        <span class="pp-value">{{ p.value }}</span>
-      </li>
-    </ul>
+    <!-- Teleported to <body> and fixed-positioned so the suggestions escape the
+         details drawer's `overflow: auto` pane (which would otherwise clip them);
+         z-index keeps them above adjacent chrome. -->
+    <Teleport to="body">
+      <ul v-if="menuVisible" class="pp-menu" :style="menuStyle">
+        <li v-if="loading" class="pp-status">Searching…</li>
+        <li v-else-if="error" class="pp-status pp-error">{{ error }}</li>
+        <li v-else-if="!results.length" class="pp-status">No matches</li>
+        <li
+          v-for="p in results"
+          :key="p.kind + ':' + p.value"
+          class="pp-item"
+          @mousedown.prevent="choose(p)"
+        >
+          <span class="pp-kind" :class="'pp-kind-' + p.kind">{{ kindLabel(p.kind) }}</span>
+          <span class="pp-value">{{ p.value }}</span>
+        </li>
+      </ul>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { aclService, suggestionsToPrincipals, type PrincipalType } from '@/services/aclService'
 import { errorMessage } from '@/services/apiClient'
 import type { Principal, PrincipalKind } from '@/types'
@@ -49,8 +55,52 @@ const results = ref<Principal[]>([])
 const loading = ref(false)
 const error = ref('')
 const open = ref(false)
+const inputEl = ref<HTMLInputElement | null>(null)
+const menuStyle = ref<Record<string, string>>({})
 let timer: ReturnType<typeof setTimeout> | undefined
 let seq = 0 // guards against out-of-order responses
+
+// The dropdown is shown whenever the field is focused and there is something to
+// show (a spinner, an error, results, or a non-empty query awaiting results).
+const menuVisible = computed(
+  () =>
+    open.value &&
+    (loading.value || !!error.value || results.value.length > 0 || query.value.trim().length > 0),
+)
+
+// Anchor the teleported menu under the input using viewport coordinates.
+function positionMenu() {
+  const el = inputEl.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  menuStyle.value = { top: `${r.bottom}px`, left: `${r.left}px`, width: `${r.width}px` }
+}
+
+function onFocus() {
+  open.value = true
+  void nextTick(positionMenu)
+}
+
+// Keep the menu glued to the input as the page scrolls or resizes while open.
+function onViewportChange() {
+  if (menuVisible.value) positionMenu()
+}
+
+watch(menuVisible, (v) => {
+  if (v) void nextTick(positionMenu)
+})
+watch(results, () => {
+  if (menuVisible.value) void nextTick(positionMenu)
+})
+
+onMounted(() => {
+  window.addEventListener('scroll', onViewportChange, true) // capture: catch scroll in any ancestor
+  window.addEventListener('resize', onViewportChange)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onViewportChange, true)
+  window.removeEventListener('resize', onViewportChange)
+})
 
 watch(query, (q) => {
   if (timer) clearTimeout(timer)
@@ -114,11 +164,12 @@ function kindLabel(k: PrincipalKind): string {
 }
 
 .pp-menu {
-  position: absolute;
-  z-index: 20;
-  left: 0;
-  right: 0;
-  margin: 4px 0 0;
+  /* Fixed + teleported to <body>: top/left/width are set inline from the input's
+     bounding rect, so the menu escapes any `overflow` ancestor (e.g. the details
+     drawer's scrollable pane). Popover-tier z-index keeps it above the chrome. */
+  position: fixed;
+  z-index: 1000;
+  margin-top: 4px;
   padding: 4px;
   list-style: none;
   max-height: 240px;

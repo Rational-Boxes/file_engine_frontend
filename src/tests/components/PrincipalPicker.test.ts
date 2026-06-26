@@ -11,6 +11,11 @@ vi.mock('@/services/aclService', async (importOriginal) => {
 
 import PrincipalPicker from '@/components/PrincipalPicker.vue'
 
+// The suggestions menu is wrapped in <Teleport to="body">; stub teleport so it
+// renders inline and the wrapper queries below resolve against it.
+const mountPicker = (props: Record<string, unknown>) =>
+  mount(PrincipalPicker, { props, global: { stubs: { teleport: true } } })
+
 describe('PrincipalPicker', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -22,7 +27,7 @@ describe('PrincipalPicker', () => {
 
   it('debounces, searches, renders typed results, and emits the chosen principal', async () => {
     searchPrincipals.mockResolvedValue({ users: ['alice'], roles: ['editors'], claims: ['dept=eng'] })
-    const wrapper = mount(PrincipalPicker, { props: { debounceMs: 50 } })
+    const wrapper = mountPicker({ debounceMs: 50 })
 
     await wrapper.find('input').setValue('e')
     expect(searchPrincipals).not.toHaveBeenCalled() // debounced
@@ -43,9 +48,7 @@ describe('PrincipalPicker', () => {
 
   it('forwards a restricted type filter and limit', async () => {
     searchPrincipals.mockResolvedValue({ users: [], roles: [], claims: ['k=v'] })
-    const wrapper = mount(PrincipalPicker, {
-      props: { types: ['claim'], limit: 3, debounceMs: 0 },
-    })
+    const wrapper = mountPicker({ types: ['claim'], limit: 3, debounceMs: 0 })
     await wrapper.find('input').setValue('k')
     vi.advanceTimersByTime(0)
     await flushPromises()
@@ -53,7 +56,7 @@ describe('PrincipalPicker', () => {
   })
 
   it('clearing the query cancels the pending search', async () => {
-    const wrapper = mount(PrincipalPicker, { props: { debounceMs: 50 } })
+    const wrapper = mountPicker({ debounceMs: 50 })
     await wrapper.find('input').setValue('abc')
     await wrapper.find('input').setValue('')
     vi.advanceTimersByTime(100)
