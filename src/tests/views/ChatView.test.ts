@@ -69,6 +69,42 @@ describe('ChatView', () => {
     })
   })
 
+  it('sends the web_search flag when the Web toggle is on', async () => {
+    const w = mountView()
+    await w.find('.web-toggle input').setValue(true)
+    await w.find('input').setValue('latest news?')
+    await w.find('form').trigger('submit')
+    expect(sendMock).toHaveBeenCalledWith('latest news?', { history: [], webSearch: true })
+  })
+
+  it('shows a searching indicator and renders web citations as external links', async () => {
+    const w = mountView()
+    await w.find('input').setValue('q')
+    await w.find('form').trigger('submit')
+
+    handlers.onToolCall?.('web_search', { query: 'q' })
+    await flushPromises()
+    expect(w.find('.searching').exists()).toBe(true)
+
+    handlers.onToolResult?.('web_search')
+    handlers.onToken?.('Per the web…')
+    handlers.onCitations?.([
+      { kind: 'doc', fileUid: 'report.md', marker: 1 },
+      { kind: 'web', url: 'https://example.com/x', title: 'Example', marker: 2 },
+    ])
+    handlers.onDone?.()
+    await flushPromises()
+
+    expect(w.find('.searching').exists()).toBe(false)
+    const link = w.find('a.cite-web')
+    expect(link.exists()).toBe(true)
+    expect(link.attributes('href')).toBe('https://example.com/x')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.text()).toContain('[2] example.com')
+    // the document citation still renders as a preview button
+    expect(w.find('button.cite').text()).toContain('[1] report.md')
+  })
+
   it('shows an error and re-enables input on stream error', async () => {
     const w = mountView()
     await w.find('input').setValue('q')

@@ -6,10 +6,37 @@ describe('parseChatEvent', () => {
     expect(parseChatEvent({ type: 'token', text: 'hi' })).toEqual({ type: 'token', text: 'hi' })
     expect(parseChatEvent({ type: 'citations', citations: [{ file_uid: 'f1', marker: 1 }] })).toEqual({
       type: 'citations',
-      citations: [{ fileUid: 'f1', marker: 1 }],
+      citations: [{ kind: 'doc', fileUid: 'f1', marker: 1 }],
     })
     expect(parseChatEvent({ type: 'done' })).toEqual({ type: 'done' })
     expect(parseChatEvent({ type: 'error', error: 'boom' })).toEqual({ type: 'error', error: 'boom' })
+  })
+
+  it('parses web citations and tool events', () => {
+    expect(
+      parseChatEvent({
+        type: 'citations',
+        citations: [
+          { file_uid: 'f1', marker: 1 },
+          { kind: 'web', url: 'https://example.com/a', title: 'A', marker: 2 },
+        ],
+      }),
+    ).toEqual({
+      type: 'citations',
+      citations: [
+        { kind: 'doc', fileUid: 'f1', marker: 1 },
+        { kind: 'web', url: 'https://example.com/a', title: 'A', marker: 2 },
+      ],
+    })
+    expect(parseChatEvent({ type: 'tool_call', name: 'web_search', args: { query: 'x' } })).toEqual({
+      type: 'tool_call',
+      name: 'web_search',
+      args: { query: 'x' },
+    })
+    expect(parseChatEvent({ type: 'tool_result', name: 'web_search' })).toEqual({
+      type: 'tool_result',
+      name: 'web_search',
+    })
   })
 
   it('ignores unknown / malformed messages', () => {
@@ -77,9 +104,24 @@ describe('ChatSession', () => {
     ws.emit({ type: 'citations', citations: [{ file_uid: 'f1', marker: 1 }] })
     ws.emit({ type: 'done' })
     expect(tok.mock.calls.map((c) => c[0])).toEqual(['Hello ', 'world'])
-    expect(cites).toHaveBeenCalledWith([{ fileUid: 'f1', marker: 1 }])
+    expect(cites).toHaveBeenCalledWith([{ kind: 'doc', fileUid: 'f1', marker: 1 }])
     expect(done).toHaveBeenCalledTimes(1)
     expect(err).not.toHaveBeenCalled()
+  })
+
+  it('dispatches tool_call / tool_result and sends the web_search flag', () => {
+    const ws = new FakeWS()
+    const onToolCall = vi.fn()
+    const onToolResult = vi.fn()
+    const session = new ChatSession({ onToolCall, onToolResult }, () => ws as unknown as WebSocket)
+    ws.open()
+    ws.emit({ type: 'tool_call', name: 'web_search', args: { query: 'mars' } })
+    ws.emit({ type: 'tool_result', name: 'web_search' })
+    expect(onToolCall).toHaveBeenCalledWith('web_search', { query: 'mars' })
+    expect(onToolResult).toHaveBeenCalledWith('web_search')
+
+    session.send('hi', { webSearch: true })
+    expect(JSON.parse(ws.sent[0])).toEqual({ message: 'hi', web_search: true })
   })
 
   it('reports errors and ignores unparseable frames', () => {
