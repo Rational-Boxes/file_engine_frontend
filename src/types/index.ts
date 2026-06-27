@@ -65,14 +65,21 @@ export interface SearchHit {
 }
 
 // --- RAG chat (WS {csai}/chat) ---
+// A citation is either a document (file the user may read) or a web result from
+// the web_search tool. Both share the [n] marker numbering used in the answer.
 export interface Citation {
-  fileUid: string
   marker?: number // 1-based [n] reference used in the answer
+  kind?: 'doc' | 'web'
+  fileUid?: string // doc citations
+  url?: string // web citations
+  title?: string // web citations
 }
 
 // Discriminated union of the server's streamed chat events.
 export type ChatEvent =
   | { type: 'token'; text: string }
   | { type: 'citations'; citations: Citation[] }
+  | { type: 'tool_call'; name: string; args?: Record<string, unknown> }
+  | { type: 'tool_result'; name: string }
   | { type: 'done' }
   | { type: 'error'; error: string }

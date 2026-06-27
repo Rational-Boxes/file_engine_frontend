@@ -9,17 +9,29 @@
                  User messages stay plain text (escaped by interpolation). -->
             <div v-if="m.role === 'assistant'" class="text md" v-html="assistantHtml(m)"></div>
             <p v-else class="text">{{ m.content }}</p>
+            <div v-if="m.searching" class="searching">🔎 Searching the web…</div>
             <div v-if="m.citations && m.citations.length" class="cites">
-              <button
-                v-for="c in m.citations"
-                :key="c.fileUid"
-                type="button"
-                class="cite"
-                :title="names[c.fileUid] || ''"
-                @click="preview.open(c.fileUid)"
-              >
-                {{ citeLabel(c) }}
-              </button>
+              <template v-for="(c, ci) in m.citations" :key="ci">
+                <a
+                  v-if="c.kind === 'web'"
+                  class="cite cite-web"
+                  :href="c.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  :title="c.title || c.url"
+                >
+                  {{ webLabel(c) }}
+                </a>
+                <button
+                  v-else
+                  type="button"
+                  class="cite"
+                  :title="names[c.fileUid || ''] || ''"
+                  @click="c.fileUid && preview.open(c.fileUid)"
+                >
+                  {{ citeLabel(c) }}
+                </button>
+              </template>
             </div>
           </div>
         </div>
@@ -36,6 +48,13 @@
           aria-label="Message"
           :disabled="busy"
         />
+        <label
+          class="web-toggle"
+          title="Let the assistant search the web when your documents don't have the answer"
+        >
+          <input type="checkbox" v-model="webSearch" :disabled="busy" aria-label="Web search" />
+          <span>Web</span>
+        </label>
         <button class="btn" type="submit" :disabled="!input.trim() || busy">Send</button>
       </form>
     </main>
@@ -50,7 +69,7 @@ export default { name: 'ChatView' }
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import AppNav from '@/components/AppNav.vue'
-import { ChatSession } from '@/services/chatService'
+import { ChatSession, type ChatSendOptions } from '@/services/chatService'
 import { usePreviewStore } from '@/stores/preview'
 import { useFileNames } from '@/composables/useFileNames'
 import { renderMarkdown } from '@/utils/markdown'
@@ -64,19 +83,32 @@ const { names, resolve: resolveNames } = useFileNames()
 // Chip label: the [n] marker, plus the resolved file name once available (never
 // the raw UUID).
 function citeLabel(c: Citation): string {
-  const name = names.value[c.fileUid]
+  const name = c.fileUid ? names.value[c.fileUid] : ''
   return name ? `[${c.marker}] ${name}` : `[${c.marker}]`
+}
+
+// Web citation label: the [n] marker plus the result's host (or title).
+function webLabel(c: Citation): string {
+  let host = c.title || c.url || ''
+  try {
+    if (c.url) host = new URL(c.url).hostname
+  } catch {
+    /* keep title/url */
+  }
+  return `[${c.marker}] ${host}`
 }
 
 interface Msg {
   role: 'user' | 'assistant'
   content: string
   citations?: Citation[]
+  searching?: boolean
 }
 
 const messages = ref<Msg[]>([])
 const input = ref('')
 const busy = ref(false)
+const webSearch = ref(false)
 const error = ref('')
 let session: ChatSession | null = null
 let current = -1 // index of the in-flight assistant message
@@ -88,9 +120,16 @@ onMounted(() => {
     },
     onCitations: (c) => {
       if (current >= 0) messages.value[current].citations = c
-      resolveNames(c.map((x) => x.fileUid))
+      resolveNames(c.filter((x) => x.kind !== 'web' && x.fileUid).map((x) => x.fileUid as string))
+    },
+    onToolCall: () => {
+      if (current >= 0) messages.value[current].searching = true
+    },
+    onToolResult: () => {
+      if (current >= 0) messages.value[current].searching = false
     },
     onDone: () => {
+      if (current >= 0) messages.value[current].searching = false
       busy.value = false
       current = -1
     },
@@ -114,7 +153,9 @@ function send() {
   current = messages.value.length - 1
   busy.value = true
   error.value = ''
-  session.send(text, { history })
+  const opts: ChatSendOptions = { history }
+  if (webSearch.value) opts.webSearch = true
+  session.send(text, opts)
   input.value = ''
 }
 
@@ -262,6 +303,41 @@ function assistantHtml(m: Msg): string {
 
 .cite:hover {
   color: var(--primary);
+}
+
+/* Web citations are external links — tinted + underlined to distinguish them
+   from document citations (which open the in-app preview). */
+.cite-web {
+  background: #fff7ed;
+  color: #b45309;
+  text-decoration: underline;
+}
+
+.cite-web:hover {
+  color: #92400e;
+}
+
+.searching {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+.web-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  user-select: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.web-toggle input {
+  margin: 0;
+  cursor: pointer;
 }
 
 .muted {
