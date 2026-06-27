@@ -34,11 +34,21 @@
       <main class="content">
       <div class="messages">
         <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
-          <div class="bubble">
+          <div class="bubble" :aria-busy="m.streaming || undefined">
             <!-- Assistant answers may contain Markdown — render to sanitized HTML.
-                 User messages stay plain text (escaped by interpolation). -->
-            <div v-if="m.role === 'assistant'" class="text md" v-html="assistantHtml(m)"></div>
+                 User messages stay plain text (escaped by interpolation). The
+                 `streaming` class appends a blinking caret after the last line
+                 while tokens are still arriving (a "working" indication). -->
+            <div
+              v-if="m.role === 'assistant'"
+              class="text md"
+              :class="{ streaming: m.streaming }"
+              v-html="assistantHtml(m)"
+            ></div>
             <p v-else class="text">{{ m.content }}</p>
+            <!-- Before the first token there's no text to trail, so show a
+                 standalone blinking caret as the working indication. -->
+            <span v-if="pendingCaret(m)" class="caret" aria-label="Working…"></span>
             <div v-if="m.searching" class="searching">🔎 Searching the web…</div>
             <div v-if="m.citations && m.citations.length" class="cites">
               <template v-for="(c, ci) in m.citations" :key="ci">
@@ -135,6 +145,20 @@ interface Msg {
   content: string
   citations?: Citation[]
   searching?: boolean
+  streaming?: boolean // tokens still arriving — drives the working caret
+}
+
+// Strip hidden reasoning (<think>…</think>) and return the visible answer text.
+function visibleText(m: Msg): string {
+  return m.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+}
+
+// A standalone blinking caret is the working indication only while the turn is
+// in flight and nothing visible has streamed in yet (no answer text, no hidden
+// reasoning placeholder). Once text appears, the trailing `.md.streaming` caret
+// takes over instead.
+function pendingCaret(m: Msg): boolean {
+  return !!m.streaming && !visibleText(m) && !m.content.includes('<think>')
 }
 
 const messages = ref<Msg[]>([])
@@ -175,7 +199,10 @@ onMounted(() => {
       }
     },
     onDone: () => {
-      if (current >= 0) messages.value[current].searching = false
+      if (current >= 0) {
+        messages.value[current].searching = false
+        messages.value[current].streaming = false
+      }
       busy.value = false
       current = -1
       // Title is derived from the first message server-side — reflect it.
@@ -183,6 +210,10 @@ onMounted(() => {
     },
     onError: (e) => {
       error.value = e
+      if (current >= 0) {
+        messages.value[current].searching = false
+        messages.value[current].streaming = false
+      }
       busy.value = false
       current = -1
     },
@@ -242,7 +273,7 @@ function send() {
   // History is the prior turns (before this message).
   const history = messages.value.map((m) => ({ role: m.role, content: m.content }))
   messages.value.push({ role: 'user', content: text })
-  messages.value.push({ role: 'assistant', content: '' })
+  messages.value.push({ role: 'assistant', content: '', streaming: true })
   current = messages.value.length - 1
   busy.value = true
   error.value = ''
@@ -257,7 +288,7 @@ function send() {
 // deepseek-r1) emit <think>…</think> before the answer — keep it out of the
 // bubble; show a placeholder while only the hidden reasoning has streamed in.
 function assistantHtml(m: Msg): string {
-  const stripped = m.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+  const stripped = visibleText(m)
   if (!stripped) {
     return m.content.includes('<think>') ? '<p class="thinking">…thinking…</p>' : ''
   }
@@ -516,6 +547,42 @@ function assistantHtml(m: Msg): string {
 
 .cite-web:hover {
   color: #92400e;
+}
+
+/* Working indication: a blinking caret while the answer streams in. The
+   trailing form attaches to the end of the last rendered line; the standalone
+   form (.caret) shows before any text has arrived. */
+.caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  vertical-align: text-bottom;
+  background: var(--primary);
+  border-radius: 1px;
+  animation: caret-blink 1s steps(1, end) infinite;
+}
+
+.md.streaming :deep(> :last-child)::after {
+  content: '';
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  border-radius: 1px;
+  animation: caret-blink 1s steps(1, end) infinite;
+}
+
+@keyframes caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .searching {

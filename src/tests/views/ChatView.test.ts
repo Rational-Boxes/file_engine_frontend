@@ -126,6 +126,39 @@ describe('ChatView', () => {
     expect((w.find('input').element as HTMLInputElement).disabled).toBe(false)
   })
 
+  it('shows a working caret while the answer streams, then removes it on done', async () => {
+    const w = mountView()
+    await flushPromises()
+    await w.find('input').setValue('q')
+    await w.find('form').trigger('submit')
+    // before the first token: a standalone blinking caret + streaming bubble
+    expect(w.find('.caret').exists()).toBe(true)
+    expect(w.find('.md.streaming').exists()).toBe(true)
+
+    handlers.onToken?.('partial')
+    await flushPromises()
+    // text is visible now → standalone caret gone, trailing caret via class
+    expect(w.find('.caret').exists()).toBe(false)
+    expect(w.find('.md.streaming').exists()).toBe(true)
+
+    handlers.onDone?.()
+    await flushPromises()
+    expect(w.find('.md.streaming').exists()).toBe(false)
+    expect(w.find('.caret').exists()).toBe(false)
+  })
+
+  it('clears the working caret on a stream error', async () => {
+    const w = mountView()
+    await flushPromises()
+    await w.find('input').setValue('q')
+    await w.find('form').trigger('submit')
+    expect(w.find('.caret').exists()).toBe(true)
+    handlers.onError?.('boom')
+    await flushPromises()
+    expect(w.find('.caret').exists()).toBe(false)
+    expect(w.find('.md.streaming').exists()).toBe(false)
+  })
+
   it('lists saved conversations and resumes one on click', async () => {
     listConvs.mockResolvedValue([{ id: 'c1', title: 'Northern revenues', updatedAt: 't' }])
     getConv.mockResolvedValue({
