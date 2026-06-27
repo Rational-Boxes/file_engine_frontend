@@ -32,7 +32,7 @@
       </aside>
 
       <main class="content">
-      <div class="messages">
+      <div ref="messagesEl" class="messages" @scroll="onScroll">
         <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
           <div class="bubble" :aria-busy="m.streaming || undefined">
             <!-- Assistant answers may contain Markdown — render to sanitized HTML.
@@ -108,7 +108,7 @@ export default { name: 'ChatView' }
 </script>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import { ChatSession, type ChatSendOptions } from '@/services/chatService'
 import { conversationService } from '@/services/conversationService'
@@ -173,6 +173,26 @@ const currentConversationId = ref<string | null>(null)
 
 let session: ChatSession | null = null
 let current = -1 // index of the in-flight assistant message
+
+// Auto-scroll: follow the conversation to the bottom as text streams in, but
+// only while the user is already pinned near the bottom — if they've scrolled up
+// to read earlier messages, don't yank them back down.
+const messagesEl = ref<HTMLElement | null>(null)
+const stick = ref(true)
+const STICK_THRESHOLD = 80 // px from the bottom still counts as "at the bottom"
+
+function onScroll() {
+  const el = messagesEl.value
+  if (el) stick.value = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_THRESHOLD
+}
+
+function scrollToBottom() {
+  const el = messagesEl.value
+  if (el && stick.value) el.scrollTop = el.scrollHeight
+}
+
+// Re-pin to the bottom after the next DOM update (a new/extended message).
+watch(messages, () => void nextTick(scrollToBottom), { deep: true })
 
 onMounted(() => {
   void refreshConversations()
@@ -242,6 +262,7 @@ async function selectConversation(id: string) {
     }))
     currentConversationId.value = id
     error.value = ''
+    stick.value = true // jump to the latest message of the resumed chat
     resolveNames(
       convo.messages
         .flatMap((m) => m.citations)
@@ -275,6 +296,7 @@ function send() {
   messages.value.push({ role: 'user', content: text })
   messages.value.push({ role: 'assistant', content: '', streaming: true })
   current = messages.value.length - 1
+  stick.value = true // sending a message should follow the reply down
   busy.value = true
   error.value = ''
   const opts: ChatSendOptions = { history }

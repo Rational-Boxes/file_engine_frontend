@@ -159,6 +159,46 @@ describe('ChatView', () => {
     expect(w.find('.md.streaming').exists()).toBe(false)
   })
 
+  // Give the messages container measurable scroll geometry (jsdom reports 0s).
+  function sizeMessages(w: ReturnType<typeof mountView>, scrollHeight = 500, clientHeight = 200) {
+    const el = w.find('.messages').element as HTMLElement
+    Object.defineProperty(el, 'scrollHeight', { value: scrollHeight, configurable: true })
+    Object.defineProperty(el, 'clientHeight', { value: clientHeight, configurable: true })
+    return el
+  }
+
+  it('auto-scrolls to the bottom as the answer streams in', async () => {
+    const w = mountView()
+    await flushPromises()
+    const el = sizeMessages(w)
+    el.scrollTop = 0
+    await w.find('input').setValue('q')
+    await w.find('form').trigger('submit') // sending re-pins to the bottom
+    await flushPromises()
+    expect(el.scrollTop).toBe(500)
+
+    el.scrollTop = 0 // pretend layout shifted; streaming should re-pin
+    handlers.onToken?.('streaming answer text')
+    await flushPromises()
+    expect(el.scrollTop).toBe(500)
+  })
+
+  it('does not yank the view down while the user has scrolled up to read history', async () => {
+    const w = mountView()
+    await flushPromises()
+    const el = sizeMessages(w)
+    await w.find('input').setValue('q')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+
+    // user scrolls up to read earlier messages (far from the bottom)
+    el.scrollTop = 10
+    await el.dispatchEvent(new Event('scroll'))
+    handlers.onToken?.('a long streamed answer that would otherwise scroll')
+    await flushPromises()
+    expect(el.scrollTop).toBe(10) // stayed where the user left it
+  })
+
   it('lists saved conversations and resumes one on click', async () => {
     listConvs.mockResolvedValue([{ id: 'c1', title: 'Northern revenues', updatedAt: 't' }])
     getConv.mockResolvedValue({
