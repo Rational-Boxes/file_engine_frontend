@@ -39,6 +39,13 @@ describe('parseChatEvent', () => {
     })
   })
 
+  it('parses the conversation id event', () => {
+    expect(parseChatEvent({ type: 'conversation', id: 'abc' })).toEqual({
+      type: 'conversation',
+      id: 'abc',
+    })
+  })
+
   it('ignores unknown / malformed messages', () => {
     expect(parseChatEvent({ type: 'nope' })).toBeNull()
     expect(parseChatEvent(null)).toBeNull()
@@ -122,6 +129,18 @@ describe('ChatSession', () => {
 
     session.send('hi', { webSearch: true })
     expect(JSON.parse(ws.sent[0])).toEqual({ message: 'hi', web_search: true })
+  })
+
+  it('dispatches the conversation event and sends conversation_id', () => {
+    const ws = new FakeWS()
+    const onConversation = vi.fn()
+    const session = new ChatSession({ onConversation }, () => ws as unknown as WebSocket)
+    ws.open()
+    ws.emit({ type: 'conversation', id: 'conv-7' })
+    expect(onConversation).toHaveBeenCalledWith('conv-7')
+
+    session.send('resume me', { conversationId: 'conv-7' })
+    expect(JSON.parse(ws.sent[0])).toEqual({ message: 'resume me', conversation_id: 'conv-7' })
   })
 
   it('reports errors and ignores unparseable frames', () => {

@@ -1,7 +1,37 @@
 <template>
   <div class="chat-view">
     <AppNav />
-    <main class="content">
+    <div class="layout">
+      <!-- Chat history: the user's persisted conversations (resume / delete). -->
+      <aside class="history">
+        <button class="new-chat" type="button" @click="newChat" :disabled="!currentConversationId && !messages.length">
+          + New chat
+        </button>
+        <ul class="conv-list">
+          <li
+            v-for="c in conversations"
+            :key="c.id"
+            class="conv"
+            :class="{ active: c.id === currentConversationId }"
+          >
+            <button type="button" class="conv-open" :title="c.title" @click="selectConversation(c.id)">
+              {{ c.title }}
+            </button>
+            <button
+              type="button"
+              class="conv-del"
+              aria-label="Delete chat"
+              title="Delete chat"
+              @click.stop="removeConversation(c.id)"
+            >
+              ×
+            </button>
+          </li>
+        </ul>
+        <p v-if="!conversations.length" class="hist-empty">No saved chats yet.</p>
+      </aside>
+
+      <main class="content">
       <div class="messages">
         <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
           <div class="bubble">
@@ -57,7 +87,8 @@
         </label>
         <button class="btn" type="submit" :disabled="!input.trim() || busy">Send</button>
       </form>
-    </main>
+      </main>
+    </div>
   </div>
 </template>
 
@@ -70,10 +101,11 @@ export default { name: 'ChatView' }
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import { ChatSession, type ChatSendOptions } from '@/services/chatService'
+import { conversationService } from '@/services/conversationService'
 import { usePreviewStore } from '@/stores/preview'
 import { useFileNames } from '@/composables/useFileNames'
 import { renderMarkdown } from '@/utils/markdown'
-import type { Citation } from '@/types'
+import type { Citation, ConversationSummary } from '@/types'
 
 const preview = usePreviewStore()
 
@@ -110,10 +142,16 @@ const input = ref('')
 const busy = ref(false)
 const webSearch = ref(false)
 const error = ref('')
+
+// Chat history pane: the user's saved conversations + the one we're viewing.
+const conversations = ref<ConversationSummary[]>([])
+const currentConversationId = ref<string | null>(null)
+
 let session: ChatSession | null = null
 let current = -1 // index of the in-flight assistant message
 
 onMounted(() => {
+  void refreshConversations()
   session = new ChatSession({
     onToken: (t) => {
       if (current >= 0) messages.value[current].content += t
@@ -128,10 +166,20 @@ onMounted(() => {
     onToolResult: () => {
       if (current >= 0) messages.value[current].searching = false
     },
+    // Adopt the server-assigned conversation so this chat resumes after reload,
+    // and refresh the list so a brand-new chat shows up (and reorders) in the pane.
+    onConversation: (id) => {
+      if (currentConversationId.value !== id) {
+        currentConversationId.value = id
+        void refreshConversations()
+      }
+    },
     onDone: () => {
       if (current >= 0) messages.value[current].searching = false
       busy.value = false
       current = -1
+      // Title is derived from the first message server-side — reflect it.
+      void refreshConversations()
     },
     onError: (e) => {
       error.value = e
@@ -142,6 +190,51 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => session?.close())
+
+async function refreshConversations() {
+  try {
+    conversations.value = await conversationService.list()
+  } catch {
+    /* history is best-effort — chat still works without the pane */
+  }
+}
+
+// Resume a saved chat: load its messages into the transcript.
+async function selectConversation(id: string) {
+  if (busy.value || id === currentConversationId.value) return
+  try {
+    const convo = await conversationService.get(id)
+    messages.value = convo.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+      citations: m.citations,
+    }))
+    currentConversationId.value = id
+    error.value = ''
+    resolveNames(
+      convo.messages
+        .flatMap((m) => m.citations)
+        .filter((c) => c.kind !== 'web' && c.fileUid)
+        .map((c) => c.fileUid as string),
+    )
+  } catch {
+    error.value = 'Could not load that conversation.'
+  }
+}
+
+// Start a fresh chat (a new conversation is created server-side on first send).
+function newChat() {
+  if (busy.value) return
+  messages.value = []
+  currentConversationId.value = null
+  error.value = ''
+}
+
+async function removeConversation(id: string) {
+  await conversationService.remove(id)
+  if (id === currentConversationId.value) newChat()
+  await refreshConversations()
+}
 
 function send() {
   const text = input.value.trim()
@@ -155,6 +248,7 @@ function send() {
   error.value = ''
   const opts: ChatSendOptions = { history }
   if (webSearch.value) opts.webSearch = true
+  if (currentConversationId.value) opts.conversationId = currentConversationId.value
   session.send(text, opts)
   input.value = ''
 }
@@ -172,13 +266,120 @@ function assistantHtml(m: Msg): string {
 </script>
 
 <style scoped>
+.layout {
+  display: flex;
+  height: calc(100vh - 56px);
+}
+
+/* Left history pane — saved conversations. */
+.history {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 10px;
+  gap: 8px;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.new-chat {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.new-chat:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.new-chat:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.conv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conv {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+
+.conv.active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.conv-open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 7px 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conv-open:hover {
+  color: var(--primary);
+}
+
+.conv-del {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  visibility: hidden;
+}
+
+.conv:hover .conv-del,
+.conv.active .conv-del {
+  visibility: visible;
+}
+
+.conv-del:hover {
+  color: var(--danger);
+}
+
+.hist-empty {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 8px;
+  margin: 0;
+}
+
 .content {
+  flex: 1;
   max-width: 820px;
   margin: 0 auto;
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 56px);
+  min-width: 0;
+  height: 100%;
 }
 
 .messages {
