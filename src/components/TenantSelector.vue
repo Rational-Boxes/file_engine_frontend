@@ -13,19 +13,26 @@ import { subdomainTenancyEnabled, tenantUrl } from '@/utils/tenantHost'
 
 const auth = useAuthStore()
 
-// Switching tenants. When tenants are keyed by subdomain, each tenant is its own
-// origin, so we navigate to that tenant's host (full reload) — the subdomain is
-// authoritative. Otherwise (local dev / single-domain) we swap the active tenant
-// in-app; the file browser watches auth.tenant and reloads from the new root.
+// Switching tenant must reset EVERY interface and data model so nothing from the
+// previous tenant lingers — the KeepAlive-cached views (file browser, search,
+// chat) hold component-local state, the Pinia stores hold data, and composables
+// cache resolved names; an in-app field swap can't reliably clear all of that.
+// So we do a clean boot scoped to the new tenant:
+//   - subdomain tenancy: navigate to the tenant's own origin (authoritative);
+//   - single-domain: persist the active tenant, then hard-reload — the app
+//     re-bootstraps from the persisted token + tenant with fresh stores/caches.
 const onChange = (e: Event) => {
   const value = (e.target as HTMLSelectElement).value
   if (!value || value === auth.tenant) return
-  const url = subdomainTenancyEnabled() ? tenantUrl(value) : null
-  if (url) {
-    window.location.assign(url)
-  } else {
-    auth.switchTenant(value)
+  if (subdomainTenancyEnabled()) {
+    const url = tenantUrl(value)
+    if (url) {
+      window.location.assign(url)
+      return
+    }
   }
+  auth.switchTenant(value) // persist the choice so the reload boots into it
+  window.location.reload()
 }
 </script>
 
