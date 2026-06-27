@@ -81,5 +81,22 @@ export type ChatEvent =
   | { type: 'citations'; citations: Citation[] }
   | { type: 'tool_call'; name: string; args?: Record<string, unknown> }
   | { type: 'tool_result'; name: string }
+  // The conversation this turn was persisted to — emitted before the answer so a
+  // new chat can be adopted (and resumed later) by the client.
+  | { type: 'conversation'; id: string }
   | { type: 'done' }
   | { type: 'error'; error: string }
+
+// A persisted chat, listed in the history pane.
+export interface ConversationSummary {
+  id: string
+  title: string
+  updatedAt: string
+}
+
+// A persisted chat plus its messages (for resume).
+export interface ConversationDetail {
+  id: string
+  title: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string; citations: Citation[] }>
+}
