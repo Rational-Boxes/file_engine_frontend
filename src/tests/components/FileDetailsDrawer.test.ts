@@ -6,6 +6,9 @@ const fns = vi.hoisted(() => ({
   stat: vi.fn(),
   getMetadata: vi.fn(),
   checkPermission: vi.fn(),
+  generatePreview: vi.fn(),
+  loadRenditionSet: vi.fn(),
+  modelRendition: vi.fn(),
 }))
 
 vi.mock('@/services/fileService', () => ({
@@ -21,10 +24,13 @@ vi.mock('@/services/apiClient', () => ({
   errorMessage: (_e: unknown, d: string) => d,
   ROOT_UID: '00000000-0000-0000-0000-000000000000',
 }))
+vi.mock('@/services/searchService', () => ({ searchService: { generatePreview: fns.generatePreview } }))
+vi.mock('@/services/renditions', () => ({
+  loadRenditionSet: fns.loadRenditionSet,
+  modelRendition: fns.modelRendition,
+}))
 vi.mock('vue-router', () => ({ useRouter: () => ({ resolve: () => ({ href: '/x' }) }) }))
 
-// Stub heavy children so the drawer mounts in isolation (plain options objects —
-// vi.mock factories are hoisted, so they must not reference outer helpers/imports).
 vi.mock('@/components/AclEditor.vue', () => ({
   default: { name: 'AclEditor', props: ['uid', 'canManage'], template: '<div/>' },
 }))
@@ -46,41 +52,72 @@ function openWith(item: { uid: string; name: string; hasRenditions: boolean }) {
   return mount(FileDetailsDrawer)
 }
 
-describe('FileDetailsDrawer — View model in 3D link', () => {
+const viewBtn = (w: ReturnType<typeof openWith>) =>
+  w.findAll('.view3d-btn').find((b) => b.text().includes('View model'))
+const genBtn = (w: ReturnType<typeof openWith>) =>
+  w.findAll('.view3d-btn').find((b) => b.text().includes('Generate'))
+
+describe('FileDetailsDrawer — 3D model section', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     fns.stat.mockResolvedValue({ uid: 'f1', name: 'x', type: 'file', size: 1, owner: 'u', version: 'v1' })
     fns.getMetadata.mockResolvedValue({})
     fns.checkPermission.mockResolvedValue(true)
+    fns.generatePreview.mockResolvedValue({ status: 'indexed', renditions: [], hasMarkdown: true })
+    fns.loadRenditionSet.mockResolvedValue({})
+    fns.modelRendition.mockReturnValue(undefined)
   })
 
-  it('shows the link for a 3D model with renditions and opens the viewer', async () => {
+  it('a converted 3D model shows the View link and opens the viewer', async () => {
     const w = openWith({ uid: 'm1', name: 'tower.ifc', hasRenditions: true })
     await flushPromises()
-    const btn = w.find('.view3d-btn')
-    expect(btn.exists()).toBe(true)
-    expect(w.findComponent({ name: 'DocumentPreview' }).exists()).toBe(false) // replaced by the link
-    await btn.trigger('click')
-    const m3d = useModel3dStore()
-    expect(m3d.isOpen).toBe(true)
-    expect(m3d.uid).toBe('m1')
+    expect(viewBtn(w)).toBeTruthy()
+    expect(w.findComponent({ name: 'DocumentPreview' }).exists()).toBe(false)
+    await viewBtn(w)!.trigger('click')
+    expect(useModel3dStore().isOpen).toBe(true)
   })
 
-  it('does not show the link for a non-3D file (shows the document preview)', async () => {
+  it('a non-3D file shows the document preview, no 3D buttons', async () => {
     const w = openWith({ uid: 'd1', name: 'report.pdf', hasRenditions: true })
     await flushPromises()
     expect(w.find('.view3d-btn').exists()).toBe(false)
     expect(w.findComponent({ name: 'DocumentPreview' }).exists()).toBe(true)
   })
 
-  it('for a 3D file without a converted rendition: no link, no document preview', async () => {
+  it('an unconverted 3D file offers Generate (not the document preview)', async () => {
     const w = openWith({ uid: 'm2', name: 'model.glb', hasRenditions: false })
     await flushPromises()
-    expect(w.find('.view3d-btn').exists()).toBe(false)
-    // 3D files never fall into the document "Generate preview" flow (which would
-    // hit CSAI and 500 when unsupported/unavailable).
+    expect(genBtn(w)).toBeTruthy()
+    expect(viewBtn(w)).toBeFalsy()
     expect(w.findComponent({ name: 'DocumentPreview' }).exists()).toBe(false)
-    expect(w.text()).toContain('3D preview hasn’t been generated')
+  })
+
+  it('Generate that yields a model switches to the View link', async () => {
+    const w = openWith({ uid: 'm3', name: 'model.glb', hasRenditions: false })
+    await flushPromises()
+    fns.modelRendition.mockReturnValue({ uid: 'rk', name: 'v1-model.xkt', fmt: 'model', ext: 'xkt', version: 'v1' })
+    await genBtn(w)!.trigger('click')
+    await flushPromises()
+    expect(fns.generatePreview).toHaveBeenCalledWith('m3')
+    expect(viewBtn(w)).toBeTruthy()
+  })
+
+  it('Generate that yields no model reports an unsupported-format message', async () => {
+    const w = openWith({ uid: 'm4', name: 'old.ifc', hasRenditions: false })
+    await flushPromises()
+    fns.modelRendition.mockReturnValue(undefined) // converter produced no geometry
+    await genBtn(w)!.trigger('click')
+    await flushPromises()
+    expect(w.find('.gen-msg.err').text()).toContain('not supported')
+  })
+
+  it('Generate reports when the conversion service is unreachable', async () => {
+    const w = openWith({ uid: 'm5', name: 'model.glb', hasRenditions: false })
+    await flushPromises()
+    fns.generatePreview.mockRejectedValueOnce(new Error('500'))
+    await genBtn(w)!.trigger('click')
+    await flushPromises()
+    expect(w.find('.gen-msg.err').text()).toContain('conversion service')
   })
 })
