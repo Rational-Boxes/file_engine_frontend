@@ -36,13 +36,15 @@ Browser (this SPA) ────┤   (the <version>-model.xkt rendition, bytes)
 ## 2. Goal & scope
 
 **In scope (v1):**
-- A read-only **inline 3D viewer** for files that have a `model` (`.xkt`)
-  rendition, opened from the file browser / details drawer like the PDF preview.
+- A read-only 3D viewer for files that have a `model` (`.xkt`) rendition, opened
+  into a **maximal full-screen overlay** so 3D navigation is never cramped (§5.1).
+- A **collapsible sidebar** inside the overlay for the **object tree** + selected-
+  object metadata, collapsing to give the canvas the entire overlay (§5.2).
+- A **navigation-cube overlay** — a small in-canvas corner widget for orientation,
+  available even when the sidebar is collapsed (§5.2).
 - **Format-specific icons** (IFC / glTF / CityJSON / point cloud / mesh) and a
   **"3D preview" link/affordance** on file tiles — entirely frontend-owned (the
   backend ships no raster thumbnail for 3D in v1, by design).
-- Object-tree / navigation niceties that come for free from the XKT metadata
-  (tree view, nav cube) — optional, behind the viewer.
 
 **Out of scope (v1):** markup/BCF, measurement, annotations, model federation
 (multiple XKTs in one scene), and server-rendered thumbnails. These are noted as
@@ -80,8 +82,7 @@ follow-ons in `XEOKIT3D_PLUGIN.md` (§13).
 
 ## 5. Workstream A — the viewer component
 
-**`components/Model3DViewer.vue`** (and a thin `ModelViewerOverlay.vue` mirroring
-`PdfPreviewOverlay.vue` for the full-screen affordance):
+**`components/Model3DViewer.vue`** — the canvas + xeokit lifecycle:
 
 - Props: `fileUid` (source) and/or a resolved `RenditionRef` for the `.xkt` child.
 - On mount: dynamic `import('@xeokit/xeokit-sdk')`, create `Viewer({ canvasId })`,
@@ -91,8 +92,42 @@ follow-ons in `XEOKIT3D_PLUGIN.md` (§13).
   **destroy the `Viewer`** and free the WebGL context + any object URLs.
 - Errors: missing/corrupt XKT or WebGL-unavailable → graceful "couldn't load 3D
   preview" with a download-original fallback (never throw into the app shell).
-- Optional: `NavCubePlugin` + `TreeViewPlugin` (the XKT already embeds the
-  object/IFC-type tree) behind a toggle.
+
+### 5.1 Overlay — maximal, viewport-first
+
+**`components/ModelViewerOverlay.vue`** is a **maximal full-screen overlay**, not a
+constrained drawer/modal. The whole point is unrestricted 3D navigation, so:
+
+- It fills the viewport (effectively full-bleed — full width/height, fixed
+  position above the app shell; an `Esc`/close button and an optional small title
+  bar are the only chrome). It does **not** reuse the narrow `FileDetailsDrawer`
+  width or the centered-modal sizing used elsewhere.
+- The **3D canvas always takes all remaining space** after the (collapsible)
+  sidebar. Mouse/touch orbit-pan-zoom must own the canvas region with no
+  scroll-jacking or padding eating into it.
+- On open it locks body scroll; on close it restores and disposes the viewer
+  (§5). Resize-aware: the canvas tracks the overlay size (and the sidebar
+  collapse/expand, §5.2) via the viewer's resize handling.
+
+### 5.2 Advanced features — collapsible sidebar
+
+The advanced/inspection features live in a **collapsible sidebar** inside the
+overlay (not floating panels over the canvas), so they can be tucked away for an
+unobstructed, full-overlay viewport:
+
+- **Sidebar contents:** the **object tree** (`TreeViewPlugin` — XKT already embeds
+  the object/IFC-type hierarchy; supports expand, isolate, show/hide, fly-to), and
+  a selected-object **properties/metadata** panel. Room to grow (layers, classes).
+- **Collapse/expand:** a persistent toggle (and a keyboard shortcut) collapses the
+  sidebar to a thin rail (or fully hidden), giving the canvas the **entire**
+  overlay. State persists across opens (localStorage). Default: **collapsed on
+  small screens**, expanded on wide.
+- **On toggle, resize the canvas** so xeokit recomputes the viewport (the WebGL
+  canvas must grow/shrink to the new free space — call the viewer's resize after
+  the layout transition).
+- **NavCube** (`NavCubePlugin`) is a small in-canvas widget (corner overlay), not
+  part of the sidebar, so orientation control stays available even when the
+  sidebar is collapsed.
 
 ## 6. Workstream B — icons & entry points (frontend-owned visuals)
 
@@ -103,11 +138,11 @@ follow-ons in `XEOKIT3D_PLUGIN.md` (§13).
   clickable 3D-preview badge/graphic (tile overlay + a "View in 3D" item in
   `KebabMenu.vue`) that opens `ModelViewerOverlay`.
 - **Details drawer.** Add a "3D" tab to `FileDetailsDrawer.vue` (next to
-  Preview/Versions/Access) that hosts `Model3DViewer` when a `model` rendition is
-  present.
-- **Preview route.** Extend `PreviewView.vue` (`/preview/:uid`) to render the 3D
-  viewer when the file's rendition set contains `model` (else the existing
-  document/image/video preview).
+  Preview/Versions/Access). The drawer is too narrow for real navigation, so the
+  tab is a **launch affordance** (format icon + "View in 3D" button) that opens
+  the maximal `ModelViewerOverlay` — it does **not** embed a cramped canvas.
+- **Preview route.** `/preview/:uid` opens the maximal overlay directly for
+  `model` files (else the existing document/image/video preview).
 
 ## 7. Phases
 
@@ -115,16 +150,19 @@ follow-ons in `XEOKIT3D_PLUGIN.md` (§13).
   fmt + `modelRendition`), add `modelFormat()` util, fetch `.xkt` as
   `ArrayBuffer`. Unit-test name parsing, set reduction, and format mapping. No
   xeokit yet.
-- **P2 — viewer component.** Add `@xeokit/xeokit-sdk` (lazy), build
-  `Model3DViewer.vue` + `ModelViewerOverlay.vue`, load XKT, dispose cleanly.
-  Component tests with xeokit dynamically mocked (assert load is called with the
-  fetched buffer and the viewer is destroyed on unmount).
-- **P3 — entry points & icons.** Format icons, tile "3D preview" affordance,
-  KebabMenu action, drawer "3D" tab, `/preview/:uid` wiring. AGPL source/
-  attribution link.
-- **P4 — polish (deferred).** NavCube/TreeView toggle, camera presets, point-cloud
-  display tuning, and (if/when the backend ships them) static raster thumbnails
-  from the bespoke 3D preview service (`XEOKIT3D_PLUGIN.md` §13).
+- **P2 — viewer + maximal overlay.** Add `@xeokit/xeokit-sdk` (lazy), build
+  `Model3DViewer.vue` + the full-screen `ModelViewerOverlay.vue` (§5.1), load XKT,
+  add the **NavCube overlay**, dispose cleanly. Component tests with xeokit
+  dynamically mocked (assert load gets the fetched buffer; viewer destroyed on
+  unmount; overlay is full-bleed / body-scroll locked).
+- **P3 — collapsible sidebar + entry points.** Object-tree (`TreeViewPlugin`) +
+  metadata sidebar with collapse/expand and **canvas resize on toggle** (§5.2);
+  format icons, tile "3D preview" affordance, KebabMenu action, drawer "3D" launch
+  tab, `/preview/:uid` wiring. AGPL source/attribution link.
+- **P4 — polish (deferred).** Camera presets, section planes, point-cloud display
+  tuning, extra sidebar tabs (layers/classes), and (if/when the backend ships
+  them) static raster thumbnails from the bespoke 3D preview service
+  (`XEOKIT3D_PLUGIN.md` §13).
 
 ## 8. Testing
 
@@ -133,8 +171,10 @@ follow-ons in `XEOKIT3D_PLUGIN.md` (§13).
 - **Component (vitest + @vue/test-utils):** `Model3DViewer.vue` with
   `@xeokit/xeokit-sdk` mocked — asserts lazy import, `XKTLoaderPlugin.load`
   receives the fetched `ArrayBuffer`, loading/error states render, and the
-  `Viewer` is destroyed on unmount (no leaked WebGL contexts). Keep real xeokit
-  out of the unit suite (heavy, WebGL).
+  `Viewer` is destroyed on unmount (no leaked WebGL contexts). `ModelViewerOverlay`
+  — asserts it mounts full-bleed + locks body scroll, the **sidebar
+  collapse/expand toggles and triggers a canvas resize**, and the NavCube widget
+  is present. Keep real xeokit out of the unit suite (heavy, WebGL).
 - **E2E (`e2e/`):** extend the existing script to upload a small model fixture and
   assert the `<version>-model.xkt` rendition appears (drive-by; geometry render
   itself is validated in the CSAI repo).
