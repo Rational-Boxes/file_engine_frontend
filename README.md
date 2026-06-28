@@ -1,5 +1,7 @@
 # FileEngine Web Client
 
+> ⚠️ **Active development — not production-ready.** This project is under active development and should **not** be considered safe for mission-critical use.
+
 A Vue 3 + TypeScript single-page app for browsing and managing files in
 FileEngine. It is a **pure REST client of the FileEngine HTTP bridge**
 (`http_bridge`) — all filesystem operations and authentication go through the
