@@ -74,9 +74,13 @@ describe('FileDetailsDrawer — View model in 3D link', () => {
     expect(w.findComponent({ name: 'DocumentPreview' }).exists()).toBe(true)
   })
 
-  it('does not show the link for a 3D file without a converted rendition', async () => {
+  it('for a 3D file without a converted rendition: no link, no document preview', async () => {
     const w = openWith({ uid: 'm2', name: 'model.glb', hasRenditions: false })
     await flushPromises()
     expect(w.find('.view3d-btn').exists()).toBe(false)
+    // 3D files never fall into the document "Generate preview" flow (which would
+    // hit CSAI and 500 when unsupported/unavailable).
+    expect(w.findComponent({ name: 'DocumentPreview' }).exists()).toBe(false)
+    expect(w.text()).toContain('3D preview hasn’t been generated')
   })
 })

@@ -25,13 +25,15 @@
           🔗 {{ linkCopied ? 'Copied!' : 'Copy link' }}
         </button>
       </div>
-      <!-- 3D/BIM models open in the dedicated maximal viewer overlay. -->
-      <button v-if="is3d" class="btn view3d-btn" @click="openModel">🧊 View model in 3D</button>
+      <!-- 3D/BIM models use the dedicated viewer, never the document preview. -->
+      <template v-if="isModelFormat">
+        <button v-if="canView3D" class="btn view3d-btn" @click="openModel">🧊 View model in 3D</button>
+        <p v-else class="muted">A 3D preview hasn’t been generated for this model yet (or its format isn’t supported by the converter).</p>
+      </template>
 
-      <!-- First-page preview lives in the general Info tab (no separate tab).
-           3D models have no document preview — the viewer link above replaces it. -->
+      <!-- First-page preview lives in the general Info tab (no separate tab). -->
       <DocumentPreview
-        v-if="item && !item.isDirectory && !is3d"
+        v-else-if="item && !item.isDirectory"
         class="info-preview"
         :uid="item.uid"
         :name="item.name"
@@ -123,11 +125,11 @@ const files = useFileStore()
 const auth = useAuthStore()
 const model3d = useModel3dStore()
 
-// A file is viewable in 3D when it's a known model format with a converted
-// rendition. The link launches the maximal viewer overlay.
-const is3d = computed(
-  () => !!item.value && !item.value.isDirectory && item.value.hasRenditions && is3DModel(item.value.name),
-)
+// A 3D/BIM model by format (regardless of conversion state). Such files never
+// use the document preview — they get the 3D section instead.
+const isModelFormat = computed(() => !!item.value && !item.value.isDirectory && is3DModel(item.value.name))
+// Viewable in 3D only once its model (.xkt) rendition has been generated.
+const canView3D = computed(() => isModelFormat.value && !!item.value && item.value.hasRenditions)
 function openModel() {
   if (item.value) model3d.open(item.value.uid, item.value.name)
 }
@@ -308,6 +310,12 @@ async function removeMeta(key: string) {
 }
 
 .info-preview {
+  margin-bottom: 16px;
+}
+
+.view3d-btn {
+  width: 100%;
+  text-align: center;
   margin-bottom: 16px;
 }
 
