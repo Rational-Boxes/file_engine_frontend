@@ -44,21 +44,43 @@ async function load() {
     // Lazy-load the (large, AGPL) xeokit SDK only when a model is actually opened.
     const xeokit: any = await import('@xeokit/xeokit-sdk')
     viewer = new xeokit.Viewer({ canvasElement: canvasEl.value, transparent: true })
-    if (navCubeEl.value) {
-      new xeokit.NavCubePlugin(viewer, { canvasElement: navCubeEl.value })
+
+    // The core requirement is rendering the model. The nav-cube, object tree and
+    // camera fit are *enhancements* — a failure in any of them (e.g. a model with
+    // no metadata for the tree) must never break the preview, so each is isolated.
+    try {
+      if (navCubeEl.value) new xeokit.NavCubePlugin(viewer, { canvasElement: navCubeEl.value })
+    } catch (e) {
+      console.warn('[Model3DViewer] navigation cube unavailable', e)
     }
-    if (props.treeContainerId && document.getElementById(props.treeContainerId)) {
-      treeView = new xeokit.TreeViewPlugin(viewer, {
-        containerElementId: props.treeContainerId,
-        hierarchy: 'containment',
-      })
+    try {
+      if (props.treeContainerId && document.getElementById(props.treeContainerId)) {
+        treeView = new xeokit.TreeViewPlugin(viewer, {
+          containerElementId: props.treeContainerId,
+          hierarchy: 'containment',
+          autoExpandDepth: 1,
+        })
+      }
+    } catch (e) {
+      console.warn('[Model3DViewer] object tree unavailable (model may have no metadata)', e)
     }
+
     const loader = new xeokit.XKTLoaderPlugin(viewer)
     const xkt = await renditionArrayBuffer(props.xktUid)
-    loader.load({ id: 'model', xkt })
-    viewer.cameraFlight?.flyTo?.(viewer.scene)
+    const model = loader.load({ id: 'model', xkt })
+    const fit = () => {
+      try {
+        viewer.cameraFlight?.flyTo?.(viewer.scene)
+      } catch {
+        /* camera fit is best-effort */
+      }
+    }
+    if (model && typeof model.on === 'function') model.on('loaded', fit)
+    else fit()
     loading.value = false
   } catch (e) {
+    // Surface the real cause (do not swallow it) so failures are diagnosable.
+    console.error('[Model3DViewer] failed to load 3D model', e)
     error.value = 'Could not load the 3D preview.'
     loading.value = false
     destroy()
