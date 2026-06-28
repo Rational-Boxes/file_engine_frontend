@@ -1,9 +1,11 @@
 <template>
   <div class="m3d" ref="rootEl">
     <canvas ref="canvasEl" class="m3d-canvas"></canvas>
-    <!-- Navigation cube: a small in-canvas corner widget, always available
-         (even when the overlay sidebar is collapsed). -->
-    <canvas ref="navCubeEl" class="m3d-navcube"></canvas>
+    <!-- Navigation cube: a small in-canvas corner widget. Temporarily disabled —
+         xeokit-sdk #2016: NavCubePlugin throws "Missing input materialEmissive"
+         (regressed in 2.6.104, unfixed through the current latest 2.6.112) which
+         crashes the render loop. Re-enable via NAVCUBE_ENABLED when upstream fixes. -->
+    <canvas v-if="NAVCUBE_ENABLED" ref="navCubeEl" class="m3d-navcube"></canvas>
 
     <p v-if="loading" class="m3d-state m3d-muted">Loading 3D model…</p>
     <div v-else-if="error" class="m3d-state m3d-err">
@@ -24,6 +26,10 @@ const props = defineProps<{
   xktUid: string
   treeContainerId?: string
 }>()
+
+// xeokit-sdk #2016: the NavCubePlugin shader crashes ("Missing input
+// materialEmissive") in 2.6.104–2.6.112. Keep the integration but off until fixed.
+const NAVCUBE_ENABLED = false
 
 const rootEl = ref<HTMLElement | null>(null)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
@@ -49,7 +55,9 @@ async function load() {
     // camera fit are *enhancements* — a failure in any of them (e.g. a model with
     // no metadata for the tree) must never break the preview, so each is isolated.
     try {
-      if (navCubeEl.value) new xeokit.NavCubePlugin(viewer, { canvasElement: navCubeEl.value })
+      if (NAVCUBE_ENABLED && navCubeEl.value) {
+        new xeokit.NavCubePlugin(viewer, { canvasElement: navCubeEl.value })
+      }
     } catch (e) {
       console.warn('[Model3DViewer] navigation cube unavailable', e)
     }

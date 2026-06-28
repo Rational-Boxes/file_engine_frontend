@@ -41,7 +41,11 @@ Browser (this SPA) ────┤   (the <version>-model.xkt rendition, bytes)
 - A **collapsible sidebar** inside the overlay for the **object tree** + selected-
   object metadata, collapsing to give the canvas the entire overlay (§5.2).
 - A **navigation-cube overlay** — a small in-canvas corner widget for orientation,
-  available even when the sidebar is collapsed (§5.2).
+  available even when the sidebar is collapsed (§5.2). **Temporarily disabled**
+  (gated behind `NAVCUBE_ENABLED=false`) due to upstream xeokit-sdk bug
+  [#2016](https://github.com/xeokit/xeokit-sdk/issues/2016) — `NavCubePlugin`
+  throws `Missing input materialEmissive` and crashes the render loop in
+  2.6.104–2.6.112 (the current latest). Re-enable when fixed upstream.
 - **Format-specific icons** (IFC / glTF / CityJSON / point cloud / mesh) and a
   **"3D preview" link/affordance** on file tiles — entirely frontend-owned (the
   backend ships no raster thumbnail for 3D in v1, by design).

@@ -34,13 +34,14 @@ describe('Model3DViewer', () => {
     h.renditionArrayBuffer.mockResolvedValue(XKT)
   })
 
-  it('lazily loads xeokit, creates a viewer + nav cube, and loads the fetched XKT buffer', async () => {
+  it('lazily loads xeokit, creates a viewer, and loads the fetched XKT buffer', async () => {
     mount(Model3DViewer, { props: { xktUid: 'r1' } })
     await flushPromises()
 
     expect(h.renditionArrayBuffer).toHaveBeenCalledWith('r1')
     expect(Viewer).toHaveBeenCalledTimes(1)
-    expect(h.navCube).toHaveBeenCalledTimes(1) // navigation-cube overlay
+    // Nav cube is disabled (xeokit-sdk #2016 shader crash); not instantiated.
+    expect(h.navCube).not.toHaveBeenCalled()
     expect(XKTLoaderPlugin).toHaveBeenCalledTimes(1)
     expect(h.loadSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 'model', xkt: XKT }))
   })
