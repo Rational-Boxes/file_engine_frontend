@@ -1,6 +1,8 @@
 {
   "name": "fileengine-frontend",
   "version": "1.4.1",
+  "license": "GPL-3.0-or-later",
+  "author": "James Hickman <james@rationalboxes.com>",
   "private": true,
   "scripts": {
     "dev": "vite",

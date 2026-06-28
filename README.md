@@ -136,3 +136,10 @@ the target environment, and make sure that environment's bridge has the matching
 
 - **`../http_bridge/`** — the REST proxy this app talks to (`openapi.yaml` is the
   API contract; `OAUTH_SETUP.md` covers provider configuration).
+
+## License
+
+Copyright (C) 2026 James Hickman <james@rationalboxes.com>
+
+This project is licensed under the **GNU General Public License, version 3 (or
+later)** — see the [LICENSE](LICENSE) file for the full text.
