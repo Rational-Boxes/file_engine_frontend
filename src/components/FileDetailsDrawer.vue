@@ -25,9 +25,13 @@
           🔗 {{ linkCopied ? 'Copied!' : 'Copy link' }}
         </button>
       </div>
-      <!-- First-page preview lives in the general Info tab (no separate tab). -->
+      <!-- 3D/BIM models open in the dedicated maximal viewer overlay. -->
+      <button v-if="is3d" class="btn view3d-btn" @click="openModel">🧊 View model in 3D</button>
+
+      <!-- First-page preview lives in the general Info tab (no separate tab).
+           3D models have no document preview — the viewer link above replaces it. -->
       <DocumentPreview
-        v-if="item && !item.isDirectory"
+        v-if="item && !item.isDirectory && !is3d"
         class="info-preview"
         :uid="item.uid"
         :name="item.name"
@@ -112,9 +116,21 @@ import { PERMS, canDo } from '@/utils/permissions'
 import AclEditor from '@/components/AclEditor.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import FileVersions from '@/components/FileVersions.vue'
+import { useModel3dStore } from '@/stores/model3d'
+import { is3DModel } from '@/utils/modelFormat'
 
 const files = useFileStore()
 const auth = useAuthStore()
+const model3d = useModel3dStore()
+
+// A file is viewable in 3D when it's a known model format with a converted
+// rendition. The link launches the maximal viewer overlay.
+const is3d = computed(
+  () => !!item.value && !item.value.isDirectory && item.value.hasRenditions && is3DModel(item.value.name),
+)
+function openModel() {
+  if (item.value) model3d.open(item.value.uid, item.value.name)
+}
 
 const tabs = ['Info', 'Metadata', 'Versions', 'Access'] as const
 type Tab = (typeof tabs)[number]

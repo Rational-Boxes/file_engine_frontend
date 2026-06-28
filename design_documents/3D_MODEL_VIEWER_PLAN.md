@@ -134,13 +134,16 @@ unobstructed, full-overlay viewport:
 - **Format-specific icons.** Add static 3D icon assets and map them via
   `modelFormat()` for file tiles in `FileBrowserView.vue` / `FileThumbnail.vue`
   (3D files have no raster thumbnail, so the icon is the tile).
-- **"3D preview" affordance.** When a file has a `model` rendition, show a
-  clickable 3D-preview badge/graphic (tile overlay + a "View in 3D" item in
-  `KebabMenu.vue`) that opens `ModelViewerOverlay`.
-- **Details drawer.** Add a "3D" tab to `FileDetailsDrawer.vue` (next to
-  Preview/Versions/Access). The drawer is too narrow for real navigation, so the
-  tab is a **launch affordance** (format icon + "View in 3D" button) that opens
-  the maximal `ModelViewerOverlay` — it does **not** embed a cramped canvas.
+- **Clicking a 3D file opens the details drawer** (like any file) — it does **not**
+  jump straight into the viewer. The drawer is the entry point.
+- **Details drawer "View model in 3D" link.** In `FileDetailsDrawer.vue`, when the
+  file is a 3D model with a `model` rendition, the Info pane shows a prominent
+  **"View model in 3D"** button (replacing the document preview, which is
+  meaningless for a model) that opens the maximal `ModelViewerOverlay`. The drawer
+  is too narrow for real navigation, so it launches the overlay rather than
+  embedding a cramped canvas.
+- **Kebab shortcut.** `KebabMenu.vue` also offers a "View in 3D" item as a direct
+  shortcut for model files.
 - **Preview route.** `/preview/:uid` opens the maximal overlay directly for
   `model` files (else the existing document/image/video preview).
 
@@ -157,7 +160,7 @@ unobstructed, full-overlay viewport:
   unmount; overlay is full-bleed / body-scroll locked).
 - **P3 — collapsible sidebar + entry points.** Object-tree (`TreeViewPlugin`) +
   metadata sidebar with collapse/expand and **canvas resize on toggle** (§5.2);
-  format icons, tile "3D preview" affordance, KebabMenu action, drawer "3D" launch
+  format icons, drawer "View model in 3D" link, KebabMenu action, drawer launch
   tab, `/preview/:uid` wiring. AGPL source/attribution link.
 - **P4 — polish (deferred).** Camera presets, section planes, point-cloud display
   tuning, extra sidebar tabs (layers/classes), and (if/when the backend ships

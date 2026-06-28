@@ -314,11 +314,10 @@ const clipboardTitle = computed(() => {
 })
 
 const open = (item: FileItem) => {
-  // Directories navigate; a 3D model opens straight into the viewer; any other
-  // file opens its details (download stays on the kebab menu) so a single click
-  // previews/inspects rather than downloads.
+  // Directories navigate; clicking a file opens its details drawer (which carries
+  // a "View model in 3D" link for 3D files; download stays on the kebab menu) so a
+  // single click inspects rather than downloads.
   if (item.isDirectory) files.openDirectory(item)
-  else if (canView3D(item)) model3d.open(item.uid, item.name)
   else files.openDetails(item)
 }
 
