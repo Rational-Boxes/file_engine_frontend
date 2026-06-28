@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 const { stat } = vi.hoisted(() => ({ stat: vi.fn() }))
 
@@ -10,6 +11,7 @@ vi.mock('vue-router', () => ({
 }))
 
 import PreviewView from '@/views/PreviewView.vue'
+import { useModel3dStore } from '@/stores/model3d'
 
 const mountView = () =>
   mount(PreviewView, {
@@ -18,6 +20,7 @@ const mountView = () =>
 
 describe('PreviewView', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 
@@ -28,5 +31,13 @@ describe('PreviewView', () => {
     expect(stat).toHaveBeenCalledWith('f1')
     expect(w.text()).toContain('report.pdf')
     expect(w.findComponent({ name: 'DocumentPreview' }).exists()).toBe(true)
+  })
+
+  it('opens the 3D viewer overlay for a model file (not DocumentPreview)', async () => {
+    stat.mockResolvedValue({ uid: 'f1', name: 'tower.ifc' })
+    const w = mountView()
+    await flushPromises()
+    expect(useModel3dStore().isOpen).toBe(true)
+    expect(w.findComponent({ name: 'DocumentPreview' }).exists()).toBe(false)
   })
 })

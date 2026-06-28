@@ -9,9 +9,10 @@ import { fileService, type FileItem } from '@/services/fileService'
 //   preview    larger first-page image (PNG)        ← shown on open
 //   pdf        inline document PDF (Office docs)     ← fetched only on demand
 //   poster     video poster frame (PNG)
-export type RenditionFmt = 'thumbnail' | 'preview' | 'pdf' | 'poster'
+//   model      xeokit XKT 3D/BIM model               ← loaded by the 3D viewer
+export type RenditionFmt = 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model'
 
-const KNOWN: readonly RenditionFmt[] = ['thumbnail', 'preview', 'pdf', 'poster']
+const KNOWN: readonly RenditionFmt[] = ['thumbnail', 'preview', 'pdf', 'poster', 'model']
 
 export interface RenditionRef {
   uid: string
@@ -95,4 +96,17 @@ export async function renditionObjectUrl(uid: string, mime?: string): Promise<st
 
 export function revokeRenditionUrl(url: string): void {
   if (url && url.startsWith('blob:')) URL.revokeObjectURL(url)
+}
+
+// The 3D model rendition (xeokit XKT), if present. Not an image, so it is never
+// surfaced by thumbnailImage()/previewImage().
+export function modelRendition(set: RenditionSet): RenditionRef | undefined {
+  return set.model
+}
+
+// Download a rendition's bytes as an ArrayBuffer — what the xeokit XKTLoaderPlugin
+// consumes (it wants the raw buffer, not an object URL).
+export async function renditionArrayBuffer(uid: string): Promise<ArrayBuffer> {
+  const blob = await fileService.downloadFile(uid)
+  return blob.arrayBuffer()
 }

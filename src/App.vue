@@ -8,6 +8,7 @@
       </KeepAlive>
     </router-view>
     <PdfPreviewOverlay />
+    <ModelViewerOverlay />
   </div>
 </template>
 
@@ -15,6 +16,7 @@
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import PdfPreviewOverlay from '@/components/PdfPreviewOverlay.vue'
+import ModelViewerOverlay from '@/components/ModelViewerOverlay.vue'
 
 const authStore = useAuthStore()
 

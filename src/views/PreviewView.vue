@@ -6,7 +6,8 @@
       <h1 class="title">{{ name || uid }}</h1>
       <p v-if="error" class="err">{{ error }}</p>
 
-      <DocumentPreview :uid="uid" :name="name" full-width />
+      <p v-if="is3d" class="muted">Opening the 3D viewer…</p>
+      <DocumentPreview v-else :uid="uid" :name="name" full-width />
     </main>
   </div>
 </template>
@@ -17,13 +18,17 @@ import { useRoute, useRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import { fileService } from '@/services/fileService'
+import { useModel3dStore } from '@/stores/model3d'
+import { is3DModel } from '@/utils/modelFormat'
 
 const route = useRoute()
 const router = useRouter()
+const model3d = useModel3dStore()
 
 const uid = computed(() => String(route.params.uid || ''))
 const name = ref('')
 const error = ref('')
+const is3d = computed(() => is3DModel(name.value))
 
 watch(uid, load, { immediate: true })
 
@@ -37,6 +42,8 @@ async function load() {
   } catch {
     /* name is optional */
   }
+  // 3D models open in the dedicated maximal viewer overlay, not DocumentPreview.
+  if (is3DModel(name.value)) model3d.open(uid.value, name.value)
 }
 
 function back() {
@@ -70,6 +77,11 @@ function back() {
 
 .err {
   color: var(--danger);
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--muted);
   font-size: 13px;
 }
 </style>

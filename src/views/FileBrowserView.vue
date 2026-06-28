@@ -179,10 +179,18 @@ import UploadTray from '@/components/UploadTray.vue'
 import AppNav from '@/components/AppNav.vue'
 import FileThumbnail from '@/components/FileThumbnail.vue'
 import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
+import { useModel3dStore } from '@/stores/model3d'
+import { is3DModel } from '@/utils/modelFormat'
 
 const auth = useAuthStore()
 const files = useFileStore()
 const upload = useUploadStore()
+const model3d = useModel3dStore()
+
+// A file is viewable in 3D when it's a known model format AND has been converted
+// (its `model` XKT rendition lives among its hidden children).
+const canView3D = (item: FileItem) =>
+  !item.isDirectory && item.hasRenditions && is3DModel(item.name)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const dragOver = ref(false)
@@ -287,6 +295,7 @@ const menuFor = (item: FileItem): KebabItem[] => {
   const m: KebabItem[] = []
   if (item.isDirectory) m.push({ action: 'open', label: 'Open' })
   else if (canDo('download', auth.accessLevel)) m.push({ action: 'download', label: 'Download' })
+  if (canView3D(item)) m.push({ action: 'view3d', label: 'View in 3D' })
   if (!item.isDirectory && item.hasRenditions)
     m.push({ action: 'renditions', label: `Renditions (${item.renditionCount})` })
   if (canDo('rename', auth.accessLevel)) m.push({ action: 'rename', label: 'Rename' })
@@ -305,9 +314,11 @@ const clipboardTitle = computed(() => {
 })
 
 const open = (item: FileItem) => {
-  // Directories navigate; clicking a file opens its details (download stays on
-  // the kebab menu) so a single click previews/inspects rather than downloads.
+  // Directories navigate; a 3D model opens straight into the viewer; any other
+  // file opens its details (download stays on the kebab menu) so a single click
+  // previews/inspects rather than downloads.
   if (item.isDirectory) files.openDirectory(item)
+  else if (canView3D(item)) model3d.open(item.uid, item.name)
   else files.openDetails(item)
 }
 
@@ -316,6 +327,7 @@ const onAction = (action: string, item: FileItem) => {
     case 'open': return files.openDirectory(item)
     case 'download': return files.downloadItem(item)
     case 'info': return files.openDetails(item)
+    case 'view3d': return model3d.open(item.uid, item.name)
     case 'renditions': return files.openRenditions(item)
     case 'rename': return rename(item)
     case 'copy': return files.setClipboard('copy', [item])
