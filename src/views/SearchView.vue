@@ -20,12 +20,14 @@
 
       <ul v-if="hits.length" class="results">
         <li v-for="h in hits" :key="h.fileUid" class="result">
-          <button type="button" class="result-link" @click="preview.open(h.fileUid, displayName(h))">
+          <button type="button" class="result-link" @click="openHit(h)">
             <div class="result-head">
+              <span class="result-icon" aria-hidden="true">{{ iconFor(h) }}</span>
               <span class="result-name">{{ displayName(h) }}</span>
               <span class="result-score">{{ h.score?.toFixed(2) }}</span>
             </div>
-            <!-- Excerpts may contain Markdown — render inline to sanitized HTML. -->
+            <!-- Extracted-text excerpt (may contain Markdown) — for 3D models this
+                 is the indexed BIM/model strings. Rendered inline to sanitized HTML. -->
             <p v-if="h.snippet" class="result-snippet" v-html="renderMarkdownInline(h.snippet)"></p>
           </button>
         </li>
@@ -44,13 +46,27 @@ import { ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import { searchService } from '@/services/searchService'
 import { usePreviewStore } from '@/stores/preview'
+import { useModel3dStore } from '@/stores/model3d'
 import { useFileNames } from '@/composables/useFileNames'
 import { renderMarkdownInline } from '@/utils/markdown'
+import { is3DModel, modelIcon } from '@/utils/modelFormat'
 import { errorMessage } from '@/services/csaiClient'
 import type { SearchHit } from '@/types'
 
 const preview = usePreviewStore()
+const model3d = useModel3dStore()
 const { names, resolve: resolveNames } = useFileNames()
+
+// A format icon per result: the 3D glyph for models, else a generic document icon.
+const iconFor = (h: SearchHit) => modelIcon(displayName(h)) ?? '📄'
+
+// Open a result: 3D models go to the dedicated viewer (never the document text
+// preview); everything else opens the document preview overlay.
+function openHit(h: SearchHit) {
+  const name = displayName(h)
+  if (is3DModel(name)) model3d.open(h.fileUid, name)
+  else preview.open(h.fileUid, name)
+}
 
 const query = ref('')
 const hits = ref<SearchHit[]>([])
@@ -166,7 +182,13 @@ async function run() {
   gap: 10px;
 }
 
+.result-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
 .result-name {
+  flex: 1;
   font-weight: 600;
   color: var(--fg);
 }

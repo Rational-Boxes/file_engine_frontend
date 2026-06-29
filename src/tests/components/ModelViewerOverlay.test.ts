@@ -7,12 +7,16 @@ const hh = vi.hoisted(() => ({
   loadRenditionSet: vi.fn(),
   modelRendition: vi.fn(),
   resizeSpy: vi.fn(),
+  downloadFile: vi.fn(),
+  push: vi.fn(),
 }))
 
 vi.mock('@/services/renditions', () => ({
   loadRenditionSet: hh.loadRenditionSet,
   modelRendition: hh.modelRendition,
 }))
+vi.mock('@/services/fileService', () => ({ fileService: { downloadFile: hh.downloadFile } }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: hh.push }) }))
 
 // Stub the heavy viewer (xeokit) — assert the overlay wires it, not WebGL.
 vi.mock('@/components/Model3DViewer.vue', () => ({
@@ -39,6 +43,9 @@ describe('ModelViewerOverlay', () => {
     document.body.style.overflow = ''
     hh.loadRenditionSet.mockResolvedValue({ model: { uid: 'xkt1' } })
     hh.modelRendition.mockImplementation((s: { model?: { uid: string } }) => s.model)
+    hh.downloadFile.mockResolvedValue(new Blob(['x']))
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:fake')
+    globalThis.URL.revokeObjectURL = vi.fn()
   })
 
   it('is hidden until opened, then renders full-bleed and locks body scroll', async () => {
@@ -87,5 +94,28 @@ describe('ModelViewerOverlay', () => {
     expect(store.isOpen).toBe(false)
     await flushPromises()
     expect(document.body.style.overflow).toBe('')
+  })
+
+  it('downloads the original source file', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    const dl = w.findAll('.mv-act').find((b) => b.text().includes('Download'))!
+    await dl.trigger('click')
+    await flushPromises()
+    expect(hh.downloadFile).toHaveBeenCalledWith('file1') // the SOURCE uid, not the rendition
+  })
+
+  it('opens the file location (closes + navigates to the Files browser)', async () => {
+    const store = useModel3dStore()
+    const w = mountOverlay()
+    store.open('file1', 'tower.ifc')
+    await flushPromises()
+    const loc = w.findAll('.mv-act').find((b) => b.text().includes('Open file location'))!
+    await loc.trigger('click')
+    expect(store.isOpen).toBe(false)
+    expect(hh.push).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'FileBrowser', query: expect.objectContaining({ file: 'file1' }) }),
+    )
   })
 })

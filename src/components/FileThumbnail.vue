@@ -14,16 +14,7 @@ import {
   revokeRenditionUrl,
   thumbnailImage,
 } from '@/services/renditions'
-import { modelFormat } from '@/utils/modelFormat'
-
-// Format-specific glyphs for 3D/BIM files (which carry no raster thumbnail).
-const MODEL_ICON: Record<string, string> = {
-  '3d-ifc': '🏗️',
-  '3d-gltf': '🧊',
-  '3d-cityjson': '🏙️',
-  '3d-pointcloud': '☁️',
-  '3d-mesh': '🧊',
-}
+import { modelIcon } from '@/utils/modelFormat'
 
 // A file tile's leading glyph: a lazily-loaded icon-sized `thumbnail` rendition
 // when the file has one, else the plain type icon. Fetching is deferred until
@@ -38,8 +29,7 @@ let started = false
 
 const icon = computed(() => {
   if (props.item.isDirectory) return '📁'
-  const fmt = modelFormat(props.item.name)
-  return fmt ? MODEL_ICON[fmt] : '📄'
+  return modelIcon(props.item.name) ?? '📄'
 })
 const eligible = computed(() => !props.item.isDirectory && props.item.hasRenditions)
 

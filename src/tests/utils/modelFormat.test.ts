@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modelFormat, is3DModel } from '@/utils/modelFormat'
+import { modelFormat, is3DModel, modelIcon } from '@/utils/modelFormat'
 
 describe('modelFormat', () => {
   it('maps IFC family', () => {
@@ -36,5 +36,13 @@ describe('modelFormat', () => {
   it('is3DModel reflects modelFormat', () => {
     expect(is3DModel('a.glb')).toBe(true)
     expect(is3DModel('a.txt')).toBe(false)
+  })
+
+  it('modelIcon returns a glyph for 3D formats, null otherwise', () => {
+    expect(modelIcon('tower.ifc')).toBe('🏗️')
+    expect(modelIcon('city.city.json')).toBe('🏙️')
+    expect(modelIcon('cloud.las')).toBe('☁️')
+    expect(modelIcon('m.glb')).toBe('🧊')
+    expect(modelIcon('report.pdf')).toBeNull()
   })
 })

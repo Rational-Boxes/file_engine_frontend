@@ -36,3 +36,18 @@ export function modelFormat(name: string): ModelFormat | null {
 export function is3DModel(name: string): boolean {
   return modelFormat(name) !== null
 }
+
+// Format-specific glyphs for 3D/BIM files (which carry no raster thumbnail).
+const ICON: Record<ModelFormat, string> = {
+  '3d-ifc': '🏗️',
+  '3d-gltf': '🧊',
+  '3d-cityjson': '🏙️',
+  '3d-pointcloud': '☁️',
+  '3d-mesh': '🧊',
+}
+
+// The icon for a 3D model file, or null if the name isn't a known 3D format.
+export function modelIcon(name: string): string | null {
+  const fmt = modelFormat(name)
+  return fmt ? ICON[fmt] : null
+}

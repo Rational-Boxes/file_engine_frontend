@@ -8,6 +8,8 @@
           ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} tree</span>
         </button>
         <h1 class="mv-title" :title="title">{{ title }}</h1>
+        <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
+        <button class="mv-act" @click="openLocation">📂 Open file location</button>
         <button class="mv-x" aria-label="Close viewer" @click="model3d.close()">✕</button>
       </header>
 
@@ -36,11 +38,46 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import Model3DViewer from '@/components/Model3DViewer.vue'
 import { useModel3dStore } from '@/stores/model3d'
+import { useAuthStore } from '@/stores/auth'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
+import { fileService } from '@/services/fileService'
 
 const model3d = useModel3dStore()
+const auth = useAuthStore()
+const router = useRouter()
+
+// Download the source file (same affordance as the document preview).
+async function downloadOriginal() {
+  const uid = model3d.uid
+  const name = model3d.name || uid
+  if (!uid) return
+  try {
+    const blob = await fileService.downloadFile(uid)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch {
+    /* best effort */
+  }
+}
+
+// Close the viewer and navigate the Files browser to the source file's folder.
+function openLocation() {
+  const uid = model3d.uid
+  if (!uid) return
+  const query: Record<string, string> = { file: uid }
+  if (auth.tenant) query.tenant = auth.tenant // UIDs are tenant-scoped
+  model3d.close()
+  router.push({ name: 'FileBrowser', query })
+}
 
 const xktUid = ref('')
 const resolveError = ref('')
@@ -145,6 +182,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
 }
 .mv-toggle,
+.mv-act,
 .mv-x {
   background: transparent;
   border: 1px solid #3a3d42;
@@ -152,6 +190,11 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   padding: 0.25rem 0.5rem;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.mv-act:hover {
+  background: #2a2d31;
 }
 .mv-body {
   flex: 1 1 auto;
