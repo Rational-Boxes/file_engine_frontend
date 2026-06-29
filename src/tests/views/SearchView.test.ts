@@ -47,6 +47,22 @@ describe('SearchView', () => {
     expect(open).not.toHaveBeenCalled() // never the document preview
   })
 
+  it('renders Markdown in the snippet as HTML, not raw syntax', async () => {
+    search.mockResolvedValue([
+      { fileUid: 'f1', name: 'spec.md', snippet: '## Heading\n\n- **bold** item\n- second', score: 0.7 },
+    ])
+    const w = mountView()
+    await w.find('input').setValue('x')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    const html = w.find('.result-snippet').html()
+    expect(html).toContain('<h2')
+    expect(html).toContain('<ul')
+    expect(html).toContain('<strong>bold</strong>')
+    // raw markdown markers are not shown as text
+    expect(w.find('.result-snippet').text()).not.toContain('##')
+  })
+
   it('shows "No results" when the search is empty', async () => {
     search.mockResolvedValue([])
     const w = mountView()
