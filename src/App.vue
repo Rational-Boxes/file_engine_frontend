@@ -38,6 +38,8 @@ onMounted(() => {
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
   --danger: #dc2626;
+  /* Single sans-serif stack used everywhere (no monospace/serif in the UI). */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
 * {
@@ -46,10 +48,11 @@ onMounted(() => {
 
 body {
   margin: 0;
+  font-family: var(--font-sans);
 }
 
 #app {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: var(--fg);

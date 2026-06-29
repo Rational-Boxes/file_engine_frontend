@@ -399,7 +399,7 @@ dd {
 }
 
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-sans);
   font-size: 12px;
 }
 
