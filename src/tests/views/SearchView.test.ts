@@ -6,6 +6,8 @@ vi.mock('@/services/searchService', () => ({ searchService: { search } }))
 vi.mock('@/services/csaiClient', () => ({ errorMessage: (e: unknown) => String(e) }))
 const { open } = vi.hoisted(() => ({ open: vi.fn() }))
 vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open }) }))
+const { m3dOpen } = vi.hoisted(() => ({ m3dOpen: vi.fn() }))
+vi.mock('@/stores/model3d', () => ({ useModel3dStore: () => ({ open: m3dOpen }) }))
 
 import SearchView from '@/views/SearchView.vue'
 
@@ -26,9 +28,39 @@ describe('SearchView', () => {
     expect(w.text()).toContain('a.md')
     expect(w.text()).toContain('…north…')
     expect(w.text()).toContain('0.91')
-    // clicking a result raises the preview overlay (no navigation, no view reset)
+    // clicking a document result raises the document preview overlay
     await w.find('.result-link').trigger('click')
     expect(open).toHaveBeenCalledWith('f1', 'a.md')
+    expect(m3dOpen).not.toHaveBeenCalled()
+  })
+
+  it('a 3D-model result shows a format icon and opens the 3D viewer (not the doc preview)', async () => {
+    search.mockResolvedValue([{ fileUid: 'm1', name: 'tower.ifc', snippet: '…IfcWall…', score: 0.8 }])
+    const w = mountView()
+    await w.find('input').setValue('wall')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(w.text()).toContain('🏗️') // IFC icon
+    expect(w.text()).toContain('…IfcWall…') // extracted text snippet
+    await w.find('.result-link').trigger('click')
+    expect(m3dOpen).toHaveBeenCalledWith('m1', 'tower.ifc')
+    expect(open).not.toHaveBeenCalled() // never the document preview
+  })
+
+  it('renders Markdown in the snippet as HTML, not raw syntax', async () => {
+    search.mockResolvedValue([
+      { fileUid: 'f1', name: 'spec.md', snippet: '## Heading\n\n- **bold** item\n- second', score: 0.7 },
+    ])
+    const w = mountView()
+    await w.find('input').setValue('x')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    const html = w.find('.result-snippet').html()
+    expect(html).toContain('<h2')
+    expect(html).toContain('<ul')
+    expect(html).toContain('<strong>bold</strong>')
+    // raw markdown markers are not shown as text
+    expect(w.find('.result-snippet').text()).not.toContain('##')
   })
 
   it('shows "No results" when the search is empty', async () => {

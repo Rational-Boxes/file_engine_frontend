@@ -14,6 +14,7 @@ import {
   revokeRenditionUrl,
   thumbnailImage,
 } from '@/services/renditions'
+import { modelIcon } from '@/utils/modelFormat'
 
 // A file tile's leading glyph: a lazily-loaded icon-sized `thumbnail` rendition
 // when the file has one, else the plain type icon. Fetching is deferred until
@@ -26,7 +27,10 @@ const url = ref('')
 let observer: IntersectionObserver | null = null
 let started = false
 
-const icon = computed(() => (props.item.isDirectory ? '📁' : '📄'))
+const icon = computed(() => {
+  if (props.item.isDirectory) return '📁'
+  return modelIcon(props.item.name) ?? '📄'
+})
 const eligible = computed(() => !props.item.isDirectory && props.item.hasRenditions)
 
 onMounted(() => {

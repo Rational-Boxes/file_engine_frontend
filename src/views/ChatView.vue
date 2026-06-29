@@ -498,7 +498,7 @@ function assistantHtml(m: Msg): string {
   background: rgba(0, 0, 0, 0.06);
   padding: 1px 4px;
   border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-sans);
   font-size: 12px;
 }
 .md :deep(pre) {

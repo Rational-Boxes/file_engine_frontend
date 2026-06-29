@@ -15,8 +15,10 @@ import {
   loadRenditionSet,
   renditionObjectUrl,
   revokeRenditionUrl,
+  renditionArrayBuffer,
   previewImage,
   thumbnailImage,
+  modelRendition,
 } from '@/services/renditions'
 
 describe('renditions: name parsing', () => {
@@ -63,6 +65,34 @@ describe('renditions: set reduction', () => {
     expect(listRenditions).toHaveBeenCalledWith('file1')
     expect(set.preview?.uid).toBe('r1')
     expect(set.pdf?.uid).toBe('r2')
+  })
+})
+
+describe('renditions: 3D model (XKT)', () => {
+  it('parses the model fmt', () => {
+    expect(parseRenditionName('v3-model.xkt')).toEqual({ version: 'v3', fmt: 'model', ext: 'xkt' })
+  })
+
+  it('reduces a model rendition into the set without polluting still images', () => {
+    const set = toRenditionSet([
+      { uid: 'm1', name: 'v1-model.xkt' },
+      { uid: 'm2', name: 'v2-model.xkt' }, // newer wins
+    ])
+    expect(modelRendition(set)?.uid).toBe('m2')
+    // a .xkt is not an image — must never be used as a still tile/preview
+    expect(thumbnailImage(set)).toBeUndefined()
+    expect(previewImage(set)).toBeUndefined()
+  })
+
+  it('renditionArrayBuffer downloads the bytes as an ArrayBuffer', async () => {
+    const buf = new Uint8Array([1, 2, 3]).buffer
+    // Blob.arrayBuffer() exists in browsers; jsdom's Blob lacks it, so stub the
+    // contract the function relies on (downloadFile is mocked regardless).
+    downloadFile.mockResolvedValue({ arrayBuffer: async () => buf } as unknown as Blob)
+    const out = await renditionArrayBuffer('m2')
+    expect(downloadFile).toHaveBeenCalledWith('m2')
+    expect(out).toBeInstanceOf(ArrayBuffer)
+    expect(out.byteLength).toBe(3)
   })
 })
 

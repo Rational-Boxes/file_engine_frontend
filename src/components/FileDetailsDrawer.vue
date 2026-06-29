@@ -25,9 +25,22 @@
           🔗 {{ linkCopied ? 'Copied!' : 'Copy link' }}
         </button>
       </div>
+      <!-- 3D/BIM models use the dedicated viewer, never the document preview.
+           If no model rendition exists yet, offer an on-demand conversion. -->
+      <template v-if="isModelFormat">
+        <button v-if="canView3D" class="btn view3d-btn" @click="openModel">🧊 View model in 3D</button>
+        <template v-else>
+          <button class="btn view3d-btn" :disabled="generating" @click="generateModel">
+            {{ generating ? 'Generating 3D model…' : '🧊 Generate 3D model' }}
+          </button>
+          <p v-if="genMessage" class="gen-msg" :class="{ err: genError }">{{ genMessage }}</p>
+          <p v-else class="muted">No 3D model has been generated for this file yet.</p>
+        </template>
+      </template>
+
       <!-- First-page preview lives in the general Info tab (no separate tab). -->
       <DocumentPreview
-        v-if="item && !item.isDirectory"
+        v-else-if="item && !item.isDirectory"
         class="info-preview"
         :uid="item.uid"
         :name="item.name"
@@ -112,9 +125,55 @@ import { PERMS, canDo } from '@/utils/permissions'
 import AclEditor from '@/components/AclEditor.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import FileVersions from '@/components/FileVersions.vue'
+import { useModel3dStore } from '@/stores/model3d'
+import { is3DModel } from '@/utils/modelFormat'
+import { loadRenditionSet, modelRendition } from '@/services/renditions'
+import { searchService } from '@/services/searchService'
 
 const files = useFileStore()
 const auth = useAuthStore()
+const model3d = useModel3dStore()
+
+// A 3D/BIM model by format (regardless of conversion state). Such files never
+// use the document preview — they get the 3D section instead.
+const isModelFormat = computed(() => !!item.value && !item.value.isDirectory && is3DModel(item.value.name))
+// Viewable in 3D only once its model (.xkt) rendition has been generated — either
+// already present, or produced by an on-demand generate this session.
+const modelReady = ref(false)
+const canView3D = computed(
+  () => isModelFormat.value && ((!!item.value && item.value.hasRenditions) || modelReady.value),
+)
+function openModel() {
+  if (item.value) model3d.open(item.value.uid, item.value.name)
+}
+
+// On-demand conversion request for a 3D file that has no model rendition yet.
+const generating = ref(false)
+const genMessage = ref('')
+const genError = ref(false)
+async function generateModel() {
+  if (!item.value) return
+  generating.value = true
+  genMessage.value = ''
+  genError.value = false
+  try {
+    const res = await searchService.generatePreview(item.value.uid)
+    const set = await loadRenditionSet(item.value.uid)
+    if (modelRendition(set)) {
+      modelReady.value = true // a model.xkt now exists → show the viewer link
+    } else {
+      genError.value = true
+      genMessage.value =
+        'Conversion finished but produced no 3D model — this file’s format or schema is not supported by the converter' +
+        (res.hasMarkdown ? '. Its text was still indexed for search.' : '.')
+    }
+  } catch (e) {
+    genError.value = true
+    genMessage.value = errorMessage(e, 'Could not reach the conversion service.')
+  } finally {
+    generating.value = false
+  }
+}
 
 const tabs = ['Info', 'Metadata', 'Versions', 'Access'] as const
 type Tab = (typeof tabs)[number]
@@ -159,6 +218,11 @@ async function loadAll(uid: string) {
   metadata.value = {}
   effective.value = {}
   tab.value = 'Info'
+  // Reset the per-file 3D conversion state.
+  modelReady.value = false
+  generating.value = false
+  genMessage.value = ''
+  genError.value = false
   try {
     const [stat, meta, ...checks] = await Promise.all([
       fileService.stat(uid),
@@ -295,6 +359,22 @@ async function removeMeta(key: string) {
   margin-bottom: 16px;
 }
 
+.view3d-btn {
+  width: 100%;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.gen-msg {
+  font-size: 13px;
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+.gen-msg.err {
+  color: var(--danger);
+}
+
 .dl-btn {
   margin-top: 14px;
   width: 100%;
@@ -319,7 +399,7 @@ dd {
 }
 
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-sans);
   font-size: 12px;
 }
 

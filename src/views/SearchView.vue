@@ -20,13 +20,21 @@
 
       <ul v-if="hits.length" class="results">
         <li v-for="h in hits" :key="h.fileUid" class="result">
-          <button type="button" class="result-link" @click="preview.open(h.fileUid, displayName(h))">
+          <button type="button" class="result-link" @click="openHit(h)">
             <div class="result-head">
+              <span class="result-icon" aria-hidden="true">{{ iconFor(h) }}</span>
               <span class="result-name">{{ displayName(h) }}</span>
               <span class="result-score">{{ h.score?.toFixed(2) }}</span>
             </div>
-            <!-- Excerpts may contain Markdown — render inline to sanitized HTML. -->
-            <p v-if="h.snippet" class="result-snippet" v-html="renderMarkdownInline(h.snippet)"></p>
+            <!-- Extracted-text excerpt — the indexed content (Markdown for docs;
+                 BIM/model strings for 3D). Full Markdown → sanitized HTML so
+                 headings, lists, emphasis, tables etc. render visually, not as raw
+                 syntax. (A div, not <p>, so block elements nest validly.) -->
+            <div
+              v-if="h.snippet"
+              class="result-snippet md"
+              v-html="renderMarkdown(h.snippet)"
+            ></div>
           </button>
         </li>
       </ul>
@@ -44,13 +52,27 @@ import { ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import { searchService } from '@/services/searchService'
 import { usePreviewStore } from '@/stores/preview'
+import { useModel3dStore } from '@/stores/model3d'
 import { useFileNames } from '@/composables/useFileNames'
-import { renderMarkdownInline } from '@/utils/markdown'
+import { renderMarkdown } from '@/utils/markdown'
+import { is3DModel, modelIcon } from '@/utils/modelFormat'
 import { errorMessage } from '@/services/csaiClient'
 import type { SearchHit } from '@/types'
 
 const preview = usePreviewStore()
+const model3d = useModel3dStore()
 const { names, resolve: resolveNames } = useFileNames()
+
+// A format icon per result: the 3D glyph for models, else a generic document icon.
+const iconFor = (h: SearchHit) => modelIcon(displayName(h)) ?? '📄'
+
+// Open a result: 3D models go to the dedicated viewer (never the document text
+// preview); everything else opens the document preview overlay.
+function openHit(h: SearchHit) {
+  const name = displayName(h)
+  if (is3DModel(name)) model3d.open(h.fileUid, name)
+  else preview.open(h.fileUid, name)
+}
 
 const query = ref('')
 const hits = ref<SearchHit[]>([])
@@ -166,7 +188,13 @@ async function run() {
   gap: 10px;
 }
 
+.result-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
 .result-name {
+  flex: 1;
   font-weight: 600;
   color: var(--fg);
 }
@@ -180,6 +208,67 @@ async function run() {
   margin: 6px 0 4px;
   font-size: 13px;
   color: var(--fg);
+}
+
+/* Rendered Markdown inside a result snippet — kept compact for the result card. */
+.result-snippet :deep(p) {
+  margin: 0 0 6px;
+}
+.result-snippet :deep(> :first-child) {
+  margin-top: 0;
+}
+.result-snippet :deep(> :last-child) {
+  margin-bottom: 0;
+}
+.result-snippet :deep(h1),
+.result-snippet :deep(h2),
+.result-snippet :deep(h3),
+.result-snippet :deep(h4) {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 6px 0 2px;
+}
+.result-snippet :deep(ul),
+.result-snippet :deep(ol) {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+.result-snippet :deep(li) {
+  margin: 1px 0;
+}
+.result-snippet :deep(code) {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.result-snippet :deep(pre) {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  overflow: auto;
+  font-size: 12px;
+}
+.result-snippet :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+.result-snippet :deep(table) {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.result-snippet :deep(th),
+.result-snippet :deep(td) {
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  text-align: left;
+}
+.result-snippet :deep(a) {
+  color: var(--primary);
+}
+.result-snippet :deep(img) {
+  max-width: 100%;
 }
 
 </style>
