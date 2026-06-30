@@ -1,38 +1,33 @@
 // Subdomain → tenant resolution.
 //
-// In the unified deployment the SPA is served per tenant at
-// `<tenant>.<base-domain>` (e.g. `someco.host.com`). The subdomain is
-// authoritative for which tenant site the user is on, so on load we adopt it as
-// the active tenant (sent as the X-Tenant header) instead of relying solely on
-// the in-app selector. A user with access to multiple tenants switches simply by
-// visiting another tenant's subdomain.
+// The SPA is served per tenant at `<tenant>.<domain>` — e.g. `someco.host.com`
+// in the unified deployment, or `someco.ngrok.io` when tunnelling for dev. The
+// leading DNS label is authoritative for which tenant site the user is on, so
+// on load we adopt it as the active tenant (sent as the X-Tenant header)
+// instead of relying solely on the in-app selector. A user with access to
+// multiple tenants switches simply by visiting another tenant's subdomain.
 //
-// `VITE_BASE_DOMAIN` is the apex the tenants live under (leading/trailing dots
-// optional, e.g. `host.com` or `.host.com`). When it is unset — local dev on
-// `localhost`, or a single-tenant deployment — every helper degrades to "no
-// subdomain tenant" and the app falls back to the persisted/selected tenant.
+// Only the leading label matters — the rest of the domain is irrelevant, which
+// mirrors the bridge's own extractTenantFromHostname. A host with no subdomain
+// (bare `localhost`, a single-label host, or an IP literal) has no tenant, so
+// every helper degrades to "no subdomain tenant" and the app falls back to the
+// persisted/selected tenant.
 
-const BASE_DOMAIN = (import.meta.env.VITE_BASE_DOMAIN || '')
-  .trim()
-  .replace(/^\.+/, '')
-  .replace(/\.+$/, '')
-  .toLowerCase()
-
-// Labels that are never a tenant even when they sit under the base domain.
+// Labels that are never a tenant even when they appear as the leading label.
 const RESERVED_LABELS = new Set(['www', 'app', 'api', 'csai'])
 
-// Derive the tenant from a hostname, or null for the apex / a non-matching host.
+// Derive the tenant from a hostname: the leading DNS label, regardless of the
+// rest of the domain. Returns null when the host carries no usable subdomain.
 // The SPA host carries a bare tenant label (`someco`); the WebDAV `-drive` host
 // never reaches the SPA, and tenant names contain no hyphen, so the whole label
 // is the tenant.
 export function tenantFromHostname(hostname: string): string | null {
-  if (!BASE_DOMAIN || !hostname) return null
+  if (!hostname) return null
   const host = hostname.toLowerCase().replace(/\.$/, '')
-  if (host === BASE_DOMAIN) return null // apex — no tenant
-  const suffix = '.' + BASE_DOMAIN
-  if (!host.endsWith(suffix)) return null // different domain (localhost, IP, …)
-  const label = host.slice(0, -suffix.length)
-  if (!label || label.includes('.')) return null // only a single-label subdomain
+  const firstDot = host.indexOf('.')
+  if (firstDot <= 0) return null // bare host (e.g. "localhost") — no tenant
+  const label = host.slice(0, firstDot)
+  if (/^\d+$/.test(label)) return null // IPv4 literal — not a tenant subdomain
   if (RESERVED_LABELS.has(label)) return null
   return label
 }
@@ -43,18 +38,22 @@ export function activeTenantFromHost(): string | null {
   return tenantFromHostname(window.location.hostname)
 }
 
-// True when a base domain is configured — i.e. tenants are keyed by subdomain
-// and switching tenant means navigating to another origin (vs. an in-app swap).
+// True when the current host is a tenant subdomain — i.e. the tenant is keyed by
+// subdomain and switching tenant means navigating to another origin (vs. an
+// in-app swap).
 export function subdomainTenancyEnabled(): boolean {
-  return !!BASE_DOMAIN
+  return activeTenantFromHost() !== null
 }
 
-// Public URL of another tenant's SPA, preserving the current path/hash so a
-// tenant switch lands the user in the same place. Returns null when subdomain
-// tenancy is disabled (caller should fall back to an in-app switch).
+// Public URL of another tenant's SPA: swap the leading label of the current host
+// for `tenant`, preserving the rest of the domain, port, and path/hash so a
+// tenant switch lands the user in the same place. Returns null when the current
+// host is not a tenant subdomain (caller should fall back to an in-app switch).
 export function tenantUrl(tenant: string): string | null {
-  if (!BASE_DOMAIN || typeof window === 'undefined') return null
-  const { protocol, port, pathname, search, hash } = window.location
-  const host = `${tenant}.${BASE_DOMAIN}${port ? ':' + port : ''}`
+  if (typeof window === 'undefined') return null
+  const { protocol, hostname, port, pathname, search, hash } = window.location
+  if (tenantFromHostname(hostname) === null) return null
+  const rest = hostname.slice(hostname.indexOf('.')) // ".ngrok.io"
+  const host = `${tenant}${rest}${port ? ':' + port : ''}`
   return `${protocol}//${host}${pathname}${search}${hash}`
 }
