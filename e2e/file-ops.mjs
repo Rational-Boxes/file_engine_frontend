@@ -7,13 +7,19 @@
  *
  * Run against a running stack (core + http_bridge):
  *   node e2e/file-ops.mjs
- * Env overrides: BRIDGE_URL, FE_USER, FE_PASS, FE_TENANT.
+ * Env: FE_PASS is required (no hardcoded default); BRIDGE_URL, FE_USER and
+ * FE_TENANT have local-dev defaults.
  */
 const BRIDGE = process.env.BRIDGE_URL || 'http://localhost:8090'
 const USER = process.env.FE_USER || 'testuser@rationalboxes.com'
-const PASS = process.env.FE_PASS || 'P@ssword1234567890*'
+const PASS = process.env.FE_PASS
 const TENANT = process.env.FE_TENANT || 'default'
 const ROOT = '00000000-0000-0000-0000-000000000000'
+
+if (!PASS) {
+  console.error('FE_PASS is required (the LDAP test-user password); set it in the environment.')
+  process.exit(1)
+}
 
 let token
 const H = (extra = {}) => ({ Authorization: `Bearer ${token}`, 'X-Tenant': TENANT, ...extra })
