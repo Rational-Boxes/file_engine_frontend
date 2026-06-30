@@ -8,6 +8,7 @@
 export type ModelFormat =
   | '3d-ifc'
   | '3d-gltf'
+  | '3d-cad'
   | '3d-cityjson'
   | '3d-pointcloud'
   | '3d-mesh'
@@ -18,10 +19,19 @@ const EXT: Record<string, ModelFormat> = {
   ifczip: '3d-ifc',
   gltf: '3d-gltf',
   glb: '3d-gltf',
+  // True-CAD solids (converted via OpenCASCADE → glTF → XKT on the backend).
+  step: '3d-cad',
+  stp: '3d-cad',
+  iges: '3d-cad',
+  igs: '3d-cad',
+  brep: '3d-cad',
   las: '3d-pointcloud',
   laz: '3d-pointcloud',
   stl: '3d-mesh',
   ply: '3d-mesh',
+  obj: '3d-mesh',
+  wrl: '3d-mesh',
+  vrml: '3d-mesh',
 }
 
 export function modelFormat(name: string): ModelFormat | null {
@@ -41,6 +51,7 @@ export function is3DModel(name: string): boolean {
 const ICON: Record<ModelFormat, string> = {
   '3d-ifc': '🏗️',
   '3d-gltf': '🧊',
+  '3d-cad': '⚙️',
   '3d-cityjson': '🏙️',
   '3d-pointcloud': '☁️',
   '3d-mesh': '🧊',

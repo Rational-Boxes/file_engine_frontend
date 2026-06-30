@@ -24,6 +24,18 @@ describe('modelFormat', () => {
     expect(modelFormat('cloud.laz')).toBe('3d-pointcloud')
     expect(modelFormat('part.stl')).toBe('3d-mesh')
     expect(modelFormat('part.ply')).toBe('3d-mesh')
+    expect(modelFormat('mesh.obj')).toBe('3d-mesh')
+    expect(modelFormat('world.wrl')).toBe('3d-mesh')
+    expect(modelFormat('world.vrml')).toBe('3d-mesh')
+  })
+
+  it('maps CAD solids (STEP/IGES/BREP, via the OpenCASCADE backend)', () => {
+    expect(modelFormat('part.step')).toBe('3d-cad')
+    expect(modelFormat('part.stp')).toBe('3d-cad')
+    expect(modelFormat('part.STP')).toBe('3d-cad')
+    expect(modelFormat('part.iges')).toBe('3d-cad')
+    expect(modelFormat('part.igs')).toBe('3d-cad')
+    expect(modelFormat('shape.brep')).toBe('3d-cad')
   })
 
   it('returns null for non-3D and missing extensions', () => {
@@ -43,6 +55,9 @@ describe('modelFormat', () => {
     expect(modelIcon('city.city.json')).toBe('🏙️')
     expect(modelIcon('cloud.las')).toBe('☁️')
     expect(modelIcon('m.glb')).toBe('🧊')
+    expect(modelIcon('part.step')).toBe('⚙️')
+    expect(modelIcon('part.iges')).toBe('⚙️')
+    expect(modelIcon('mesh.obj')).toBe('🧊')
     expect(modelIcon('report.pdf')).toBeNull()
   })
 })
