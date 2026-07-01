@@ -72,6 +72,29 @@ describe('SearchView', () => {
     expect(w.text()).toContain('No results')
   })
 
+  it('runs the search on Enter in the input', async () => {
+    search.mockResolvedValue([{ fileUid: 'f1', name: 'a.md', snippet: '…north…', score: 0.9 }])
+    const w = mountView()
+    await w.find('input').setValue('north')
+    await w.find('input').trigger('keydown.enter')
+    await flushPromises()
+    expect(search).toHaveBeenCalledWith('north', { limit: 50 })
+    expect(w.text()).toContain('a.md')
+  })
+
+  it('the clear ✕ resets the query and results', async () => {
+    search.mockResolvedValue([{ fileUid: 'f1', name: 'a.md', snippet: '…north…', score: 0.9 }])
+    const w = mountView()
+    await w.find('input').setValue('north')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(w.text()).toContain('a.md')
+    await w.find('.clear-x').trigger('click')
+    expect((w.find('input').element as HTMLInputElement).value).toBe('')
+    expect(w.text()).not.toContain('a.md') // results cleared
+    expect(w.find('.clear-x').exists()).toBe(false) // hidden once empty
+  })
+
   it('surfaces an error message on failure', async () => {
     search.mockRejectedValue(new Error('boom'))
     const w = mountView()

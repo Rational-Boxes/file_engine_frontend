@@ -3,13 +3,26 @@
     <AppNav />
     <main class="content">
       <form class="search-bar" @submit.prevent="run">
-        <input
-          v-model="query"
-          class="search-input"
-          type="search"
-          placeholder="Search documents…"
-          aria-label="Search query"
-        />
+        <div class="input-wrap">
+          <input
+            v-model="query"
+            ref="inputEl"
+            class="search-input"
+            type="text"
+            placeholder="Search documents…"
+            aria-label="Search query"
+            @keydown.enter.prevent="run"
+            @keydown.esc="clear"
+          />
+          <button
+            v-if="query || hits.length || searched"
+            type="button"
+            class="clear-x"
+            aria-label="Clear search"
+            title="Clear search"
+            @click="clear"
+          >✕</button>
+        </div>
         <button class="btn" :disabled="!query.trim() || loading" type="submit">
           {{ loading ? 'Searching…' : 'Search' }}
         </button>
@@ -79,6 +92,17 @@ const hits = ref<SearchHit[]>([])
 const loading = ref(false)
 const error = ref('')
 const searched = ref(false)
+const inputEl = ref<HTMLInputElement | null>(null)
+
+// Fully reset the search: clear the query, results, and any error/searched state,
+// then refocus the input (also bound to the ✕ button and Esc).
+function clear() {
+  query.value = ''
+  hits.value = []
+  error.value = ''
+  searched.value = false
+  inputEl.value?.focus()
+}
 
 // Prefer the hit's own name, then a resolved name, then the UID (the UID is
 // always shown separately beneath the result).
@@ -116,12 +140,37 @@ async function run() {
   margin-bottom: 16px;
 }
 
+.input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+}
+
 .search-input {
   flex: 1;
-  padding: 8px 12px;
+  padding: 8px 34px 8px 12px; /* right room for the clear ✕ */
   border: 1px solid var(--border);
   border-radius: 10px;
   font-size: 14px;
+}
+
+.clear-x {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.clear-x:hover {
+  color: var(--fg);
+  background: var(--bg);
 }
 
 .btn {
