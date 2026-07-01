@@ -114,7 +114,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { fileService, type NodeInfo } from '@/services/fileService'
 import { useFileStore } from '@/stores/files'
@@ -133,6 +133,17 @@ import { searchService } from '@/services/searchService'
 const files = useFileStore()
 const auth = useAuthStore()
 const model3d = useModel3dStore()
+// Close the drawer on Escape. Capture phase so a focused in-content element (e.g.
+// the 3D canvas) can't swallow the key; defaultPrevented means an overlay above
+// the drawer (3D viewer / PDF preview, mounted earlier in App.vue so they run
+// first) already handled this Esc — so only the topmost surface closes per press.
+function onKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || e.defaultPrevented || !files.drawerOpen) return
+  e.preventDefault()
+  files.closeDetails()
+}
+onMounted(() => window.addEventListener('keydown', onKey, true))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 
 // A 3D/BIM model by format (regardless of conversion state). Such files never
 // use the document preview — they get the 3D section instead.

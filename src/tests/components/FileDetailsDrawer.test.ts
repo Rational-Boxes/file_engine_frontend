@@ -69,6 +69,16 @@ describe('FileDetailsDrawer — 3D model section', () => {
     fns.modelRendition.mockReturnValue(undefined)
   })
 
+  it('closes on Escape', async () => {
+    const files = useFileStore()
+    openWith({ uid: 'f1', name: 'a.txt', hasRenditions: false })
+    await flushPromises()
+    expect(files.drawerOpen).toBe(true)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(files.drawerOpen).toBe(false)
+  })
+
   it('a converted 3D model shows the View link and opens the viewer', async () => {
     const w = openWith({ uid: 'm1', name: 'tower.ifc', hasRenditions: true })
     await flushPromises()

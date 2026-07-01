@@ -149,12 +149,17 @@ watch(
   },
 )
 
+// Capture phase so the focused WebGL canvas (xeokit binds keys) can't swallow
+// Esc; preventDefault marks it handled so lower surfaces (the drawer) don't also
+// close on the same press.
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && model3d.isOpen) model3d.close()
+  if (e.key !== 'Escape' || e.defaultPrevented || !model3d.isOpen) return
+  e.preventDefault()
+  model3d.close()
 }
-onMounted(() => window.addEventListener('keydown', onKey))
+onMounted(() => window.addEventListener('keydown', onKey, true))
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('keydown', onKey, true)
   document.body.style.overflow = ''
 })
 </script>

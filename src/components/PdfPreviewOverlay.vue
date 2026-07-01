@@ -48,11 +48,15 @@ watch(
   { immediate: true },
 )
 
+// Capture phase (Esc can still be swallowed by focused content); preventDefault
+// marks it handled so the drawer beneath doesn't also close on the same press.
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && preview.isOpen) preview.close()
+  if (e.key !== 'Escape' || e.defaultPrevented || !preview.isOpen) return
+  e.preventDefault()
+  preview.close()
 }
-onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+onMounted(() => window.addEventListener('keydown', onKey, true))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 </script>
 
 <style scoped>
