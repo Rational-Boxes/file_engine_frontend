@@ -8,6 +8,7 @@
           ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} tree</span>
         </button>
         <h1 class="mv-title" :title="title">{{ title }}</h1>
+        <button class="mv-act" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset camera</button>
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
         <button class="mv-x" aria-label="Close viewer" @click="model3d.close()">✕</button>
@@ -97,6 +98,11 @@ function readCollapsed(): boolean {
   }
   // Default: collapsed on small screens, expanded on wide.
   return typeof window !== 'undefined' && window.innerWidth < 768
+}
+
+// Return the 3D camera to its default framing of the whole model.
+function resetCamera() {
+  viewerRef.value?.resetCamera()
 }
 
 async function toggleSidebar() {

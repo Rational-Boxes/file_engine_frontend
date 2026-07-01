@@ -7,6 +7,7 @@ const hh = vi.hoisted(() => ({
   loadRenditionSet: vi.fn(),
   modelRendition: vi.fn(),
   resizeSpy: vi.fn(),
+  resetCameraSpy: vi.fn(),
   downloadFile: vi.fn(),
   push: vi.fn(),
 }))
@@ -24,7 +25,7 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
     name: 'Model3DViewer',
     props: ['xktUid', 'treeContainerId'],
     setup(_, { expose }) {
-      expose({ resize: hh.resizeSpy })
+      expose({ resize: hh.resizeSpy, resetCamera: hh.resetCameraSpy })
       return () => createEl('div', { class: 'm3d-stub' })
     },
   }),
@@ -94,6 +95,16 @@ describe('ModelViewerOverlay', () => {
     expect(store.isOpen).toBe(false)
     await flushPromises()
     expect(document.body.style.overflow).toBe('')
+  })
+
+  it('resets the camera to the default view via the header button', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    const reset = w.findAll('.mv-act').find((b) => b.text().includes('Reset camera'))!
+    expect(reset).toBeTruthy()
+    await reset.trigger('click')
+    expect(hh.resetCameraSpy).toHaveBeenCalled()
   })
 
   it('downloads the original source file', async () => {
