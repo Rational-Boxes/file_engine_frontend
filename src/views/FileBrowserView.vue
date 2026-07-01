@@ -121,7 +121,7 @@
           <tr
             v-for="item in displayItems"
             :key="item.uid"
-            :class="{ sel: files.selected.has(item.uid), cut: isCut(item), deleted: item.deleted }"
+            :class="{ sel: files.selected.has(item.uid), cut: isCut(item), deleted: item.deleted, active: files.drawerOpen && files.detailItem?.uid === item.uid }"
             @dblclick="open(item)"
           >
             <td class="cb-col" @click.stop>
@@ -564,7 +564,24 @@ onDeactivated(() => {
 }
 
 .files tr.sel {
-  background: #eff6ff;
+  background: #dbeafe;
+}
+/* keep the selection tint on hover (generic tr:hover would otherwise wash it out) */
+.files tr.sel:hover {
+  background: #c7dcfa;
+}
+/* left accent bar so a selected row reads at a glance */
+.files tr.sel td:first-child {
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+/* the row whose file is open in the details drawer — the current/active item */
+.files tr.active,
+.files tr.active:hover {
+  background: #dbeafe;
+}
+.files tr.active td:first-child {
+  box-shadow: inset 3px 0 0 var(--primary);
 }
 
 .files tr.cut {
