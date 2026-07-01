@@ -16,6 +16,22 @@ describe('renderMarkdown', () => {
     expect(html).toContain('text')
   })
 
+  it('strips <style> by default so it cannot leak into the page', () => {
+    const html = renderMarkdown('text\n\n<style>.x{color:red}</style>')
+    expect(html.toLowerCase()).not.toContain('<style')
+    expect(html).toContain('text')
+  })
+
+  it('still strips scripts when allowStyle is set', () => {
+    // allowStyle keeps <style> so the LLM can style its own answer (which is
+    // rendered inside an isolated shadow root — see ShadowHtml). Whether the
+    // <style> element survives is a browser CSSOM behavior the test DOM can't
+    // represent, but the safety invariant must always hold: no scripts.
+    const safe = renderMarkdown('<style>.x{}</style><script>alert(1)</script>text', { allowStyle: true })
+    expect(safe.toLowerCase()).not.toContain('<script')
+    expect(safe).toContain('text')
+  })
+
   it('returns empty string for empty input', () => {
     expect(renderMarkdown('')).toBe('')
   })

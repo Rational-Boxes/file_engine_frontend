@@ -25,8 +25,18 @@ vi.mock('@/services/conversationService', () => ({
 }))
 
 import ChatView from '@/views/ChatView.vue'
+import ShadowHtml from '@/components/ShadowHtml.vue'
 
 const mountView = () => mount(ChatView, { global: { stubs: { AppNav: true } } })
+
+// Assistant answers render inside ShadowHtml's shadow root (style isolation), so
+// they're not visible to w.text()/w.find() — reach into the shadow root instead.
+type W = ReturnType<typeof mountView>
+const shadowRoots = (w: W) =>
+  w.findAllComponents(ShadowHtml).map((c) => (c.element as HTMLElement).shadowRoot).filter(Boolean) as ShadowRoot[]
+const shadowText = (w: W) => shadowRoots(w).map((r) => r.textContent || '').join(' ')
+const shadowHtml = (w: W) => shadowRoots(w).map((r) => r.innerHTML || '').join(' ')
+const shadowHas = (w: W, sel: string) => shadowRoots(w).some((r) => !!r.querySelector(sel))
 
 describe('ChatView', () => {
   beforeEach(() => {
@@ -50,9 +60,9 @@ describe('ChatView', () => {
     handlers.onDone?.()
     await flushPromises()
 
-    expect(w.text()).toContain('Northern revenue reached $175M.')
-    expect(w.text()).not.toContain('let me check the table') // <think> hidden
-    expect(w.find('.md').html()).toContain('<strong>$175M</strong>') // Markdown -> HTML
+    expect(shadowText(w)).toContain('Northern revenue reached $175M.')
+    expect(shadowText(w)).not.toContain('let me check the table') // <think> hidden
+    expect(shadowHtml(w)).toContain('<strong>$175M</strong>') // Markdown -> HTML
     // citation chip shows the resolved file name (not the UUID)
     expect(w.find('.cite').text()).toContain('[1] report.md')
     // citation chip raises the preview overlay (no navigation, chat is preserved)
@@ -133,17 +143,17 @@ describe('ChatView', () => {
     await w.find('form').trigger('submit')
     // before the first token: a standalone blinking caret + streaming bubble
     expect(w.find('.caret').exists()).toBe(true)
-    expect(w.find('.md.streaming').exists()).toBe(true)
+    expect(shadowHas(w, '.md.streaming')).toBe(true)
 
     handlers.onToken?.('partial')
     await flushPromises()
     // text is visible now → standalone caret gone, trailing caret via class
     expect(w.find('.caret').exists()).toBe(false)
-    expect(w.find('.md.streaming').exists()).toBe(true)
+    expect(shadowHas(w, '.md.streaming')).toBe(true)
 
     handlers.onDone?.()
     await flushPromises()
-    expect(w.find('.md.streaming').exists()).toBe(false)
+    expect(shadowHas(w, '.md.streaming')).toBe(false)
     expect(w.find('.caret').exists()).toBe(false)
   })
 
@@ -216,8 +226,8 @@ describe('ChatView', () => {
     await w.find('.conv-open').trigger('click')
     await flushPromises()
     expect(getConv).toHaveBeenCalledWith('c1')
-    expect(w.text()).toContain('hi there')
-    expect(w.text()).toContain('hello back')
+    expect(w.text()).toContain('hi there') // user message (light DOM)
+    expect(shadowText(w)).toContain('hello back') // assistant answer (shadow root)
     // resumed assistant citation renders
     expect(w.find('.cite').text()).toContain('[1] report.md')
   })

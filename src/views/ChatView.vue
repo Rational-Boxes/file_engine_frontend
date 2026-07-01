@@ -39,12 +39,14 @@
                  User messages stay plain text (escaped by interpolation). The
                  `streaming` class appends a blinking caret after the last line
                  while tokens are still arriving (a "working" indication). -->
-            <div
+            <!-- Isolated in a shadow root so the LLM can style its own HTML
+                 (<style> is scoped there) without leaking into the app. -->
+            <ShadowHtml
               v-if="m.role === 'assistant'"
-              class="text md"
-              :class="{ streaming: m.streaming }"
-              v-html="assistantHtml(m)"
-            ></div>
+              class="text"
+              :html="assistantHtml(m)"
+              :streaming="!!m.streaming"
+            />
             <p v-else class="text">{{ m.content }}</p>
             <!-- Before the first token there's no text to trail, so show a
                  standalone blinking caret as the working indication. -->
@@ -115,6 +117,7 @@ import { conversationService } from '@/services/conversationService'
 import { usePreviewStore } from '@/stores/preview'
 import { useFileNames } from '@/composables/useFileNames'
 import { renderMarkdown } from '@/utils/markdown'
+import ShadowHtml from '@/components/ShadowHtml.vue'
 import type { Citation, ConversationSummary } from '@/types'
 
 const preview = usePreviewStore()
@@ -314,7 +317,9 @@ function assistantHtml(m: Msg): string {
   if (!stripped) {
     return m.content.includes('<think>') ? '<p class="thinking">…thinking…</p>' : ''
   }
-  return renderMarkdown(stripped)
+  // allowStyle: the answer renders inside ShadowHtml, so a <style> the LLM emits
+  // is scoped to that shadow root (styles the answer, never the app).
+  return renderMarkdown(stripped, { allowStyle: true })
 }
 </script>
 
