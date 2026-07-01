@@ -7,6 +7,14 @@ export function formatSize(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`
 }
 
+// Human-readable local date-time from a UNIX epoch-seconds value. Returns an em
+// dash for 0/falsy/invalid inputs (e.g. an unknown creation/modification time).
+export function formatDateTime(epochSeconds: number): string {
+  if (!epochSeconds || epochSeconds < 0) return '—'
+  const date = new Date(epochSeconds * 1000)
+  return isNaN(date.getTime()) ? '—' : date.toLocaleString()
+}
+
 // Name a downloaded back-version after the file, with the version id in
 // parentheses:  ("report.pdf", "20260626_164538") -> "report (20260626_164538).pdf".
 // Without a name, falls back to the version id (never the blob-URL UUID).

@@ -13,6 +13,13 @@ export interface FileItem {
   // Soft-deleted. Only ever true in a with-deleted listing (showDeleted); the
   // UI marks these and offers Undelete.
   deleted: boolean
+  // Provenance: creation/modification times (UNIX epoch seconds; 0 if unknown)
+  // and the users behind them.
+  createdAt: number
+  modifiedAt: number
+  owner: string
+  createdBy: string
+  modifiedBy: string
 }
 
 export interface NodeInfo {
@@ -34,6 +41,11 @@ interface DirEntry {
   rendition_count?: number
   has_renditions?: boolean
   deleted?: boolean
+  created_at?: number
+  modified_at?: number
+  owner?: string
+  created_by?: string
+  modified_by?: string
 }
 
 function toItem(e: DirEntry): FileItem {
@@ -48,6 +60,11 @@ function toItem(e: DirEntry): FileItem {
     renditionCount,
     hasRenditions: e.has_renditions ?? renditionCount > 0,
     deleted: e.deleted ?? false,
+    createdAt: e.created_at ?? 0,
+    modifiedAt: e.modified_at ?? 0,
+    owner: e.owner ?? '',
+    createdBy: e.created_by ?? '',
+    modifiedBy: e.modified_by ?? '',
   }
 }
 

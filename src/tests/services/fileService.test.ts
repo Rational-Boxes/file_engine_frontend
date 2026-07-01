@@ -32,9 +32,38 @@ describe('fileService (REST)', () => {
     const items = await fileService.listDirectory('root')
     expect(get).toHaveBeenCalledWith('/v1/dirs/root', { params: undefined })
     expect(items).toEqual([
-      { uid: 'd1', name: 'docs', type: 'directory', size: 0, isDirectory: true, renditionCount: 0, hasRenditions: false, deleted: false },
-      { uid: 'f1', name: 'a.txt', type: 'file', size: 12, isDirectory: false, renditionCount: 2, hasRenditions: true, deleted: false },
+      { uid: 'd1', name: 'docs', type: 'directory', size: 0, isDirectory: true, renditionCount: 0, hasRenditions: false, deleted: false, createdAt: 0, modifiedAt: 0, owner: '', createdBy: '', modifiedBy: '' },
+      { uid: 'f1', name: 'a.txt', type: 'file', size: 12, isDirectory: false, renditionCount: 2, hasRenditions: true, deleted: false, createdAt: 0, modifiedAt: 0, owner: '', createdBy: '', modifiedBy: '' },
     ])
+  })
+
+  it('maps provenance fields (created/modified time + users)', async () => {
+    get.mockResolvedValue({
+      data: {
+        entries: [
+          {
+            uid: 'f1',
+            name: 'a.txt',
+            type: 'file',
+            size: 12,
+            version_count: 3,
+            created_at: 1700000000,
+            modified_at: 1700009999,
+            owner: 'alice',
+            created_by: 'alice',
+            modified_by: 'bob',
+          },
+        ],
+      },
+    })
+    const items = await fileService.listDirectory('root')
+    expect(items[0]).toMatchObject({
+      createdAt: 1700000000,
+      modifiedAt: 1700009999,
+      owner: 'alice',
+      createdBy: 'alice',
+      modifiedBy: 'bob',
+    })
   })
 
   it('lists with deleted items, carrying the deleted flag', async () => {
@@ -61,7 +90,7 @@ describe('fileService (REST)', () => {
     const items = await fileService.listRenditions('f1')
     expect(get).toHaveBeenCalledWith('/v1/files/f1/renditions')
     expect(items).toEqual([
-      { uid: 'r1', name: '20260101-pdf.pdf', type: 'file', size: 50, isDirectory: false, renditionCount: 0, hasRenditions: false, deleted: false },
+      { uid: 'r1', name: '20260101-pdf.pdf', type: 'file', size: 50, isDirectory: false, renditionCount: 0, hasRenditions: false, deleted: false, createdAt: 0, modifiedAt: 0, owner: '', createdBy: '', modifiedBy: '' },
     ])
   })
 

@@ -25,6 +25,11 @@ const item = (over: Partial<FileItem> = {}): FileItem => ({
   renditionCount: 1,
   hasRenditions: true,
   deleted: false,
+  createdAt: 0,
+  modifiedAt: 0,
+  owner: '',
+  createdBy: '',
+  modifiedBy: '',
   ...over,
 })
 

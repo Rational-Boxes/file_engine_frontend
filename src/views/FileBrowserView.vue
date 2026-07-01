@@ -102,6 +102,18 @@
             <th class="size sortable" :aria-sort="ariaSort('size')" @click="sortBy('size')">
               Size <span class="caret">{{ caret('size') }}</span>
             </th>
+            <th class="datetime sortable" :aria-sort="ariaSort('created')" @click="sortBy('created')">
+              Created <span class="caret">{{ caret('created') }}</span>
+            </th>
+            <th class="user sortable" :aria-sort="ariaSort('createdBy')" @click="sortBy('createdBy')">
+              Created by <span class="caret">{{ caret('createdBy') }}</span>
+            </th>
+            <th class="datetime sortable" :aria-sort="ariaSort('modified')" @click="sortBy('modified')">
+              Modified <span class="caret">{{ caret('modified') }}</span>
+            </th>
+            <th class="user sortable" :aria-sort="ariaSort('modifiedBy')" @click="sortBy('modifiedBy')">
+              Modified by <span class="caret">{{ caret('modifiedBy') }}</span>
+            </th>
             <th class="row-actions"></th>
           </tr>
         </thead>
@@ -130,6 +142,10 @@
               >⧉ {{ item.renditionCount }}</button>
             </td>
             <td class="size">{{ item.isDirectory ? '—' : formatSize(item.size) }}</td>
+            <td class="datetime">{{ formatDateTime(item.createdAt) }}</td>
+            <td class="user">{{ item.createdBy }}</td>
+            <td class="datetime">{{ formatDateTime(item.modifiedAt) }}</td>
+            <td class="user">{{ item.modifiedBy }}</td>
             <td class="row-actions">
               <KebabMenu :items="menuFor(item)" @select="(a) => onAction(a, item)" />
             </td>
@@ -183,7 +199,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/files'
 import { useUploadStore } from '@/stores/upload'
 import { canDo } from '@/utils/permissions'
-import { formatSize } from '@/utils/format'
+import { formatSize, formatDateTime } from '@/utils/format'
 import KebabMenu, { type KebabItem } from '@/components/KebabMenu.vue'
 import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
 import UploadTray from '@/components/UploadTray.vue'
@@ -452,8 +468,7 @@ onDeactivated(() => {
 }
 
 .browser-body {
-  max-width: 960px;
-  margin: 0 auto;
+  /* full-width file area (not clamped to a centered column) */
   padding: 0 20px 40px;
 }
 
@@ -616,6 +631,7 @@ onDeactivated(() => {
 
 .list-area {
   min-height: 120px;
+  overflow-x: auto; /* let the table expand horizontally; scroll rather than wrap */
 }
 
 .drop-overlay {
@@ -657,7 +673,8 @@ onDeactivated(() => {
 }
 
 .files {
-  width: 100%;
+  min-width: 100%;      /* fill the view when content is narrow… */
+  width: max-content;   /* …but grow with long, no-wrap names (list-area scrolls) */
   border-collapse: collapse;
   background: #fff;
   border: 1px solid var(--border);
@@ -708,6 +725,7 @@ onDeactivated(() => {
 
 .name {
   cursor: pointer;
+  white-space: nowrap; /* never wrap item names; the view scrolls instead */
 }
 
 .icon {
@@ -715,6 +733,17 @@ onDeactivated(() => {
 }
 
 .size {
+  width: 120px;
+  color: var(--muted);
+}
+
+.datetime {
+  width: 160px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.user {
   width: 120px;
   color: var(--muted);
 }

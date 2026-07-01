@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatSize, formatVersionTimestamp, versionFilename } from '@/utils/format'
+import { formatSize, formatVersionTimestamp, versionFilename, formatDateTime } from '@/utils/format'
 
 describe('versionFilename', () => {
   it('inserts the version id before the extension', () => {
@@ -25,6 +25,23 @@ describe('formatSize', () => {
     expect(formatSize(512)).toBe('512 B')
     expect(formatSize(1536)).toBe('1.5 KB')
     expect(formatSize(5_242_880)).toBe('5.0 MB')
+  })
+})
+
+describe('formatDateTime', () => {
+  it('renders a positive epoch-seconds value as a localized date-time', () => {
+    const epoch = 1700000000
+    const expected = new Date(epoch * 1000).toLocaleString()
+    const out = formatDateTime(epoch)
+    expect(out).toBe(expected)
+    expect(out).not.toBe('')
+    expect(out).not.toBe('—')
+  })
+
+  it('returns an em dash for 0 / falsy / invalid values', () => {
+    expect(formatDateTime(0)).toBe('—')
+    expect(formatDateTime(-5)).toBe('—')
+    expect(formatDateTime(NaN)).toBe('—')
   })
 })
 
