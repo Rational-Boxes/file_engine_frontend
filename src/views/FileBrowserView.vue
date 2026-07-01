@@ -303,13 +303,10 @@ watch(
 
 // Build the per-row action menu from the user's access level.
 const menuFor = (item: FileItem): KebabItem[] => {
-  // A soft-deleted item only offers Undelete (perm-gated) + Info; normal file
-  // operations don't apply until it's restored.
+  // A soft-deleted item only offers Undelete (when permitted); normal file
+  // operations — and the info drawer — don't apply until it's restored.
   if (item.deleted) {
-    const d: KebabItem[] = []
-    if (files.canUndelete) d.push({ action: 'undelete', label: 'Undelete' })
-    d.push({ action: 'info', label: 'Info' })
-    return d
+    return files.canUndelete ? [{ action: 'undelete', label: 'Undelete' }] : []
   }
   const m: KebabItem[] = []
   if (item.isDirectory) m.push({ action: 'open', label: 'Open' })
@@ -333,8 +330,8 @@ const clipboardTitle = computed(() => {
 })
 
 const open = (item: FileItem) => {
-  // A soft-deleted item can't be browsed/opened until restored — just inspect it.
-  if (item.deleted) return files.openDetails(item)
+  // A soft-deleted item can't be browsed/opened or inspected until restored.
+  if (item.deleted) return
   // Directories navigate; clicking a file opens its details drawer (which carries
   // a "View model in 3D" link for 3D files; download stays on the kebab menu) so a
   // single click inspects rather than downloads.
@@ -559,10 +556,9 @@ onDeactivated(() => {
   opacity: 0.55;
 }
 
-/* soft-deleted rows: muted + struck through, with a badge in the name cell */
+/* soft-deleted rows: muted, with a "deleted" badge in the name cell */
 .files tr.deleted .name {
   color: var(--muted);
-  text-decoration: line-through;
 }
 
 .deleted-badge {
