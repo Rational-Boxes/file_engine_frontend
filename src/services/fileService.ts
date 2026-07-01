@@ -10,6 +10,9 @@ export interface FileItem {
   // appear in normal listings; hasRenditions lets the UI offer to fetch them.
   renditionCount: number
   hasRenditions: boolean
+  // Soft-deleted. Only ever true in a with-deleted listing (showDeleted); the
+  // UI marks these and offers Undelete.
+  deleted: boolean
 }
 
 export interface NodeInfo {
@@ -30,6 +33,7 @@ interface DirEntry {
   version_count: number
   rendition_count?: number
   has_renditions?: boolean
+  deleted?: boolean
 }
 
 function toItem(e: DirEntry): FileItem {
@@ -43,6 +47,7 @@ function toItem(e: DirEntry): FileItem {
     isDirectory: type === 'directory',
     renditionCount,
     hasRenditions: e.has_renditions ?? renditionCount > 0,
+    deleted: e.deleted ?? false,
   }
 }
 
@@ -50,8 +55,13 @@ function toItem(e: DirEntry): FileItem {
 // operation addresses a node by its uid; throws an AxiosError on failure (the
 // caller maps it to a user message via errorMessage()).
 export const fileService = {
-  async listDirectory(uid: string): Promise<FileItem[]> {
-    const { data } = await apiClient.get<{ entries: DirEntry[] }>(`/v1/dirs/${uid}`)
+  // List a directory. With `deleted: true` the bridge returns soft-deleted
+  // entries too (each carrying `deleted`), for the "show deleted" view — requires
+  // the LIST_DELETED permission on the directory.
+  async listDirectory(uid: string, opts?: { deleted?: boolean }): Promise<FileItem[]> {
+    const { data } = await apiClient.get<{ entries: DirEntry[] }>(`/v1/dirs/${uid}`, {
+      params: opts?.deleted ? { deleted: 'true' } : undefined,
+    })
     return (data.entries || []).map(toItem)
   },
 
@@ -86,6 +96,11 @@ export const fileService = {
 
   async removeDirectory(uid: string): Promise<void> {
     await apiClient.delete(`/v1/dirs/${uid}`)
+  },
+
+  // Restore a soft-deleted file (requires the UNDELETE permission).
+  async undeleteFile(uid: string): Promise<void> {
+    await apiClient.post(`/v1/files/${uid}/undelete`)
   },
 
   async rename(uid: string, newName: string): Promise<void> {

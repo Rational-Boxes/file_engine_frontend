@@ -24,6 +24,7 @@ const item = (over: Partial<FileItem> = {}): FileItem => ({
   isDirectory: false,
   renditionCount: 1,
   hasRenditions: true,
+  deleted: false,
   ...over,
 })
 

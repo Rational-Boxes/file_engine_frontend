@@ -47,7 +47,7 @@ import { useModel3dStore } from '@/stores/model3d'
 
 function openWith(item: { uid: string; name: string; hasRenditions: boolean }) {
   const files = useFileStore()
-  files.detailItem = { isDirectory: false, type: 'file', size: 1, renditionCount: 1, ...item }
+  files.detailItem = { isDirectory: false, type: 'file', size: 1, renditionCount: 1, deleted: false, ...item }
   files.drawerOpen = true
   return mount(FileDetailsDrawer)
 }

@@ -30,10 +30,27 @@ describe('fileService (REST)', () => {
       },
     })
     const items = await fileService.listDirectory('root')
-    expect(get).toHaveBeenCalledWith('/v1/dirs/root')
+    expect(get).toHaveBeenCalledWith('/v1/dirs/root', { params: undefined })
     expect(items).toEqual([
-      { uid: 'd1', name: 'docs', type: 'directory', size: 0, isDirectory: true, renditionCount: 0, hasRenditions: false },
-      { uid: 'f1', name: 'a.txt', type: 'file', size: 12, isDirectory: false, renditionCount: 2, hasRenditions: true },
+      { uid: 'd1', name: 'docs', type: 'directory', size: 0, isDirectory: true, renditionCount: 0, hasRenditions: false, deleted: false },
+      { uid: 'f1', name: 'a.txt', type: 'file', size: 12, isDirectory: false, renditionCount: 2, hasRenditions: true, deleted: false },
+    ])
+  })
+
+  it('lists with deleted items, carrying the deleted flag', async () => {
+    get.mockResolvedValue({
+      data: {
+        entries: [
+          { uid: 'f1', name: 'a.txt', type: 'file', size: 1, version_count: 1, deleted: false },
+          { uid: 'g1', name: 'gone.txt', type: 'file', size: 2, version_count: 1, deleted: true },
+        ],
+      },
+    })
+    const items = await fileService.listDirectory('root', { deleted: true })
+    expect(get).toHaveBeenCalledWith('/v1/dirs/root', { params: { deleted: 'true' } })
+    expect(items.map((i) => [i.name, i.deleted])).toEqual([
+      ['a.txt', false],
+      ['gone.txt', true],
     ])
   })
 
@@ -44,8 +61,14 @@ describe('fileService (REST)', () => {
     const items = await fileService.listRenditions('f1')
     expect(get).toHaveBeenCalledWith('/v1/files/f1/renditions')
     expect(items).toEqual([
-      { uid: 'r1', name: '20260101-pdf.pdf', type: 'file', size: 50, isDirectory: false, renditionCount: 0, hasRenditions: false },
+      { uid: 'r1', name: '20260101-pdf.pdf', type: 'file', size: 50, isDirectory: false, renditionCount: 0, hasRenditions: false, deleted: false },
     ])
+  })
+
+  it('undeletes a file via /files/{uid}/undelete', async () => {
+    post.mockResolvedValue({ data: {} })
+    await fileService.undeleteFile('f1')
+    expect(post).toHaveBeenCalledWith('/v1/files/f1/undelete')
   })
 
   it('creates a directory and returns the new uid', async () => {

@@ -22,6 +22,16 @@
           ↻ Reload
         </button>
         <button
+          v-if="files.canListDeleted"
+          class="btn"
+          :class="{ 'btn-active': files.showDeleted }"
+          :disabled="files.loading"
+          :title="files.showDeleted ? 'Hide deleted items' : 'Show deleted items'"
+          @click="files.toggleShowDeleted()"
+        >
+          🗑 {{ files.showDeleted ? 'Hide deleted' : 'Show deleted' }}
+        </button>
+        <button
           v-if="files.clipboard && canDo('paste', auth.accessLevel)"
           class="btn"
           :disabled="!files.canPasteHere"
@@ -99,7 +109,7 @@
           <tr
             v-for="item in displayItems"
             :key="item.uid"
-            :class="{ sel: files.selected.has(item.uid), cut: isCut(item) }"
+            :class="{ sel: files.selected.has(item.uid), cut: isCut(item), deleted: item.deleted }"
             @dblclick="open(item)"
           >
             <td class="cb-col" @click.stop>
@@ -111,6 +121,7 @@
             </td>
             <td class="name" @click="open(item)">
               <FileThumbnail :item="item" />{{ item.name }}
+              <span v-if="item.deleted" class="deleted-badge" title="Soft-deleted">deleted</span>
               <button
                 v-if="item.hasRenditions"
                 class="rendition-badge"
@@ -292,6 +303,14 @@ watch(
 
 // Build the per-row action menu from the user's access level.
 const menuFor = (item: FileItem): KebabItem[] => {
+  // A soft-deleted item only offers Undelete (perm-gated) + Info; normal file
+  // operations don't apply until it's restored.
+  if (item.deleted) {
+    const d: KebabItem[] = []
+    if (files.canUndelete) d.push({ action: 'undelete', label: 'Undelete' })
+    d.push({ action: 'info', label: 'Info' })
+    return d
+  }
   const m: KebabItem[] = []
   if (item.isDirectory) m.push({ action: 'open', label: 'Open' })
   else if (canDo('download', auth.accessLevel)) m.push({ action: 'download', label: 'Download' })
@@ -314,6 +333,8 @@ const clipboardTitle = computed(() => {
 })
 
 const open = (item: FileItem) => {
+  // A soft-deleted item can't be browsed/opened until restored — just inspect it.
+  if (item.deleted) return files.openDetails(item)
   // Directories navigate; clicking a file opens its details drawer (which carries
   // a "View model in 3D" link for 3D files; download stays on the kebab menu) so a
   // single click inspects rather than downloads.
@@ -332,6 +353,7 @@ const onAction = (action: string, item: FileItem) => {
     case 'copy': return files.setClipboard('copy', [item])
     case 'cut': return files.setClipboard('cut', [item])
     case 'delete': return remove(item)
+    case 'undelete': return undelete(item)
   }
 }
 
@@ -347,6 +369,10 @@ const rename = async (item: FileItem) => {
 
 const remove = async (item: FileItem) => {
   if (confirm(`Delete "${item.name}"?`)) await files.deleteItem(item)
+}
+
+const undelete = async (item: FileItem) => {
+  if (confirm(`Restore "${item.name}"?`)) await files.undeleteItem(item)
 }
 
 // Dim rows whose items are staged for a move (cut).
@@ -531,6 +557,32 @@ onDeactivated(() => {
 
 .files tr.cut {
   opacity: 0.55;
+}
+
+/* soft-deleted rows: muted + struck through, with a badge in the name cell */
+.files tr.deleted .name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.deleted-badge {
+  margin-left: 8px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: var(--danger);
+  border: 1px solid #fecaca;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+/* active state for the Show-deleted toggle */
+.btn-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
 }
 
 /* batch-operation bar */

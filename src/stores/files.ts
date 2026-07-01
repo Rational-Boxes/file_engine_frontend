@@ -29,6 +29,11 @@ interface FilesState {
   clipboard: { mode: 'cut' | 'copy'; items: FileItem[] } | null
   // Checkbox selection (uids) for batch operations, scoped to the current dir.
   selected: Set<string>
+  // Show soft-deleted items (requires LIST_DELETED on the current dir). Per-dir
+  // permissions gate the toggle and the Undelete action in the UI.
+  showDeleted: boolean
+  canListDeleted: boolean
+  canUndelete: boolean
 }
 
 const ROOT_CRUMB: Crumb = { uid: ROOT_UID, name: 'Home' }
@@ -49,6 +54,9 @@ export const useFileStore = defineStore('files', {
     renditionsLoading: false,
     clipboard: null,
     selected: new Set<string>(),
+    showDeleted: false,
+    canListDeleted: false,
+    canUndelete: false,
   }),
 
   getters: {
@@ -80,7 +88,17 @@ export const useFileStore = defineStore('files', {
       this.renditionsFor = null
       this.selected.clear() // selection is per-directory
       try {
-        this.items = await fileService.listDirectory(this.currentUid)
+        // Per-dir permissions for the deleted-items UI (best-effort; a denied or
+        // failing check just hides the affordances). Parallel with each other.
+        const [ld, ud] = await Promise.all([
+          fileService.checkPermission(this.currentUid, { permission: 'LIST_DELETED' }).catch(() => false),
+          fileService.checkPermission(this.currentUid, { permission: 'UNDELETE' }).catch(() => false),
+        ])
+        this.canListDeleted = ld
+        this.canUndelete = ud
+        // Entering a dir we can't list-deleted in silently drops back to the live view.
+        if (this.showDeleted && !ld) this.showDeleted = false
+        this.items = await fileService.listDirectory(this.currentUid, { deleted: this.showDeleted })
       } catch (e) {
         this.error = errorMessage(e, 'Failed to load directory')
         this.items = []
@@ -199,6 +217,22 @@ export const useFileStore = defineStore('files', {
         await this.load()
       } catch (e) {
         this.error = errorMessage(e, 'Failed to delete')
+      }
+    },
+
+    // Toggle the soft-deleted view and reload (load() re-checks the permission).
+    async toggleShowDeleted() {
+      this.showDeleted = !this.showDeleted
+      await this.load()
+    },
+
+    // Restore a soft-deleted file, then reload the listing.
+    async undeleteItem(item: FileItem) {
+      try {
+        await fileService.undeleteFile(item.uid)
+        await this.load()
+      } catch (e) {
+        this.error = errorMessage(e, 'Failed to undelete')
       }
     },
 

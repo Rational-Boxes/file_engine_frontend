@@ -16,31 +16,34 @@ vi.mock('@/services/fileService', () => ({
     makeDirectory: vi.fn(),
     removeDirectory: vi.fn(),
     removeFile: vi.fn(),
+    undeleteFile: vi.fn(),
     rename: vi.fn(),
     move: vi.fn(),
     copy: vi.fn(),
     downloadFile: vi.fn(),
     stat: vi.fn(),
+    checkPermission: vi.fn(),
   },
 }))
 
 import { useFileStore } from '@/stores/files'
 import { fileService } from '@/services/fileService'
 
-const dir = { uid: 'd1', name: 'docs', type: 'directory' as const, size: 0, isDirectory: true, renditionCount: 0, hasRenditions: false }
-const file = { uid: 'f1', name: 'a.txt', type: 'file' as const, size: 3, isDirectory: false, renditionCount: 0, hasRenditions: false }
+const dir = { uid: 'd1', name: 'docs', type: 'directory' as const, size: 0, isDirectory: true, renditionCount: 0, hasRenditions: false, deleted: false }
+const file = { uid: 'f1', name: 'a.txt', type: 'file' as const, size: 3, isDirectory: false, renditionCount: 0, hasRenditions: false, deleted: false }
 
 describe('files store (UID-native)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     ;(fileService.listDirectory as any).mockResolvedValue([dir, file])
+    ;(fileService.checkPermission as any).mockResolvedValue(false) // no deleted perms by default
   })
 
   it('openRoot loads the root and resets breadcrumbs', async () => {
     const store = useFileStore()
     await store.openRoot()
-    expect(fileService.listDirectory).toHaveBeenCalledWith(ROOT)
+    expect(fileService.listDirectory).toHaveBeenCalledWith(ROOT, { deleted: false })
     expect(store.currentUid).toBe(ROOT)
     expect(store.breadcrumbs).toEqual([{ uid: ROOT, name: 'Home' }])
     expect(store.items).toHaveLength(2)
@@ -94,7 +97,7 @@ describe('files store (UID-native)', () => {
 
     expect(store.currentUid).toBe('d1')
     expect(store.breadcrumbs.map((c) => c.name)).toEqual(['Home', 'docs'])
-    expect(fileService.listDirectory).toHaveBeenCalledWith('d1')
+    expect(fileService.listDirectory).toHaveBeenCalledWith('d1', { deleted: false })
     expect(store.drawerOpen).toBe(true)
     expect(store.detailItem?.uid).toBe('f1')
   })
@@ -206,5 +209,49 @@ describe('files store (UID-native)', () => {
     expect(fileService.move).not.toHaveBeenCalled()
     store.setClipboard('copy', [file]) // a file is always pasteable here
     expect(store.canPasteHere).toBe(true)
+  })
+
+  // --- soft-deleted view + undelete ---
+  it('exposes LIST_DELETED / UNDELETE permissions after a load', async () => {
+    ;(fileService.checkPermission as any).mockResolvedValue(true)
+    const store = useFileStore()
+    await store.openRoot()
+    expect(store.canListDeleted).toBe(true)
+    expect(store.canUndelete).toBe(true)
+    expect(fileService.checkPermission).toHaveBeenCalledWith(ROOT, { permission: 'LIST_DELETED' })
+    expect(fileService.checkPermission).toHaveBeenCalledWith(ROOT, { permission: 'UNDELETE' })
+  })
+
+  it('toggleShowDeleted requests the with-deleted listing and marks deleted items', async () => {
+    ;(fileService.checkPermission as any).mockResolvedValue(true)
+    const gone = { ...file, uid: 'g1', name: 'gone.txt', deleted: true }
+    ;(fileService.listDirectory as any).mockResolvedValue([dir, file, gone])
+    const store = useFileStore()
+    await store.openRoot()
+    await store.toggleShowDeleted()
+    expect(store.showDeleted).toBe(true)
+    expect(fileService.listDirectory).toHaveBeenLastCalledWith(ROOT, { deleted: true })
+    expect(store.items.find((i) => i.uid === 'g1')?.deleted).toBe(true)
+  })
+
+  it('drops the deleted view when entering a dir without LIST_DELETED', async () => {
+    ;(fileService.checkPermission as any).mockResolvedValue(true)
+    const store = useFileStore()
+    await store.openRoot()
+    await store.toggleShowDeleted()
+    expect(store.showDeleted).toBe(true)
+    ;(fileService.checkPermission as any).mockResolvedValue(false) // next dir: no perm
+    await store.openDirectory(dir)
+    expect(store.showDeleted).toBe(false)
+    expect(fileService.listDirectory).toHaveBeenLastCalledWith('d1', { deleted: false })
+  })
+
+  it('undeleteItem restores the file then reloads', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    await store.undeleteItem(file)
+    expect(fileService.undeleteFile).toHaveBeenCalledWith('f1')
+    // reload ran after the restore (initial openRoot + this one)
+    expect((fileService.listDirectory as any).mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 })
