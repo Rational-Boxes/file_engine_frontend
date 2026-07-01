@@ -76,15 +76,10 @@ async function load() {
     const loader = new xeokit.XKTLoaderPlugin(viewer)
     const xkt = await renditionArrayBuffer(props.xktUid)
     const model = loader.load({ id: 'model', xkt })
-    const fit = () => {
-      try {
-        viewer.cameraFlight?.flyTo?.(viewer.scene)
-      } catch {
-        /* camera fit is best-effort */
-      }
-    }
-    if (model && typeof model.on === 'function') model.on('loaded', fit)
-    else fit()
+    // Frame the whole model once it's loaded — this is the default camera view
+    // that the overlay's "Reset camera" button returns to.
+    if (model && typeof model.on === 'function') model.on('loaded', resetCamera)
+    else resetCamera()
     loading.value = false
   } catch (e) {
     // Surface the real cause (do not swallow it) so failures are diagnosable.
@@ -116,11 +111,21 @@ function resize() {
   viewer?.scene?.canvas?.resize?.()
 }
 
+// Fly the camera back to the default view (frames the whole model). Exposed for
+// the overlay's "Reset camera" button; no-op until the model is loaded.
+function resetCamera() {
+  try {
+    viewer?.cameraFlight?.flyTo?.(viewer.scene)
+  } catch {
+    /* best-effort */
+  }
+}
+
 // Load after mount (the canvas ref must exist); reload if the model changes.
 onMounted(load)
 watch(() => props.xktUid, load)
 onBeforeUnmount(destroy)
-defineExpose({ resize })
+defineExpose({ resize, resetCamera })
 
 async function downloadOriginal() {
   try {
