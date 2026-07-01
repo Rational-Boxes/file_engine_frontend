@@ -78,7 +78,7 @@
 
     <p v-if="files.error" class="banner error">{{ files.error }}</p>
 
-    <div class="list-area">
+    <div class="list-area" ref="listEl">
       <div v-if="files.loading" class="empty">Loading…</div>
       <div v-else-if="!files.items.length" class="empty">
         This folder is empty.<template v-if="canModify"> Drag files here to upload.</template>
@@ -121,6 +121,7 @@
           <tr
             v-for="item in displayItems"
             :key="item.uid"
+            :data-uid="item.uid"
             :class="{ sel: files.selected.has(item.uid), cut: isCut(item), deleted: item.deleted, active: files.drawerOpen && files.detailItem?.uid === item.uid }"
             @dblclick="open(item)"
           >
@@ -193,7 +194,7 @@ export default { name: 'FileBrowserView' }
 </script>
 
 <script setup lang="ts">
-import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
+import { ref, computed, watch, onActivated, onDeactivated, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/files'
@@ -248,6 +249,16 @@ const ariaSort = (key: SortKey) =>
 // that node (folder + select + drawer); otherwise open the root. Re-applied
 // whenever the deep-link target changes.
 const route = useRoute()
+const listEl = ref<HTMLElement | null>(null)
+
+// After a deep-link reveal, bring the opened file's row into view (it may be far
+// down a long listing). Waits for the rows to render first.
+async function scrollToRow(uid?: string) {
+  if (!uid) return
+  await nextTick()
+  const row = listEl.value?.querySelector<HTMLElement>(`tr[data-uid="${uid}"]`)
+  row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
 // Set while applyRoute drives a tenant switch, so the tenant watch below doesn't
 // ALSO reset to root and race with revealFile().
 let deepLinkTenantSwitch = false
@@ -281,6 +292,7 @@ async function applyRoute() {
 
   if (typeof file === 'string' && file) {
     const res = await files.revealFile(file)
+    if (res.ok) scrollToRow(files.detailItem?.uid) // reveal the file's row in the list
     // Reactive: the reveal was forbidden just after a tenant switch (e.g. the
     // tenant list was stale/unavailable). Revert to a usable workspace + explain.
     if (!res.ok && switching && (res.status === 401 || res.status === 403)) {
