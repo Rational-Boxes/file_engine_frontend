@@ -3,9 +3,11 @@
     <p v-if="error" class="acl-err">{{ error }}</p>
 
     <p v-if="loading" class="acl-muted">Loading ACLs…</p>
-    <table v-else-if="entries.length" class="acl-list">
+    <template v-else-if="entries.length">
+      <p class="acl-order">Evaluation order (top → bottom):</p>
+      <table class="acl-list">
       <tbody>
-        <tr v-for="(e, idx) in entries" :key="idx" :class="{ deny: e.effect === 'deny' }">
+        <tr v-for="(e, idx) in orderedEntries" :key="idx" :class="{ deny: e.effect === 'deny' }">
           <td class="acl-principal">
             <span class="acl-kind" :class="'acl-kind-' + kindOf(e)">{{ kindLabel(kindOf(e)) }}</span>
             <span class="acl-name" :title="e.principal">{{ e.principal }}</span>
@@ -28,10 +30,14 @@
           </td>
         </tr>
       </tbody>
-    </table>
+      </table>
+    </template>
     <p v-else class="acl-muted">No ACL entries.</p>
 
-    <p v-if="hasDeny" class="acl-note">DENY overrides ALLOW for the same principal.</p>
+    <p class="acl-note">
+      Evaluated top-down: User rules, then Roles &amp; Claims, then Everyone —
+      within a group, DENY wins. Anything left unset is read-by-default.
+    </p>
 
     <form v-if="canManage" class="acl-add" @submit.prevent>
       <PrincipalPicker @select="onPick" />
@@ -49,6 +55,22 @@
           <option value="deny">deny</option>
         </select>
         <button class="btn" :disabled="!picked || busy" @click="grant">Grant</button>
+      </div>
+
+      <div class="acl-templates">
+        <span class="acl-tpl-label">Templates:</span>
+        <button
+          class="btn btn-tpl"
+          :disabled="busy || picked?.kind !== 'user'"
+          title="Grant this user full access and deny everyone else (pick a user first)"
+          @click="applyTemplate('home')"
+        >🏠 Private home folder</button>
+        <button
+          class="btn btn-tpl"
+          :disabled="busy || picked?.kind !== 'role'"
+          title="Grant this role read+write and deny everyone else (pick a role first)"
+          @click="applyTemplate('gated')"
+        >👥 Gated section (role)</button>
       </div>
     </form>
   </div>
@@ -80,7 +102,17 @@ const perm = ref('r')
 const effect = ref<'allow' | 'deny'>('allow')
 const busy = ref(false)
 
-const hasDeny = computed(() => entries.value.some((e) => e.effect === 'deny'))
+// Show entries in evaluation order: User (0) → Roles/Claims (1) → Everyone (2),
+// and within a tier put DENY first (DENY wins in-tier). Mirrors the core engine.
+const TIER: Record<PrincipalKind, number> = { user: 0, role: 1, claim: 1, everyone: 2 }
+const orderedEntries = computed(() =>
+  [...entries.value].sort((a, b) => {
+    const t = TIER[kindOf(a)] - TIER[kindOf(b)]
+    if (t !== 0) return t
+    if (a.effect !== b.effect) return a.effect === 'deny' ? -1 : 1
+    return 0
+  }),
+)
 
 watch(() => props.uid, load, { immediate: true })
 
@@ -129,6 +161,40 @@ async function grant() {
     emit('changed')
   } catch (e) {
     error.value = errorMessage(e, 'Failed to grant')
+  } finally {
+    busy.value = false
+  }
+}
+
+// One-click patterns. 'home': grant the picked user full access + deny everyone
+// read. 'gated': grant the picked role read+write + deny everyone read. In both,
+// the user/role resolves at a higher tier than the everyone-DENY, so they keep
+// access while everyone else is shut out. Grants are per-permission (the backend
+// ORs them together).
+async function applyTemplate(kind: 'home' | 'gated') {
+  if (!picked.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    const grants = kind === 'home' ? ['r', 'w', 'd'] : ['r', 'w']
+    for (const p of grants) {
+      await fileService.grantPermission(props.uid, {
+        principal: encodePrincipal(picked.value),
+        permission: p,
+        effect: 'allow',
+      })
+    }
+    // Deny everyone read — gates the resource; the grant above out-ranks it.
+    await fileService.grantPermission(props.uid, {
+      principal: 'everyone',
+      permission: 'r',
+      effect: 'deny',
+    })
+    picked.value = null
+    await load()
+    emit('changed')
+  } catch (e) {
+    error.value = errorMessage(e, 'Failed to apply template')
   } finally {
     busy.value = false
   }
@@ -268,10 +334,41 @@ async function revoke(e: AclEntry, permKey: string) {
   color: #b00020;
 }
 
+.acl-order {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 -4px;
+}
+
 .acl-note {
   font-size: 11px;
   color: var(--muted);
   font-style: italic;
+}
+
+.acl-templates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.acl-tpl-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.btn-tpl {
+  background: #fff;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+.btn-tpl:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .acl-add {

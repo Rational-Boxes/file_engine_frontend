@@ -17,10 +17,13 @@ vi.mock('@/services/fileService', () => ({
 
 import AclEditor from '@/components/AclEditor.vue'
 
-// Stub the type-ahead with a button that emits a chosen principal.
+// Stub the type-ahead with buttons that emit a chosen principal.
 const PrincipalPickerStub = {
   name: 'PrincipalPicker',
-  template: `<button class="pick" @click="$emit('select', { kind: 'role', value: 'editors' })">pick</button>`,
+  template: `<div>
+    <button class="pick" @click="$emit('select', { kind: 'role', value: 'editors' })">pick-role</button>
+    <button class="pick-user" @click="$emit('select', { kind: 'user', value: 'alice' })">pick-user</button>
+  </div>`,
 }
 
 function mountEditor(props: Record<string, unknown> = {}) {
@@ -37,7 +40,7 @@ describe('AclEditor', () => {
     revokePermission.mockResolvedValue(undefined)
   })
 
-  it('lists entries with decoded permissions, effect, and a DENY note', async () => {
+  it('lists entries with decoded permissions, effect, and the tiered note', async () => {
     getAcls.mockResolvedValue([
       { principal: 'editors', type: 1, permissions: 0x400 | 0x200, effect: 'allow' },
       { principal: 'erin', type: 0, permissions: 0x400, effect: 'deny' },
@@ -48,7 +51,45 @@ describe('AclEditor', () => {
     expect(w.text()).toContain('editors')
     expect(w.text()).toContain('Read')
     expect(w.text()).toContain('Write')
-    expect(w.text()).toContain('DENY overrides ALLOW')
+    expect(w.text()).toContain('within a group, DENY wins')
+  })
+
+  it('orders entries by evaluation tier (user → role/claim → everyone), DENY first in-tier', async () => {
+    getAcls.mockResolvedValue([
+      { principal: 'everyone', type: 3, permissions: 0x400, effect: 'deny' },
+      { principal: 'editors', type: 1, permissions: 0x400, effect: 'allow' },
+      { principal: 'alice', type: 0, permissions: 0x400, effect: 'allow' },
+      { principal: 'bob', type: 0, permissions: 0x400, effect: 'deny' },
+    ])
+    const w = mountEditor()
+    await flushPromises()
+    const names = w.findAll('tbody tr .acl-name').map((n) => n.text())
+    expect(names).toEqual(['bob', 'alice', 'editors', 'everyone']) // user(deny,allow) → role → everyone
+  })
+
+  it('applies the private-home template: owner full access + everyone DENY read', async () => {
+    getAcls.mockResolvedValue([])
+    const w = mountEditor()
+    await flushPromises()
+    await w.find('.pick-user').trigger('click') // user:alice
+    await w.findAll('.btn-tpl').find((b) => b.text().includes('Private'))!.trigger('click')
+    await flushPromises()
+    for (const p of ['r', 'w', 'd']) {
+      expect(grantPermission).toHaveBeenCalledWith('f1', { principal: 'alice', permission: p, effect: 'allow' })
+    }
+    expect(grantPermission).toHaveBeenCalledWith('f1', { principal: 'everyone', permission: 'r', effect: 'deny' })
+  })
+
+  it('applies the gated-section template: role read+write + everyone DENY read', async () => {
+    getAcls.mockResolvedValue([])
+    const w = mountEditor()
+    await flushPromises()
+    await w.find('.pick').trigger('click') // role:editors
+    await w.findAll('.btn-tpl').find((b) => b.text().includes('Gated'))!.trigger('click')
+    await flushPromises()
+    expect(grantPermission).toHaveBeenCalledWith('f1', { principal: 'role:editors', permission: 'r', effect: 'allow' })
+    expect(grantPermission).toHaveBeenCalledWith('f1', { principal: 'role:editors', permission: 'w', effect: 'allow' })
+    expect(grantPermission).toHaveBeenCalledWith('f1', { principal: 'everyone', permission: 'r', effect: 'deny' })
   })
 
   it('grants the picked principal in wire form with the chosen permission/effect', async () => {
