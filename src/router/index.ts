@@ -10,6 +10,10 @@ const ChatView = () => import('@/views/ChatView.vue')
 const AdminRolesView = () => import('@/views/AdminRolesView.vue')
 const AdminOpsView = () => import('@/views/AdminOpsView.vue')
 const PreviewView = () => import('@/views/PreviewView.vue')
+const ProfileView = () => import('@/views/ProfileView.vue')
+const TenantAdminView = () => import('@/views/TenantAdminView.vue')
+const SetPasswordView = () => import('@/views/SetPasswordView.vue')
+const ResetPasswordView = () => import('@/views/ResetPasswordView.vue')
 
 const routes = [
   { path: '/login', name: 'Login', component: LoginView, meta: { requiresAuth: false } },
@@ -30,6 +34,15 @@ const routes = [
     component: AdminOpsView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
+  {
+    path: '/admin/tenant',
+    name: 'TenantAdmin',
+    component: TenantAdminView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  { path: '/profile', name: 'Profile', component: ProfileView, meta: { requiresAuth: true } },
+  { path: '/set-password', name: 'SetPassword', component: SetPasswordView, meta: { requiresAuth: false } },
+  { path: '/reset-password', name: 'ResetPassword', component: ResetPasswordView, meta: { requiresAuth: false } },
   { path: '/', redirect: '/files' },
 ]
 

@@ -32,6 +32,11 @@ export default defineConfig({
         ws: true, // /csai/chat WebSocket
         rewrite: (p) => p.replace(/^\/csai/, ''),
       },
+      '/ldapadmin': {
+        target: 'http://localhost:8093',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/ldapadmin/, ''),
+      },
     },
   },
   test: {
