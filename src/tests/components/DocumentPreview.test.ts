@@ -52,6 +52,26 @@ describe('DocumentPreview', () => {
     expect(w.find('.btn').exists()).toBe(true) // "Open document (PDF)"
   })
 
+  it('offers "view log" for a chat-generated report and loads the log HTML on click', async () => {
+    loadRenditionSet.mockResolvedValue({ chatlog: ref_('cl1', 'chatlog', 'html') })
+    const w = mount(DocumentPreview, { props: { uid: 'r1', name: 'report.html', hasRenditions: true } })
+    await flushPromises()
+    const btn = w.findAll('button').find((b) => b.text().includes('view log'))
+    expect(btn).toBeTruthy()
+    expect(w.find('iframe').exists()).toBe(false) // not fetched until asked
+    await btn!.trigger('click')
+    await flushPromises()
+    expect(renditionObjectUrl).toHaveBeenCalledWith('cl1', 'text/html')
+    expect(w.find('iframe').attributes('src')).toBe('blob:cl1')
+  })
+
+  it('shows no chat-log affordance when the file has no chatlog rendition', async () => {
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'x.docx', hasRenditions: true } })
+    await flushPromises()
+    expect(w.findAll('button').some((b) => b.text().includes('view log'))).toBe(false)
+  })
+
   it('in the drawer, opening the PDF raises the overlay (no embed/fetch, no navigation)', async () => {
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx' } })

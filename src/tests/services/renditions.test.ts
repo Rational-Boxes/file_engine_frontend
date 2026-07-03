@@ -39,6 +39,16 @@ describe('renditions: name parsing', () => {
     expect(parseRenditionName('x-thumbnail')).toBeNull() // no extension
     expect(parseRenditionName('')).toBeNull()
   })
+
+  it('recognizes the chat-provenance "chatlog" rendition', () => {
+    expect(parseRenditionName('20260101_000000-chatlog.html')).toEqual({
+      version: '20260101_000000',
+      fmt: 'chatlog',
+      ext: 'html',
+    })
+    const set = toRenditionSet([{ uid: 'cl', name: '20260101_000000-chatlog.html' }])
+    expect(set.chatlog?.uid).toBe('cl')
+  })
 })
 
 describe('renditions: set reduction', () => {

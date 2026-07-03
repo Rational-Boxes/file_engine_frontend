@@ -10,9 +10,10 @@ import { fileService, type FileItem } from '@/services/fileService'
 //   pdf        inline document PDF (Office docs)     ← fetched only on demand
 //   poster     video poster frame (PNG)
 //   model      xeokit XKT 3D/BIM model               ← loaded by the 3D viewer
-export type RenditionFmt = 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model'
+//   chatlog    chat provenance log (HTML) for an AI-generated report ← "view log"
+export type RenditionFmt = 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model' | 'chatlog'
 
-const KNOWN: readonly RenditionFmt[] = ['thumbnail', 'preview', 'pdf', 'poster', 'model']
+const KNOWN: readonly RenditionFmt[] = ['thumbnail', 'preview', 'pdf', 'poster', 'model', 'chatlog']
 
 export interface RenditionRef {
   uid: string
