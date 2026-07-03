@@ -52,24 +52,26 @@ describe('DocumentPreview', () => {
     expect(w.find('.btn').exists()).toBe(true) // "Open document (PDF)"
   })
 
-  it('offers "view log" for a chat-generated report and loads the log HTML on click', async () => {
+  it('shows Document/Chat log tabs for a chat-generated report and loads the log on tab click', async () => {
     loadRenditionSet.mockResolvedValue({ chatlog: ref_('cl1', 'chatlog', 'html') })
     const w = mount(DocumentPreview, { props: { uid: 'r1', name: 'report.html', hasRenditions: true } })
     await flushPromises()
-    const btn = w.findAll('button').find((b) => b.text().includes('view log'))
-    expect(btn).toBeTruthy()
-    expect(w.find('iframe').exists()).toBe(false) // not fetched until asked
-    await btn!.trigger('click')
+    const tabs = w.findAll('button.dp-tab')
+    expect(tabs.map((t) => t.text())).toEqual(['Document', '🧾 Chat log'])
+    // The document tab is active first; the log is not fetched until its tab opens.
+    expect(w.find('iframe').exists()).toBe(false)
+    await tabs.find((t) => t.text().includes('Chat log'))!.trigger('click')
     await flushPromises()
     expect(renditionObjectUrl).toHaveBeenCalledWith('cl1', 'text/html')
     expect(w.find('iframe').attributes('src')).toBe('blob:cl1')
   })
 
-  it('shows no chat-log affordance when the file has no chatlog rendition', async () => {
+  it('shows no tabs when the file has no chatlog rendition', async () => {
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'x.docx', hasRenditions: true } })
     await flushPromises()
-    expect(w.findAll('button').some((b) => b.text().includes('view log'))).toBe(false)
+    expect(w.find('.dp-tabs').exists()).toBe(false)
+    expect(w.find('img.dp-img').exists()).toBe(true) // just the document preview
   })
 
   it('in the drawer, opening the PDF raises the overlay (no embed/fetch, no navigation)', async () => {
