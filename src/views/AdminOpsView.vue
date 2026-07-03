@@ -2,7 +2,6 @@
   <div class="admin-ops">
     <AppNav />
     <main class="content">
-      <AdminTabs />
       <h1 class="title">Storage &amp; sync</h1>
       <p v-if="error" class="err">{{ error }}</p>
 
@@ -40,7 +39,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import AppNav from '@/components/AppNav.vue'
-import AdminTabs from '@/components/AdminTabs.vue'
 import { adminService, type StorageUsage } from '@/services/adminService'
 import { errorMessage } from '@/services/apiClient'
 import { formatSize } from '@/utils/format'

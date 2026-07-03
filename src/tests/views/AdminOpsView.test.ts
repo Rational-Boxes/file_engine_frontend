@@ -11,7 +11,7 @@ vi.mock('@/services/apiClient', () => ({ errorMessage: (e: unknown) => String(e)
 import AdminOpsView from '@/views/AdminOpsView.vue'
 
 const mountView = () =>
-  mount(AdminOpsView, { global: { stubs: { AppNav: true, AdminTabs: true } } })
+  mount(AdminOpsView, { global: { stubs: { AppNav: true } } })
 
 describe('AdminOpsView', () => {
   beforeEach(() => {
