@@ -103,9 +103,33 @@ describe('AclEditor', () => {
       principal: 'role:editors',
       permission: 'r',
       effect: 'allow',
+      recursive: false,
     })
     expect(getAcls).toHaveBeenCalledTimes(2) // reload after grant
     expect(w.emitted('changed')).toBeTruthy()
+  })
+
+  it('cascades to child directories when the checkbox is set (directories only)', async () => {
+    getAcls.mockResolvedValue([])
+    const w = mountEditor({ isDirectory: true })
+    await flushPromises()
+    await w.find('.pick').trigger('click') // pick role:editors
+    await w.find('.acl-recursive input').setValue(true) // "Apply to all child directories"
+    await w.find('.acl-add-row .btn').trigger('click') // Grant
+    await flushPromises()
+    expect(grantPermission).toHaveBeenCalledWith('f1', {
+      principal: 'role:editors',
+      permission: 'r',
+      effect: 'allow',
+      recursive: true,
+    })
+  })
+
+  it('hides the recursive checkbox for a non-directory', async () => {
+    getAcls.mockResolvedValue([])
+    const w = mountEditor({ isDirectory: false })
+    await flushPromises()
+    expect(w.find('.acl-recursive').exists()).toBe(false)
   })
 
   it('revokes a single permission using the encoded principal + effect', async () => {
@@ -120,6 +144,7 @@ describe('AclEditor', () => {
       principal: 'claim:dept=eng',
       permission: 'r',
       effect: 'allow',
+      recursive: false,
     })
   })
 

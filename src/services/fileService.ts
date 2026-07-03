@@ -202,16 +202,18 @@ export const fileService = {
     return !!data.has_permission
   },
 
+  // `recursive` cascades the grant/revoke to every descendant directory (the
+  // bridge walks the subtree).
   async grantPermission(
     uid: string,
-    body: { principal: string; permission: string; effect?: 'allow' | 'deny' },
+    body: { principal: string; permission: string; effect?: 'allow' | 'deny'; recursive?: boolean },
   ): Promise<void> {
     await apiClient.post(`/v1/nodes/${uid}/permissions`, body)
   },
 
   async revokePermission(
     uid: string,
-    body: { principal: string; permission: string; effect?: 'allow' | 'deny' },
+    body: { principal: string; permission: string; effect?: 'allow' | 'deny'; recursive?: boolean },
   ): Promise<void> {
     await apiClient.delete(`/v1/nodes/${uid}/permissions`, { data: body })
   },

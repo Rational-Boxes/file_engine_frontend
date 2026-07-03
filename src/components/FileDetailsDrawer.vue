@@ -107,7 +107,7 @@
 
       <div v-if="item" class="acl">
         <p class="muted">Access control list</p>
-        <AclEditor :uid="item.uid" :can-manage="isAdmin" @changed="loadAll(item.uid)" />
+        <AclEditor :uid="item.uid" :can-manage="isAdmin" :is-directory="item.isDirectory" @changed="loadAll(item.uid)" />
       </div>
     </section>
   </aside>

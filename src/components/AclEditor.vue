@@ -57,6 +57,11 @@
         <button class="btn" :disabled="!picked || busy" @click="grant">Grant</button>
       </div>
 
+      <label v-if="isDirectory" class="acl-recursive" title="Also apply this grant/removal to every subfolder">
+        <input type="checkbox" v-model="recursive" />
+        Apply to all child directories
+      </label>
+
       <div class="acl-templates">
         <span class="acl-tpl-label">Templates:</span>
         <button
@@ -91,7 +96,7 @@ import {
   type PrincipalKind,
 } from '@/types'
 
-const props = defineProps<{ uid: string; canManage?: boolean }>()
+const props = defineProps<{ uid: string; canManage?: boolean; isDirectory?: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const entries = ref<AclEntry[]>([])
@@ -101,6 +106,9 @@ const picked = ref<Principal | null>(null)
 const perm = ref('r')
 const effect = ref<'allow' | 'deny'>('allow')
 const busy = ref(false)
+// When set, a grant/revoke cascades to every descendant directory (bridge walks
+// the subtree). Only meaningful for a directory.
+const recursive = ref(false)
 
 // Show entries in evaluation order: User (0) → Roles/Claims (1) → Everyone (2),
 // and within a tier put DENY first (DENY wins in-tier). Mirrors the core engine.
@@ -155,6 +163,7 @@ async function grant() {
       principal: encodePrincipal(picked.value),
       permission: perm.value,
       effect: effect.value,
+      recursive: recursive.value,
     })
     picked.value = null
     await load()
@@ -208,6 +217,7 @@ async function revoke(e: AclEntry, permKey: string) {
       principal: encodePrincipal({ kind: principalKindFromType(e.type), value: e.principal }),
       permission: permKey,
       effect: e.effect,
+      recursive: recursive.value,
     })
     await load()
     emit('changed')
