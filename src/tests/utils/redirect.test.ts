@@ -4,7 +4,7 @@ import { safeRedirect, stashRedirect, takeRedirect } from '@/utils/redirect'
 describe('safeRedirect (open-redirect guard)', () => {
   it('keeps absolute internal paths (incl. query)', () => {
     expect(safeRedirect('/files?file=abc&tenant=acme')).toBe('/files?file=abc&tenant=acme')
-    expect(safeRedirect('/admin/roles')).toBe('/admin/roles')
+    expect(safeRedirect('/admin/tenant')).toBe('/admin/tenant')
   })
 
   it('rejects external / protocol-relative / junk targets', () => {

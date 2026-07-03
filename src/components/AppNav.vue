@@ -5,8 +5,8 @@
       <router-link to="/files">Files</router-link>
       <router-link to="/search">Search</router-link>
       <router-link to="/chat">Chat</router-link>
-      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/roles">Admin</router-link>
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/tenant">Users &amp; roles</router-link>
+      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/ops">System</router-link>
     </nav>
     <div class="user">
       <TenantSelector />
