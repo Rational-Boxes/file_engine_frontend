@@ -130,4 +130,16 @@ describe('FileDetailsDrawer — 3D model section', () => {
     await flushPromises()
     expect(w.find('.gen-msg.err').text()).toContain('conversion service')
   })
+
+  it('stays on the Access tab after an ACL edit (does not reset to Info)', async () => {
+    const w = openWith({ uid: 'f1', name: 'a.txt', hasRenditions: false })
+    await flushPromises()
+    const accessTab = () => w.findAll('button').find((b) => b.text() === 'Access')!
+    await accessTab().trigger('click')
+    expect(accessTab().classes()).toContain('active')
+    // An ACL grant/revoke emits @changed -> loadAll(uid); the tab must not reset.
+    w.findComponent({ name: 'AclEditor' }).vm.$emit('changed')
+    await flushPromises()
+    expect(accessTab().classes()).toContain('active')
+  })
 })

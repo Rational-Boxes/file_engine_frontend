@@ -228,7 +228,9 @@ async function loadAll(uid: string) {
   info.value = null
   metadata.value = {}
   effective.value = {}
-  tab.value = 'Info'
+  // NB: the active tab is intentionally NOT reset here — loadAll also runs after
+  // in-tab edits (ACL grant, version restore) via @changed, and those must keep
+  // the user on their current tab. The tab is reset only on file-select (watch).
   // Reset the per-file 3D conversion state.
   modelReady.value = false
   generating.value = false
@@ -251,7 +253,10 @@ async function loadAll(uid: string) {
 watch(
   () => [files.drawerOpen, files.detailItem?.uid] as const,
   ([open, uid]) => {
-    if (open && uid) loadAll(uid)
+    if (open && uid) {
+      tab.value = 'Info' // reset the tab only when a (different) file is opened
+      loadAll(uid)
+    }
   },
   { immediate: true },
 )
