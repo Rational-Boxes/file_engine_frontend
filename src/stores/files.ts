@@ -34,6 +34,10 @@ interface FilesState {
   showDeleted: boolean
   canListDeleted: boolean
   canUndelete: boolean
+  // WRITE permission on the current dir — gates New folder / Upload / paste, so a
+  // user who has write here (e.g. their own home folder) can modify it regardless
+  // of their global role level.
+  canWrite: boolean
 }
 
 const ROOT_CRUMB: Crumb = { uid: ROOT_UID, name: 'Home' }
@@ -57,6 +61,7 @@ export const useFileStore = defineStore('files', {
     showDeleted: false,
     canListDeleted: false,
     canUndelete: false,
+    canWrite: false,
   }),
 
   getters: {
@@ -90,12 +95,14 @@ export const useFileStore = defineStore('files', {
       try {
         // Per-dir permissions for the deleted-items UI (best-effort; a denied or
         // failing check just hides the affordances). Parallel with each other.
-        const [ld, ud] = await Promise.all([
+        const [ld, ud, wr] = await Promise.all([
           fileService.checkPermission(this.currentUid, { permission: 'LIST_DELETED' }).catch(() => false),
           fileService.checkPermission(this.currentUid, { permission: 'UNDELETE' }).catch(() => false),
+          fileService.checkPermission(this.currentUid, { permission: 'w' }).catch(() => false),
         ])
         this.canListDeleted = ld
         this.canUndelete = ud
+        this.canWrite = wr
         // Entering a dir we can't list-deleted in silently drops back to the live view.
         if (this.showDeleted && !ld) this.showDeleted = false
         this.items = await fileService.listDirectory(this.currentUid, { deleted: this.showDeleted })

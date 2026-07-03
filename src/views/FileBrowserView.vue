@@ -32,7 +32,7 @@
           🗑 {{ files.showDeleted ? 'Hide deleted' : 'Show deleted' }}
         </button>
         <button
-          v-if="files.clipboard && canDo('paste', auth.accessLevel)"
+          v-if="files.clipboard && files.canWrite"
           class="btn"
           :disabled="!files.canPasteHere"
           :title="files.canPasteHere ? clipboardTitle : 'Can’t paste a folder into itself or a subfolder'"
@@ -223,7 +223,10 @@ const canView3D = (item: FileItem) =>
 const fileInput = ref<HTMLInputElement | null>(null)
 const dragOver = ref(false)
 
-const canModify = computed(() => auth.hasAccessLevel('editor'))
+// Gate New folder / Upload on the actual WRITE permission on the current dir (the
+// tiered ACL is authoritative), not the caller's global role — so a user with
+// write here (e.g. their own home folder) can create/upload even as role "users".
+const canModify = computed(() => files.canWrite)
 
 // Column sorting. Folders always sort before files (independent of direction),
 // then the active column decides the order within each group.
