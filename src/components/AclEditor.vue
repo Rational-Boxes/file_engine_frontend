@@ -61,9 +61,9 @@
         <button class="btn" :disabled="!picked || !selectedPerms.length || busy" @click="grant">Grant</button>
       </div>
 
-      <label v-if="isDirectory" class="acl-recursive" title="Also apply this grant/removal to every subfolder">
+      <label v-if="isDirectory" class="acl-recursive" title="Also apply this grant/removal to every file and subfolder inside">
         <input type="checkbox" v-model="recursive" />
-        Apply to all child directories
+        Apply to all contents (files &amp; subfolders)
       </label>
 
       <div class="acl-templates">
@@ -110,8 +110,8 @@ const picked = ref<Principal | null>(null)
 const selectedPerms = ref<string[]>(['r'])
 const effect = ref<'allow' | 'deny'>('allow')
 const busy = ref(false)
-// When set, a grant/revoke cascades to every descendant directory (bridge walks
-// the subtree). Only meaningful for a directory.
+// When set, a grant/revoke cascades to every descendant file and directory (the
+// bridge walks the subtree). Only meaningful for a directory.
 const recursive = ref(false)
 
 // Show entries in evaluation order: User (0) → Roles/Claims (1) → Everyone (2),
