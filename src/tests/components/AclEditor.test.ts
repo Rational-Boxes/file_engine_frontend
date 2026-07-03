@@ -132,6 +132,39 @@ describe('AclEditor', () => {
     expect(w.find('.acl-recursive').exists()).toBe(false)
   })
 
+  it('grants every checked permission in one action (multi-select)', async () => {
+    getAcls.mockResolvedValue([])
+    const w = mountEditor()
+    await flushPromises()
+    await w.find('.pick').trigger('click')
+    await w.find('input[value="w"]').setValue(true) // + write ('r' is checked by default)
+    await w.find('input[value="d"]').setValue(true) // + delete
+    await w.find('.acl-add-row .btn').trigger('click')
+    await flushPromises()
+    const perms = (grantPermission as any).mock.calls.map((c: any[]) => c[1].permission).sort()
+    expect(perms).toEqual(['d', 'r', 'w'])
+  })
+
+  it('clears a conflicting opposite rule when adding the other effect', async () => {
+    // role:editors already has an explicit ALLOW read.
+    getAcls.mockResolvedValue([
+      { principal: 'editors', type: 1, permissions: 0x400, effect: 'allow' },
+    ])
+    const w = mountEditor()
+    await flushPromises()
+    await w.find('.pick').trigger('click') // role:editors, 'r' checked by default
+    await w.find('select[aria-label="Effect"]').setValue('deny')
+    await w.find('.acl-add-row .btn').trigger('click')
+    await flushPromises()
+    // the conflicting allow-read is revoked first, then deny-read granted
+    expect(revokePermission).toHaveBeenCalledWith('f1', {
+      principal: 'role:editors', permission: 'r', effect: 'allow', recursive: false,
+    })
+    expect(grantPermission).toHaveBeenCalledWith('f1', {
+      principal: 'role:editors', permission: 'r', effect: 'deny', recursive: false,
+    })
+  })
+
   it('revokes a single permission using the encoded principal + effect', async () => {
     getAcls.mockResolvedValue([
       { principal: 'dept=eng', type: 4, permissions: 0x400, effect: 'allow' },

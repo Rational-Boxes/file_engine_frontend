@@ -46,15 +46,17 @@
         <span class="acl-name">{{ picked.value }}</span>
         <button class="acl-x" title="Clear" @click="picked = null">✕</button>
       </div>
+      <div class="acl-perm-picker" role="group" aria-label="Permissions">
+        <label v-for="p in PERMS" :key="p.key" class="acl-perm-opt">
+          <input type="checkbox" :value="p.key" v-model="selectedPerms" /> {{ p.label }}
+        </label>
+      </div>
       <div class="acl-add-row">
-        <select v-model="perm" aria-label="Permission">
-          <option v-for="p in PERMS" :key="p.key" :value="p.key">{{ p.label }}</option>
-        </select>
         <select v-model="effect" aria-label="Effect">
           <option value="allow">allow</option>
           <option value="deny">deny</option>
         </select>
-        <button class="btn" :disabled="!picked || busy" @click="grant">Grant</button>
+        <button class="btn" :disabled="!picked || !selectedPerms.length || busy" @click="grant">Grant</button>
       </div>
 
       <label v-if="isDirectory" class="acl-recursive" title="Also apply this grant/removal to every subfolder">
@@ -103,7 +105,7 @@ const entries = ref<AclEntry[]>([])
 const loading = ref(false)
 const error = ref('')
 const picked = ref<Principal | null>(null)
-const perm = ref('r')
+const selectedPerms = ref<string[]>(['r'])
 const effect = ref<'allow' | 'deny'>('allow')
 const busy = ref(false)
 // When set, a grant/revoke cascades to every descendant directory (bridge walks
@@ -155,16 +157,36 @@ function onPick(p: Principal) {
 }
 
 async function grant() {
-  if (!picked.value) return
+  if (!picked.value || !selectedPerms.value.length) return
   busy.value = true
   error.value = ''
   try {
-    await fileService.grantPermission(props.uid, {
-      principal: encodePrincipal(picked.value),
-      permission: perm.value,
-      effect: effect.value,
-      recursive: recursive.value,
-    })
+    const principal = encodePrincipal(picked.value)
+    const opposite: 'allow' | 'deny' = effect.value === 'allow' ? 'deny' : 'allow'
+    // Existing rules for this principal with the OPPOSITE effect — a permission we
+    // set must not coexist with its opposite (allow vs deny), so clear it first.
+    const conflicts = entries.value.filter(
+      (e) =>
+        e.effect === opposite &&
+        encodePrincipal({ kind: principalKindFromType(e.type), value: e.principal }) === principal,
+    )
+    for (const p of selectedPerms.value) {
+      const hasOpposite = conflicts.some((e) => decode(e.permissions).some((x) => x.key === p))
+      if (hasOpposite) {
+        await fileService.revokePermission(props.uid, {
+          principal,
+          permission: p,
+          effect: opposite,
+          recursive: recursive.value,
+        })
+      }
+      await fileService.grantPermission(props.uid, {
+        principal,
+        permission: p,
+        effect: effect.value,
+        recursive: recursive.value,
+      })
+    }
     picked.value = null
     await load()
     emit('changed')
@@ -394,6 +416,21 @@ async function revoke(e: AclEntry, permKey: string) {
   align-items: center;
   gap: 6px;
   font-size: 12px;
+}
+
+.acl-perm-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 6px 0;
+}
+
+.acl-perm-opt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .acl-add-row {
