@@ -14,7 +14,10 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 
-const props = defineProps<{ html: string; streaming?: boolean }>()
+// `bare`: inject `html` as-is (a self-contained document that carries its own
+// <style>, e.g. the chat-provenance log) instead of wrapping it in the `.md`
+// answer shell. Isolation is identical — only the shell differs.
+const props = defineProps<{ html: string; streaming?: boolean; bare?: boolean }>()
 const host = ref<HTMLElement | null>(null)
 let root: ShadowRoot | null = null
 
@@ -45,8 +48,13 @@ function render() {
   const el = host.value
   if (!el) return
   if (!root) root = el.attachShadow({ mode: 'open' })
+  // innerHTML never runs <script>; the shadow root scopes any <style> the html
+  // carries so it cannot leak into (or be leaked into by) the app.
+  if (props.bare) {
+    root.innerHTML = props.html || ''
+    return
+  }
   const cls = props.streaming ? 'md streaming' : 'md'
-  // html is pre-sanitized; innerHTML never runs <script> anyway.
   root.innerHTML = `<style>${BASE}</style><div class="${cls}">${props.html || ''}</div>`
 }
 

@@ -87,16 +87,11 @@
       </template>
 
       <!-- Chat log tab: the provenance transcript (who chatted + full transcript
-           + sources), fetched on first view. -->
+           + sources), fetched on first view. Rendered in a shadow root so its own
+           styles stay isolated and any embedded <script> never runs. -->
       <div v-else class="dp-chatlog">
-        <p v-if="!chatlogUrl" class="dp-muted">Loading chat log…</p>
-        <iframe
-          v-else
-          :src="chatlogUrl"
-          title="Chat provenance log"
-          class="dp-frame dp-frame-tall"
-          :class="{ 'dp-frame-full': fullWidth }"
-        ></iframe>
+        <p v-if="!chatlogHtml" class="dp-muted">Loading chat log…</p>
+        <ShadowHtml v-else :html="chatlogHtml" bare class="dp-chatlog-body" />
       </div>
     </template>
   </div>
@@ -107,10 +102,12 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import {
   loadRenditionSet,
   renditionObjectUrl,
+  renditionText,
   revokeRenditionUrl,
   previewImage,
   type RenditionSet,
 } from '@/services/renditions'
+import ShadowHtml from '@/components/ShadowHtml.vue'
 import { useRouter } from 'vue-router'
 import { searchService } from '@/services/searchService'
 import { fileService } from '@/services/fileService'
@@ -141,7 +138,7 @@ const set = ref<RenditionSet>({})
 const previewUrl = ref('') // object URL for the still preview/poster image
 const pdfUrl = ref('') // object URL for the inline PDF (loaded on demand)
 const videoUrl = ref('') // object URL for the inline video clip (loaded on demand)
-const chatlogUrl = ref('') // object URL for the chat provenance log HTML (on demand)
+const chatlogHtml = ref('') // chat provenance log HTML (fetched on demand)
 const activeTab = ref<'document' | 'chatlog'>('document') // report preview vs. provenance log
 const loading = ref(false)
 const opening = ref(false)
@@ -281,13 +278,14 @@ function closeMedia() {
   }
 }
 
-// Switch to the Chat log tab, fetching the provenance HTML on first view.
+// Switch to the Chat log tab, fetching the provenance HTML on first view. The
+// HTML is injected into a shadow root (ShadowHtml) for style isolation.
 async function selectChatlog() {
   activeTab.value = 'chatlog'
   const c = set.value.chatlog
-  if (!c || chatlogUrl.value) return
+  if (!c || chatlogHtml.value) return
   try {
-    chatlogUrl.value = await renditionObjectUrl(c.uid, 'text/html')
+    chatlogHtml.value = await renditionText(c.uid)
   } catch (e) {
     error.value = errorMessage(e, 'Failed to load the chat log')
   }
@@ -298,10 +296,7 @@ function cleanup() {
     revokeRenditionUrl(previewUrl.value)
     previewUrl.value = ''
   }
-  if (chatlogUrl.value) {
-    revokeRenditionUrl(chatlogUrl.value)
-    chatlogUrl.value = ''
-  }
+  chatlogHtml.value = '' // plain text — no blob URL to revoke
   closeMedia()
 }
 </script>
@@ -357,8 +352,9 @@ function cleanup() {
   width: 100%;
 }
 
-.dp-frame-tall {
-  min-height: 60vh;
+.dp-chatlog-body {
+  display: block;
+  width: 100%;
 }
 
 .dp-img {

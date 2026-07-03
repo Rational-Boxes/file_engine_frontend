@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const { loadRenditionSet, renditionObjectUrl, revokeRenditionUrl } = vi.hoisted(() => ({
+const { loadRenditionSet, renditionObjectUrl, renditionText, revokeRenditionUrl } = vi.hoisted(() => ({
   loadRenditionSet: vi.fn(),
   renditionObjectUrl: vi.fn(),
+  renditionText: vi.fn(),
   revokeRenditionUrl: vi.fn(),
 }))
 const { generatePreview } = vi.hoisted(() => ({ generatePreview: vi.fn() }))
@@ -11,6 +12,7 @@ const { generatePreview } = vi.hoisted(() => ({ generatePreview: vi.fn() }))
 vi.mock('@/services/renditions', () => ({
   loadRenditionSet,
   renditionObjectUrl,
+  renditionText,
   revokeRenditionUrl,
   // Faithful reimpl: the preview still is a PNG preview, else a video poster.
   previewImage: (set: { preview?: { ext: string }; poster?: unknown; thumbnail?: { ext: string } }) => {
@@ -29,6 +31,7 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ tenant: 'default' }) }))
 
 import DocumentPreview from '@/components/DocumentPreview.vue'
+import ShadowHtml from '@/components/ShadowHtml.vue'
 
 const ref_ = (uid: string, fmt: string, ext: string) => ({ uid, name: `v-${fmt}.${ext}`, fmt, ext, version: 'v' })
 
@@ -52,18 +55,24 @@ describe('DocumentPreview', () => {
     expect(w.find('.btn').exists()).toBe(true) // "Open document (PDF)"
   })
 
-  it('shows Document/Chat log tabs for a chat-generated report and loads the log on tab click', async () => {
+  it('shows Document/Chat log tabs and renders the log in a shadow root on tab click', async () => {
     loadRenditionSet.mockResolvedValue({ chatlog: ref_('cl1', 'chatlog', 'html') })
+    renditionText.mockResolvedValue('<style>.msg{}</style><h1>Chat provenance log</h1>')
     const w = mount(DocumentPreview, { props: { uid: 'r1', name: 'report.html', hasRenditions: true } })
     await flushPromises()
     const tabs = w.findAll('button.dp-tab')
     expect(tabs.map((t) => t.text())).toEqual(['Document', '🧾 Chat log'])
-    // The document tab is active first; the log is not fetched until its tab opens.
-    expect(w.find('iframe').exists()).toBe(false)
+    // The document tab is active first; the log is fetched only when its tab opens.
+    expect(w.findComponent(ShadowHtml).exists()).toBe(false)
     await tabs.find((t) => t.text().includes('Chat log'))!.trigger('click')
     await flushPromises()
-    expect(renditionObjectUrl).toHaveBeenCalledWith('cl1', 'text/html')
-    expect(w.find('iframe').attributes('src')).toBe('blob:cl1')
+    expect(renditionText).toHaveBeenCalledWith('cl1')
+    // Rendered via ShadowHtml (bare) for style isolation — not an iframe.
+    const shadow = w.findComponent(ShadowHtml)
+    expect(shadow.exists()).toBe(true)
+    expect(shadow.props('bare')).toBe(true)
+    expect(shadow.props('html')).toContain('Chat provenance log')
+    expect(w.find('iframe').exists()).toBe(false)
   })
 
   it('shows no tabs when the file has no chatlog rendition', async () => {

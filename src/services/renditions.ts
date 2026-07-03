@@ -111,3 +111,11 @@ export async function renditionArrayBuffer(uid: string): Promise<ArrayBuffer> {
   const blob = await fileService.downloadFile(uid)
   return blob.arrayBuffer()
 }
+
+// Download a rendition's bytes as text — used for the chat-provenance log, whose
+// HTML is injected into a shadow root (style isolation; injected <script> never
+// runs) rather than an <iframe>.
+export async function renditionText(uid: string): Promise<string> {
+  const blob = await fileService.downloadFile(uid)
+  return blob.text()
+}
