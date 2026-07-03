@@ -14,6 +14,9 @@ function levelFromRoles(roles: string[]): AccessLevel {
   return 'user'
 }
 
+// Pending token-refresh timer (module-scoped; not reactive state).
+let refreshTimer: ReturnType<typeof setTimeout> | undefined
+
 interface AuthState {
   // Reactive mirror of the stored bearer token. isAuthenticated derives from
   // this so login/logout update the UI and router guards immediately (reading
@@ -54,6 +57,32 @@ export const useAuthStore = defineStore('auth', {
       this.token = tokenStorage.getAccessToken()
     },
 
+    // Schedule the next token re-mint at ~60% of the current token's remaining
+    // lifetime (min 20s), so the short-TTL JWT is refreshed from live LDAP well
+    // before it expires and role changes propagate within the interval.
+    scheduleRefresh() {
+      if (refreshTimer) clearTimeout(refreshTimer)
+      const expiresAt = tokenStorage.getTokens()?.expiresAt
+      if (!expiresAt) return
+      const delay = Math.max(20_000, Math.floor((expiresAt - Date.now()) * 0.6))
+      refreshTimer = setTimeout(() => {
+        void this.doRefresh()
+      }, delay)
+    },
+
+    // Re-mint the token; re-apply identity (roles may have changed in LDAP), then
+    // reschedule. On failure the session is over — log out.
+    async doRefresh() {
+      try {
+        await authService.refresh()
+        this.syncToken()
+        this.applyIdentity(await authService.whoami())
+        this.scheduleRefresh()
+      } catch {
+        await this.logout()
+      }
+    },
+
     applyIdentity(id: Identity) {
       this.user = id.user
       this.tenant = id.tenant
@@ -83,6 +112,7 @@ export const useAuthStore = defineStore('auth', {
       try {
         this.applyIdentity(await authService.whoami())
         await this.loadTenants()
+        this.scheduleRefresh()
       } catch {
         tokenStorage.clearTokens()
         this.token = null
@@ -118,6 +148,7 @@ export const useAuthStore = defineStore('auth', {
         this.syncToken()
         this.applyIdentity(await authService.whoami())
         await this.loadTenants()
+        this.scheduleRefresh()
         return true
       } catch (e) {
         this.error = errorMessage(e, 'Login failed')
@@ -137,6 +168,7 @@ export const useAuthStore = defineStore('auth', {
       try {
         this.applyIdentity(await authService.whoami())
         await this.loadTenants()
+        this.scheduleRefresh()
         return true
       } catch (e) {
         this.error = errorMessage(e, 'Login failed')
@@ -147,6 +179,8 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async logout() {
+      if (refreshTimer) clearTimeout(refreshTimer)
+      refreshTimer = undefined
       await authService.logout()
       this.token = null
       this.user = null

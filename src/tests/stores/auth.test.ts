@@ -8,6 +8,8 @@ vi.mock('@/services/authService', () => ({
     consumeOAuthFragment: vi.fn(),
     logout: vi.fn(),
     oauthRedirect: vi.fn(),
+    refresh: vi.fn(),
+    listTenants: vi.fn(async () => ({ tenants: [], current: '' })),
   },
 }))
 
@@ -15,6 +17,7 @@ vi.mock('@/utils/tokenStorage', () => ({
   tokenStorage: {
     isAuthenticated: vi.fn(() => false),
     getAccessToken: vi.fn(() => 'tok'),
+    getTokens: vi.fn(() => null), // null => scheduleRefresh sets no timer in tests
     clearTokens: vi.fn(),
   },
 }))
@@ -78,6 +81,30 @@ describe('auth store', () => {
     const store = useAuthStore()
     store.user = 'alice'
     await store.logout()
+    expect(authService.logout).toHaveBeenCalled()
+    expect(store.user).toBeNull()
+  })
+
+  it('doRefresh re-mints the token and re-applies identity', async () => {
+    ;(authService.refresh as any).mockResolvedValue(undefined)
+    ;(authService.whoami as any).mockResolvedValue({
+      user: 'alice',
+      tenant: 't1',
+      roles: ['users'],
+    })
+    const store = useAuthStore()
+    await store.doRefresh()
+    expect(authService.refresh).toHaveBeenCalled()
+    expect(store.user).toBe('alice')
+    expect(store.roles).toEqual(['users'])
+  })
+
+  it('doRefresh logs out when the refresh is rejected (revoked session)', async () => {
+    ;(authService.refresh as any).mockRejectedValue(new Error('401'))
+    ;(authService.logout as any).mockResolvedValue(undefined)
+    const store = useAuthStore()
+    store.user = 'alice'
+    await store.doRefresh()
     expect(authService.logout).toHaveBeenCalled()
     expect(store.user).toBeNull()
   })

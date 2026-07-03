@@ -16,7 +16,7 @@ export interface TenantList {
 function storeToken(token: string, expiresInSeconds: number) {
   tokenStorage.storeTokens({
     accessToken: token,
-    refreshToken: '', // bridge tokens are opaque and not refreshable
+    refreshToken: '', // bridge JWTs are re-minted via /v1/auth/refresh, not an OAuth refresh token
     expiresAt: Date.now() + expiresInSeconds * 1000,
   })
 }
@@ -56,6 +56,16 @@ export const authService = {
     storeToken(token, Number(params.get('expires_in')) || 3600)
     history.replaceState(null, '', window.location.pathname + window.location.search)
     return true
+  },
+
+  // Re-mint the bearer JWT from live LDAP (POST /v1/auth/refresh, authenticated
+  // by the current token). Keeps the short-TTL token alive and picks up LDAP role
+  // changes within the refresh interval.
+  async refresh(): Promise<void> {
+    const { data } = await apiClient.post<{ token: string; expires_in: number }>(
+      '/v1/auth/refresh',
+    )
+    storeToken(data.token, data.expires_in)
   },
 
   // Resolved identity for the current token.
