@@ -107,7 +107,7 @@
 
       <div v-if="item" class="acl">
         <p class="muted">Access control list</p>
-        <AclEditor :uid="item.uid" :can-manage="isAdmin" :is-directory="item.isDirectory" @changed="loadAll(item.uid)" />
+        <AclEditor :uid="item.uid" :can-manage="!!effective['m']" :is-directory="item.isDirectory" @changed="loadAll(item.uid)" />
       </div>
     </section>
   </aside>
@@ -193,7 +193,6 @@ const tab = ref<Tab>('Info')
 const item = computed(() => files.detailItem)
 const router = useRouter()
 const canEdit = computed(() => auth.hasAccessLevel('editor'))
-const isAdmin = computed(() => auth.hasAccessLevel('admin'))
 const canDownload = computed(() => canDo('download', auth.accessLevel))
 
 // Copy a shareable deep link (opens the file's folder, selects it, opens this
