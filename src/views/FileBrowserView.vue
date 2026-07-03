@@ -63,14 +63,14 @@
       >Copy</button>
       <button
         class="btn"
-        :disabled="!canDo('cut', auth.accessLevel)"
-        :title="canDo('cut', auth.accessLevel) ? 'Cut selected' : 'Requires editor access'"
+        :disabled="!files.canWrite"
+        :title="files.canWrite ? 'Cut selected' : 'Requires write access to this folder'"
         @click="batchCut"
       >Cut</button>
       <button
         class="btn btn-danger"
-        :disabled="!canDo('delete', auth.accessLevel)"
-        :title="canDo('delete', auth.accessLevel) ? 'Delete selected' : 'Requires editor access'"
+        :disabled="!files.canWrite"
+        :title="files.canWrite ? 'Delete selected' : 'Requires write access to this folder'"
         @click="batchDelete"
       >Delete</button>
       <button class="btn btn-ghost" title="Clear selection" @click="files.clearSelection()">Clear</button>
@@ -340,15 +340,19 @@ const menuFor = (item: FileItem): KebabItem[] => {
     return files.canUndelete ? [{ action: 'undelete', label: 'Undelete' }] : []
   }
   const m: KebabItem[] = []
+  // Read ops (open/download/copy) apply to any visible item — the listing already
+  // filtered to what the user can read. Write ops (rename/cut/delete) are gated on
+  // WRITE on the current folder (files.canWrite, the tiered ACL), not the caller's
+  // global role — so a user who can modify this folder (e.g. their home) gets them.
   if (item.isDirectory) m.push({ action: 'open', label: 'Open' })
   else if (canDo('download', auth.accessLevel)) m.push({ action: 'download', label: 'Download' })
   if (canView3D(item)) m.push({ action: 'view3d', label: 'View in 3D' })
   if (!item.isDirectory && item.hasRenditions)
     m.push({ action: 'renditions', label: `Renditions (${item.renditionCount})` })
-  if (canDo('rename', auth.accessLevel)) m.push({ action: 'rename', label: 'Rename' })
+  if (files.canWrite) m.push({ action: 'rename', label: 'Rename' })
   if (canDo('copy', auth.accessLevel)) m.push({ action: 'copy', label: 'Copy' })
-  if (canDo('cut', auth.accessLevel)) m.push({ action: 'cut', label: 'Cut' })
-  if (canDo('delete', auth.accessLevel)) m.push({ action: 'delete', label: 'Delete', danger: true })
+  if (files.canWrite) m.push({ action: 'cut', label: 'Cut' })
+  if (files.canWrite) m.push({ action: 'delete', label: 'Delete', danger: true })
   m.push({ action: 'info', label: 'Info' })
   return m
 }

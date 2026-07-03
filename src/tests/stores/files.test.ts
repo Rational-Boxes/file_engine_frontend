@@ -212,14 +212,25 @@ describe('files store (UID-native)', () => {
   })
 
   // --- soft-deleted view + undelete ---
-  it('exposes LIST_DELETED / UNDELETE permissions after a load', async () => {
+  it('exposes LIST_DELETED / UNDELETE / WRITE permissions after a load', async () => {
     ;(fileService.checkPermission as any).mockResolvedValue(true)
     const store = useFileStore()
     await store.openRoot()
     expect(store.canListDeleted).toBe(true)
     expect(store.canUndelete).toBe(true)
+    expect(store.canWrite).toBe(true)
     expect(fileService.checkPermission).toHaveBeenCalledWith(ROOT, { permission: 'LIST_DELETED' })
     expect(fileService.checkPermission).toHaveBeenCalledWith(ROOT, { permission: 'UNDELETE' })
+    expect(fileService.checkPermission).toHaveBeenCalledWith(ROOT, { permission: 'w' })
+  })
+
+  it('canWrite is false when WRITE is denied on the folder', async () => {
+    ;(fileService.checkPermission as any).mockImplementation(
+      (_uid: string, o: { permission: string }) => Promise.resolve(o.permission !== 'w'),
+    )
+    const store = useFileStore()
+    await store.openRoot()
+    expect(store.canWrite).toBe(false) // gates New folder / Upload / rename / cut / delete
   })
 
   it('toggleShowDeleted requests the with-deleted listing and marks deleted items', async () => {
