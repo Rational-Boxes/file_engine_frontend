@@ -1,6 +1,6 @@
 <template>
   <nav class="admin-tabs">
-    <router-link to="/admin/roles">Roles</router-link>
+    <router-link to="/admin/tenant">Users &amp; roles</router-link>
     <router-link to="/admin/ops">Storage &amp; sync</router-link>
   </nav>
 </template>

@@ -5,11 +5,12 @@
       <router-link to="/files">Files</router-link>
       <router-link to="/search">Search</router-link>
       <router-link to="/chat">Chat</router-link>
-      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/roles">Admin</router-link>
+      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/tenant">Users &amp; roles</router-link>
+      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/ops">System</router-link>
     </nav>
     <div class="user">
       <TenantSelector />
-      <span v-if="auth.user" class="who">{{ auth.user }} · {{ auth.tenant }} · {{ auth.accessLevel }}</span>
+      <router-link v-if="auth.user" class="who" to="/profile" :title="`${auth.tenant} · ${auth.accessLevel}`">{{ auth.user }}</router-link>
       <button class="link" @click="logout">Sign out</button>
     </div>
   </header>
