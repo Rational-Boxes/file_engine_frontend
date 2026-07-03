@@ -144,7 +144,16 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true
       this.error = null
       try {
-        await authService.ldapLogin(username, password, tenant)
+        // The subdomain is authoritative for which tenant we're logging into, so
+        // carry it explicitly (X-Tenant) — don't rely on the bridge parsing the
+        // Host, which isn't the tenant subdomain behind the dev proxy. Priority:
+        // explicit arg > current subdomain > persisted/selected tenant.
+        const activeTenant = tenant || activeTenantFromHost() || this.tenant || undefined
+        if (activeTenant) {
+          tokenStorage.setActiveTenant(activeTenant)
+          this.tenant = activeTenant
+        }
+        await authService.ldapLogin(username, password, activeTenant || undefined)
         this.syncToken()
         this.applyIdentity(await authService.whoami())
         await this.loadTenants()

@@ -18,9 +18,14 @@ vi.mock('@/utils/tokenStorage', () => ({
     isAuthenticated: vi.fn(() => false),
     getAccessToken: vi.fn(() => 'tok'),
     getTokens: vi.fn(() => null), // null => scheduleRefresh sets no timer in tests
+    getActiveTenant: vi.fn(() => null),
+    setActiveTenant: vi.fn(),
     clearTokens: vi.fn(),
   },
 }))
+
+const { activeTenantFromHost } = vi.hoisted(() => ({ activeTenantFromHost: vi.fn(() => null as string | null) }))
+vi.mock('@/utils/tenantHost', () => ({ activeTenantFromHost }))
 
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
@@ -46,6 +51,18 @@ describe('auth store', () => {
     expect(store.accessLevel).toBe('editor')
     expect(store.hasAccessLevel('user')).toBe(true)
     expect(store.hasAccessLevel('admin')).toBe(false)
+  })
+
+  it('ldapLogin carries the current subdomain tenant (X-Tenant) into the login', async () => {
+    ;(activeTenantFromHost as any).mockReturnValue('acme')
+    ;(authService.ldapLogin as any).mockResolvedValue(undefined)
+    ;(authService.whoami as any).mockResolvedValue({ user: 'a', tenant: 'acme', roles: [] })
+    const { tokenStorage } = await import('@/utils/tokenStorage')
+    const store = useAuthStore()
+    await store.ldapLogin('alice', 'pw')
+    expect(authService.ldapLogin).toHaveBeenCalledWith('alice', 'pw', 'acme')
+    expect(tokenStorage.setActiveTenant).toHaveBeenCalledWith('acme')
+    expect(store.tenant).toBe('acme')
   })
 
   it('ldapLogin reports an error on failure', async () => {
