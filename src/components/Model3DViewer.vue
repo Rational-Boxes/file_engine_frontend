@@ -22,10 +22,16 @@ import { fileService } from '@/services/fileService'
 
 // `xktUid` is the rendition child's uid (the .xkt bytes). `treeContainerId`
 // (optional) is the id of the sidebar element the object tree mounts into.
-const props = defineProps<{
-  xktUid: string
-  treeContainerId?: string
-}>()
+// `navStep` is the navigation step the overlay's slider drives (see applyNavStep)
+// — it scales both zoom and pan so small-scale CAD models can be navigated finely.
+const props = withDefaults(
+  defineProps<{
+    xktUid: string
+    treeContainerId?: string
+    navStep?: number
+  }>(),
+  { navStep: 100 },
+)
 
 // xeokit-sdk #2016: the NavCubePlugin shader crashes ("Missing input
 // materialEmissive") in 2.6.104–2.6.112. Keep the integration but off until fixed.
@@ -50,6 +56,8 @@ async function load() {
     // Lazy-load the (large, AGPL) xeokit SDK only when a model is actually opened.
     const xeokit: any = await import('@xeokit/xeokit-sdk')
     viewer = new xeokit.Viewer({ canvasElement: canvasEl.value, transparent: true })
+    applyNavStep()
+    patchCameraPan()
 
     // The core requirement is rendering the model. The nav-cube, object tree and
     // camera fit are *enhancements* — a failure in any of them (e.g. a model with
@@ -111,6 +119,54 @@ function resize() {
   viewer?.scene?.canvas?.resize?.()
 }
 
+// xeokit's default *dolly* (zoom) rates, tuned for building-scale models — they
+// step far too coarsely on small CAD parts. `navStep` is the slider value; its
+// halfway position, NAV_STEP_DEFAULT, equals the wheel-dolly default, so
+// navStep/NAV_STEP_DEFAULT is the scale factor applied uniformly to every rate.
+// Panning is scaled by the same factor, but through camera.pan (see
+// patchCameraPan) rather than a config — so zoom and pan stay in lockstep.
+const NAV_STEP_DEFAULT = 100
+const XEOKIT_DOLLY_RATES: Record<string, number> = {
+  mouseWheelDollyRate: 100,
+  keyboardDollyRate: 10,
+  touchDollyRate: 0.2,
+}
+
+function applyNavStep() {
+  const cc = viewer?.cameraControl
+  if (!cc) return
+  const scale = props.navStep / NAV_STEP_DEFAULT
+  try {
+    for (const [rate, base] of Object.entries(XEOKIT_DOLLY_RATES)) cc[rate] = base * scale
+  } catch {
+    /* best-effort — never let a control tweak break the preview */
+  }
+}
+
+// Scale panning by the same nav factor as zoom. xeokit exposes no mouse-pan rate
+// (mouse drag-pan uses a hardcoded factor; only keyboard/touch have rate configs),
+// but *every* pan mode funnels through camera.pan(vec) — so we wrap it once to
+// scale the pan vector, reading navStep live so the slider takes effect
+// immediately. A fresh array is passed through (we never mutate xeokit's reused
+// delta) so momentum/inertia frames scale correctly too. At the halfway default
+// (scale 1) it's a no-op. Programmatic framing uses cameraFlight, not camera.pan,
+// so "Reset camera" is unaffected. Because pan is governed here, the keyboard/
+// touch pan-rate configs are intentionally left at their defaults (no double-scale).
+function patchCameraPan() {
+  const cam = viewer?.camera
+  if (!cam || cam.__navPanPatched) return
+  try {
+    const pan = cam.pan.bind(cam)
+    cam.pan = (vec: number[]) => {
+      const scale = props.navStep / NAV_STEP_DEFAULT
+      pan([vec[0] * scale, vec[1] * scale, vec[2] * scale])
+    }
+    cam.__navPanPatched = true
+  } catch {
+    /* best-effort — panning simply stays at xeokit's default scale */
+  }
+}
+
 // Fly the camera back to the default view (frames the whole model). Exposed for
 // the overlay's "Reset camera" button; no-op until the model is loaded.
 function resetCamera() {
@@ -124,6 +180,8 @@ function resetCamera() {
 // Load after mount (the canvas ref must exist); reload if the model changes.
 onMounted(load)
 watch(() => props.xktUid, load)
+// Live-apply slider changes to the already-running viewer (no reload needed).
+watch(() => props.navStep, applyNavStep)
 onBeforeUnmount(destroy)
 defineExpose({ resize, resetCamera })
 

@@ -23,7 +23,7 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push: hh.push }) }))
 vi.mock('@/components/Model3DViewer.vue', () => ({
   default: defineComponent({
     name: 'Model3DViewer',
-    props: ['xktUid', 'treeContainerId'],
+    props: ['xktUid', 'treeContainerId', 'navStep'],
     setup(_, { expose }) {
       expose({ resize: hh.resizeSpy, resetCamera: hh.resetCameraSpy })
       return () => createEl('div', { class: 'm3d-stub' })
@@ -105,6 +105,45 @@ describe('ModelViewerOverlay', () => {
     expect(reset).toBeTruthy()
     await reset.trigger('click')
     expect(hh.resetCameraSpy).toHaveBeenCalled()
+  })
+
+  it('drives the viewer navigation step (zoom + pan) from the slider and persists it', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+
+    // Halfway default: range 5..195 → 100 (xeokit's own default behaviour).
+    expect(w.findComponent({ name: 'Model3DViewer' }).props('navStep')).toBe(100)
+
+    await w.find('.mv-zoom-slider').setValue('30')
+    await flushPromises()
+
+    // Fed straight to the viewer, and remembered.
+    expect(w.findComponent({ name: 'Model3DViewer' }).props('navStep')).toBe(30)
+    expect(localStorage.getItem('fe.model3d.navStep')).toBe('30')
+  })
+
+  it('restores a persisted navigation step on open', async () => {
+    localStorage.setItem('fe.model3d.navStep', '42')
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    expect(w.findComponent({ name: 'Model3DViewer' }).props('navStep')).toBe(42)
+  })
+
+  it('resets the navigation step to the halfway default, and disables reset when already there', async () => {
+    localStorage.setItem('fe.model3d.navStep', '30')
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+
+    const reset = w.find('.mv-zoom-reset')
+    expect((reset.element as HTMLButtonElement).disabled).toBe(false) // off-default → enabled
+    await reset.trigger('click')
+
+    expect(w.findComponent({ name: 'Model3DViewer' }).props('navStep')).toBe(100)
+    expect(localStorage.getItem('fe.model3d.navStep')).toBe('100')
+    expect((w.find('.mv-zoom-reset').element as HTMLButtonElement).disabled).toBe(true) // at default → disabled
   })
 
   it('downloads the original source file', async () => {

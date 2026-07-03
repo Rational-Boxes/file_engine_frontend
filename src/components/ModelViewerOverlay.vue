@@ -8,6 +8,29 @@
           ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} tree</span>
         </button>
         <h1 class="mv-title" :title="title">{{ title }}</h1>
+        <label class="mv-zoom" title="How far each zoom and pan step moves — lower it for fine control on small CAD models">
+          <span class="mv-zoom-lbl">Nav step</span>
+          <input
+            class="mv-zoom-slider"
+            type="range"
+            :min="NAV_MIN"
+            :max="NAV_MAX"
+            step="1"
+            :value="navStep"
+            aria-label="Viewer navigation step"
+            @input="onNavInput"
+          />
+          <button
+            class="mv-zoom-reset"
+            type="button"
+            title="Reset navigation step to the default"
+            aria-label="Reset navigation step to default"
+            :disabled="navStep === NAV_DEFAULT"
+            @click="resetNav"
+          >
+            ⟲
+          </button>
+        </label>
         <button class="mv-act" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset camera</button>
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
@@ -28,6 +51,7 @@
             v-else-if="xktUid"
             ref="viewerRef"
             :xkt-uid="xktUid"
+            :nav-step="navStep"
             tree-container-id="mv-object-tree"
           />
           <p v-else class="mv-muted">Loading…</p>
@@ -87,7 +111,44 @@ const viewerRef = ref<InstanceType<typeof Model3DViewer> | null>(null)
 const COLLAPSE_KEY = 'fe.model3d.sidebarCollapsed'
 const collapsed = ref(readCollapsed())
 
+// Navigation-step slider: scales the viewer's zoom *and* pan rates together. The
+// range is centred on xeokit's default (100) so the halfway position — NAV_DEFAULT
+// — is the SDK's own behaviour; dragging left gives the finer steps that small-
+// scale CAD models need, right gives coarser. Persisted so the choice sticks.
+const NAV_MIN = 5
+const NAV_MAX = 195
+const NAV_DEFAULT = (NAV_MIN + NAV_MAX) / 2 // 100 — the slider's halfway point
+const NAV_KEY = 'fe.model3d.navStep'
+const navStep = ref(readNavStep())
+
 const title = computed(() => model3d.name || model3d.uid)
+
+function readNavStep(): number {
+  try {
+    const v = Number(localStorage.getItem(NAV_KEY))
+    if (Number.isFinite(v) && v >= NAV_MIN && v <= NAV_MAX) return v
+  } catch {
+    /* ignore */
+  }
+  return NAV_DEFAULT
+}
+
+function setNavStep(v: number) {
+  navStep.value = v
+  try {
+    localStorage.setItem(NAV_KEY, String(v))
+  } catch {
+    /* ignore */
+  }
+}
+
+function onNavInput(e: Event) {
+  setNavStep(Number((e.target as HTMLInputElement).value))
+}
+
+function resetNav() {
+  setNavStep(NAV_DEFAULT)
+}
 
 function readCollapsed(): boolean {
   try {
@@ -206,6 +267,40 @@ onBeforeUnmount(() => {
 
 .mv-act:hover {
   background: #2a2d31;
+}
+/* Zoom-step control: label + slider + reset, grouped so they read as one unit. */
+.mv-zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+  color: #c7c9cc;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.mv-zoom-lbl {
+  color: #9aa;
+}
+.mv-zoom-slider {
+  width: 120px;
+  cursor: pointer;
+  accent-color: #6ea8fe;
+}
+.mv-zoom-reset {
+  background: transparent;
+  border: 1px solid #3a3d42;
+  color: #e8e8ea;
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.mv-zoom-reset:hover:not(:disabled) {
+  background: #2a2d31;
+}
+.mv-zoom-reset:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 .mv-body {
   flex: 1 1 auto;
