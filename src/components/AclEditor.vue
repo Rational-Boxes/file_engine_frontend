@@ -4,7 +4,7 @@
 
     <p v-if="loading" class="acl-muted">Loading ACLs…</p>
     <template v-else-if="entries.length">
-      <p class="acl-order">Evaluation order (top → bottom):</p>
+      <p v-if="canManage" class="acl-order">Evaluation order (top → bottom):</p>
       <table class="acl-list">
       <tbody>
         <tr v-for="(e, idx) in orderedEntries" :key="idx" :class="{ deny: e.effect === 'deny' }">
@@ -34,7 +34,9 @@
     </template>
     <p v-else class="acl-muted">No ACL entries.</p>
 
-    <p class="acl-note">
+    <!-- Evaluation-semantics guidance is only useful to users who can alter
+         permissions; a read-only viewer just sees the entries. -->
+    <p v-if="canManage" class="acl-note">
       Evaluated top-down: User rules, then Roles &amp; Claims, then Everyone —
       within a group, DENY wins. Anything left unset is read-by-default.
     </p>

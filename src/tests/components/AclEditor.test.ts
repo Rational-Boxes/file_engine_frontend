@@ -54,6 +54,18 @@ describe('AclEditor', () => {
     expect(w.text()).toContain('within a group, DENY wins')
   })
 
+  it('hides the evaluation guidance + add form for a read-only viewer (cannot manage)', async () => {
+    getAcls.mockResolvedValue([
+      { principal: 'alice', type: 0, permissions: 0x400, effect: 'allow' },
+    ])
+    const w = mountEditor({ canManage: false })
+    await flushPromises()
+    expect(w.find('.acl-note').exists()).toBe(false) // instructions only for managers
+    expect(w.find('.acl-order').exists()).toBe(false)
+    expect(w.find('.acl-add').exists()).toBe(false)
+    expect(w.text()).toContain('alice') // entries still visible
+  })
+
   it('orders entries by evaluation tier (user → role/claim → everyone), DENY first in-tier', async () => {
     getAcls.mockResolvedValue([
       { principal: 'everyone', type: 3, permissions: 0x400, effect: 'deny' },
