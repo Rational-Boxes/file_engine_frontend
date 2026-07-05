@@ -32,21 +32,7 @@
     </div>
 
     <div class="tp-body">
-      <!-- Composer: post a message with rich text. Replies use the same editor. -->
-      <div class="tp-composer">
-        <CommentEditor
-          v-model="newBody"
-          placeholder="Write a comment…"
-          submit-label="Post"
-          :max-chars="maxChars"
-          :mention-source="mentionSource"
-          @submit="open"
-        />
-        <p v-if="error" class="tp-err">{{ error }}</p>
-      </div>
-
       <p v-if="loading" class="tp-muted">Loading…</p>
-      <p v-else-if="!threads.length" class="tp-muted">No comments yet — be the first to post.</p>
 
       <article
         v-for="t in threads"
@@ -83,6 +69,19 @@
           @deleted="onDeleted"
         />
       </article>
+
+      <!-- Composer for a new root message — always available, below the messages. -->
+      <div class="tp-composer">
+        <CommentEditor
+          v-model="newBody"
+          placeholder="Write a comment…"
+          submit-label="Post"
+          :max-chars="maxChars"
+          :mention-source="mentionSource"
+          @submit="open"
+        />
+        <p v-if="error" class="tp-err">{{ error }}</p>
+      </div>
     </div>
   </section>
 </template>
@@ -557,7 +556,9 @@ onBeforeUnmount(() => session?.close())
   font-size: 0.8rem;
 }
 .tp-composer {
-  margin-bottom: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 /* New content flashes in (§10h) — respects reduced-motion. */
