@@ -2,7 +2,7 @@
 id: comments
 title: Comments & discussions
 category: Collaboration
-keywords: [comment, discussion, thread, reply, mention, review, collaborate]
+keywords: [comment, discussion, thread, reply, mention, review, collaborate, real-time, live, presence, viewers, concurrent]
 order: 1
 related: [getting-started]
 ---
@@ -30,6 +30,28 @@ history stays honest.
 
 Use **⚑ Review** to request that someone review the document. This signals the
 reviewer that their input is wanted and tracks the request alongside the discussion.
+
+## Working together in real time
+
+The discussion panel has a small, focused set of live features that make
+collaborating in the moment feel immediate — without turning it into a full
+co-editing tool:
+
+- **See who else is here.** While others have the same file's comments open, a
+  "👁 N here" indicator shows how many people are viewing alongside you; hover it to
+  see their names. You aren't counted in your own roster.
+- **Comments update live.** New comments, edits, and deletions from other people
+  appear in the open panel as they happen — no refresh needed — and a thread someone
+  resolves updates on the spot. A comment that changes briefly highlights so you
+  notice it.
+
+These features are intentionally **limited and strategic**: they work only while the
+comment panel is open on a file, and there are deliberately no typing indicators or
+global "who's online" surface. Live sync is also an **enhancement** — if the live
+connection isn't available, comments still work normally and you'll simply see
+updates the next time the panel loads. Live updates respect permissions just like
+everything else: only people who can read the file take part, and if someone's
+access is removed mid-session, updates stop reaching them.
 
 ## Where comments appear
 
