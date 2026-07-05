@@ -35,8 +35,9 @@ describe('discussionService', () => {
       data: { id: 'c2', thread_id: 't1', author: 'carol', body: 'yo', created_at: 'x',
               edited_at: null, deleted: false, redacted: false },
     })
-    const c = await discussionService.reply('t1', 'yo', ['dave@x'])
-    expect(client.post).toHaveBeenCalledWith('/threads/t1/comments', { body: 'yo', mentions: ['dave@x'] })
+    const c = await discussionService.reply('t1', 'yo', { mentions: ['dave@x'], parentCommentId: 'p1' })
+    expect(client.post).toHaveBeenCalledWith('/threads/t1/comments',
+      { body: 'yo', mentions: ['dave@x'], parent_comment_id: 'p1' })
     expect(c.author).toBe('carol')
   })
 

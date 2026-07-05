@@ -46,43 +46,31 @@
           <strong v-if="t.title">{{ t.title }}</strong>
           <span v-if="t.anchorStale" class="stale" title="Commented on an earlier revision">stale</span>
           <span v-if="t.status === 'resolved'" class="badge-res">resolved</span>
-        </div>
-        <div
-          v-for="c in t.comments || []"
-          :id="`comment-${c.id}`"
-          :key="c.id"
-          class="comment"
-          :class="{ flash: flashing.has(c.id), mine: c.author === me }"
-        >
-          <div class="c-meta">
-            <span class="c-author">{{ c.author }}</span>
-            <time>{{ ago(c.createdAt) }}</time>
-            <span v-if="c.editedAt" class="c-edited">edited</span>
-            <button v-if="c.author === me && !c.deleted && !c.redacted" class="c-x" @click="del(c)">delete</button>
-          </div>
-          <div v-if="c.redacted" class="c-redacted">[redacted by an administrator]</div>
-          <div v-else-if="c.deleted" class="c-redacted">[deleted]</div>
-          <!-- eslint-disable-next-line vue/no-v-html -->
-          <div v-else class="c-body" v-html="render(c.body)"></div>
-        </div>
-
-        <div class="thread-foot">
-          <CommentEditor
-            v-model="replyDrafts[t.id]"
-            placeholder="Reply…"
-            submit-label="Reply"
-            :max-chars="maxChars"
-            @submit="reply(t)"
-          />
+          <span class="thread-spacer"></span>
           <button
             v-if="t.status === 'open'"
             class="tp-resolve"
-            title="Mark resolved"
+            title="Mark this thread resolved"
             @click="resolve(t)"
-          >
-            Resolve
-          </button>
+          >Resolve</button>
         </div>
+
+        <!-- The comment tree: root comments + unlimited-depth replies. -->
+        <CommentNode
+          v-for="root in treeFor(t)"
+          :key="root.id"
+          :node="root"
+          :me="me"
+          :thread-id="t.id"
+          :file-uid="fileUid"
+          :depth="0"
+          :max-chars="maxChars"
+          :flashing="flashing"
+          :mention-source="mentionSource"
+          @posted="onPosted"
+          @updated="onUpdated"
+          @deleted="onDeleted"
+        />
       </article>
 
       <details class="new-thread" open>
@@ -92,6 +80,7 @@
           v-model="newBody"
           placeholder="Start the discussion…"
           :max-chars="maxChars"
+          :mention-source="mentionSource"
           hide-submit
           @submit="open"
         />
@@ -106,9 +95,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { renderMarkdown } from '@/utils/markdown'
+import CommentNode, { type CommentTreeNode } from '@/components/CommentNode.vue'
 import {
   discussionService,
+  extractMentions,
   type Thread,
   type Comment,
   type FlagCounts,
@@ -138,7 +128,6 @@ const flag = ref<FlagCounts | null>(null)
 const flashing = reactive(new Set<string>())
 const newTitle = ref('')
 const newBody = ref('')
-const replyDrafts = reactive<Record<string, string>>({})
 const reviewOpen = ref(false)
 const reviewInput = ref('')
 const reviewMsg = ref('')
@@ -184,17 +173,21 @@ function setLayout(l: Layout) {
   emit('layout', l)
 }
 
-function render(md: string): string {
-  return renderMarkdown(md)
-}
-function ago(iso: string): string {
-  const t = Date.parse(iso)
-  if (Number.isNaN(t)) return ''
-  const s = Math.max(0, Math.round((Date.now() - t) / 1000))
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.round(s / 60)}m`
-  if (s < 86400) return `${Math.round(s / 3600)}h`
-  return `${Math.round(s / 86400)}d`
+// @mention autocomplete source for the editors (only users who can READ this file).
+const mentionSource = (q: string) => discussionService.mentionable(props.fileUid, q)
+
+// Build the comment tree (roots = comments with no parent) for CommentNode.
+function treeFor(t: Thread): CommentTreeNode[] {
+  const byId: Record<string, CommentTreeNode> = {}
+  const roots: CommentTreeNode[] = []
+  for (const c of t.comments || []) byId[c.id] = { ...c, children: [] }
+  for (const c of t.comments || []) {
+    const node = byId[c.id]
+    const parent = c.parentCommentId ? byId[c.parentCommentId] : undefined
+    if (parent) parent.children.push(node)
+    else roots.push(node)
+  }
+  return roots
 }
 
 async function load() {
@@ -202,7 +195,6 @@ async function load() {
   error.value = ''
   try {
     threads.value = await discussionService.listThreads(props.fileUid)
-    for (const t of threads.value) if (!(t.id in replyDrafts)) replyDrafts[t.id] = ''
     const flags = await discussionService
       .flags([props.fileUid])
       .catch(() => ({}) as Record<string, FlagCounts>)
@@ -241,28 +233,45 @@ const canCreate = computed(() => !!(newTitle.value.trim() || newBody.value.trim(
 async function open() {
   const body = newBody.value.trim() || newTitle.value.trim()
   if (!body) return
+  error.value = ''
   try {
     const t = await discussionService.openThread(props.fileUid, {
       title: newTitle.value.trim() || undefined,
       body,
+      mentions: extractMentions(body),
     })
     if (!threads.value.some((x) => x.id === t.id)) threads.value.unshift(t)
     newTitle.value = ''
     newBody.value = ''
-  } catch {
-    error.value = 'Could not post. Check your access and try again.'
+  } catch (e: unknown) {
+    const detail = (e as { response?: { data?: { detail?: { invalid_mentions?: string[] } } } })
+      ?.response?.data?.detail
+    error.value = detail?.invalid_mentions?.length
+      ? `No access: ${detail.invalid_mentions.join(', ')}`
+      : 'Could not post. Check your access and try again.'
   }
 }
 
-async function reply(t: Thread) {
-  const body = (replyDrafts[t.id] || '').trim()
-  if (!body) return
-  try {
-    const c = await discussionService.reply(t.id, body)
-    appendComment(t.id, c)
-    replyDrafts[t.id] = ''
-  } catch {
-    error.value = 'Could not reply. A mentioned user may lack access.'
+// Handlers from CommentNode (reply/edit/delete happen there, results flow up here).
+function onPosted(c: Comment) {
+  appendComment(c.threadId, c)
+}
+function onUpdated(c: Comment) {
+  const t = threadOf(c.threadId)
+  const existing = t?.comments?.find((x) => x.id === c.id)
+  if (existing) {
+    Object.assign(existing, c)
+    markFlash(c.id)
+  }
+}
+function onDeleted(id: string) {
+  for (const t of threads.value) {
+    const c = t.comments?.find((x) => x.id === id)
+    if (c) {
+      c.deleted = true
+      c.body = ''
+      return
+    }
   }
 }
 
@@ -289,16 +298,6 @@ async function requestReview() {
     reviewMsg.value = detail?.invalid_reviewers?.length
       ? `No access: ${detail.invalid_reviewers.join(', ')}`
       : 'Could not request review.'
-  }
-}
-
-async function del(c: Comment) {
-  try {
-    await discussionService.deleteComment(c.id)
-    c.deleted = true
-    c.body = ''
-  } catch {
-    error.value = 'Could not delete.'
   }
 }
 
@@ -341,6 +340,7 @@ function mapLive(raw: Record<string, unknown>): Comment | null {
   return {
     id: raw.id as string,
     threadId: raw.thread_id as string,
+    parentCommentId: (raw.parent_comment_id as string) ?? null,
     author: raw.author as string,
     body: (raw.body as string) ?? '',
     createdAt: (raw.created_at as string) ?? new Date().toISOString(),

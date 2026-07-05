@@ -10,16 +10,24 @@
       <button type="button" title="Quote" @click="linePrefix('> ')">❝</button>
       <button type="button" title="Link" @click="insertLink()">🔗</button>
     </div>
-    <textarea
-      ref="area"
-      class="ce-area"
-      :value="modelValue"
-      :placeholder="placeholder"
-      :maxlength="maxChars"
-      rows="3"
-      @input="onInput"
-      @keydown="onKeydown"
-    ></textarea>
+    <div class="ce-area-wrap">
+      <textarea
+        ref="area"
+        class="ce-area"
+        :value="modelValue"
+        :placeholder="placeholder"
+        :maxlength="maxChars"
+        rows="3"
+        @input="onInput"
+        @keydown="onKeydown"
+        @blur="hideMentions"
+      ></textarea>
+      <ul v-if="mentions.length" class="ce-mentions">
+        <li v-for="u in mentions" :key="u.user" @mousedown.prevent="pickMention(u)">
+          <strong>{{ u.user }}</strong><span v-if="u.email">· {{ u.email }}</span>
+        </li>
+      </ul>
+    </div>
     <div class="ce-foot">
       <span class="ce-count" :class="{ over: modelValue.length > maxChars }">
         {{ modelValue.length }}/{{ maxChars }}
@@ -44,6 +52,8 @@ const props = withDefaults(
     submitLabel?: string
     maxChars?: number
     hideSubmit?: boolean
+    // @mention autocomplete: q → users who can access the file (§5.1). Optional.
+    mentionSource?: (q: string) => Promise<{ user: string; email: string }[]>
   }>(),
   { placeholder: 'Write a comment…', submitLabel: 'Comment', maxChars: 10000 },
 )
@@ -56,8 +66,49 @@ const area = ref<HTMLTextAreaElement | null>(null)
 
 const canSubmit = computed(() => props.modelValue.trim().length > 0 && props.modelValue.length <= props.maxChars)
 
+// --- @mention autocomplete ---
+const mentions = ref<{ user: string; email: string }[]>([])
+const mentionStart = ref(0)
+
 function onInput(e: Event) {
   emit('update:modelValue', (e.target as HTMLTextAreaElement).value)
+  detectMention()
+}
+
+function hideMentions() {
+  mentions.value = []
+}
+
+function detectMention() {
+  const el = area.value
+  if (!el || !props.mentionSource) return hideMentions()
+  const pos = el.selectionStart ?? 0
+  const before = props.modelValue.slice(0, pos)
+  const m = before.match(/@([\w.@-]*)$/) // an @token ending at the cursor
+  if (!m) return hideMentions()
+  mentionStart.value = pos - m[0].length
+  const q = m[1]
+  if (q.length < 1) return hideMentions()
+  props.mentionSource(q)
+    .then((list) => {
+      mentions.value = list.slice(0, 8)
+    })
+    .catch(() => hideMentions())
+}
+
+function pickMention(u: { user: string; email: string }) {
+  const el = area.value
+  const pos = el?.selectionStart ?? props.modelValue.length
+  const handle = u.email || u.user
+  const next =
+    props.modelValue.slice(0, mentionStart.value) + '@' + handle + ' ' + props.modelValue.slice(pos)
+  const cursor = mentionStart.value + handle.length + 2
+  emit('update:modelValue', next)
+  hideMentions()
+  requestAnimationFrame(() => {
+    el?.focus()
+    el?.setSelectionRange(cursor, cursor)
+  })
 }
 
 function set(value: string, cursor: number) {
@@ -156,6 +207,9 @@ function submit() {
 .ce-toolbar button:hover {
   background: var(--bg);
 }
+.ce-area-wrap {
+  position: relative;
+}
 .ce-area {
   width: 100%;
   border: none;
@@ -165,6 +219,36 @@ function submit() {
   font: inherit;
   background: transparent;
   color: var(--fg);
+}
+.ce-mentions {
+  position: absolute;
+  left: 8px;
+  bottom: 4px;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  min-width: 200px;
+  max-height: 180px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+.ce-mentions li {
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: flex;
+  gap: 6px;
+}
+.ce-mentions li:hover {
+  background: var(--bg);
+}
+.ce-mentions span {
+  color: var(--muted);
 }
 .ce-foot {
   display: flex;

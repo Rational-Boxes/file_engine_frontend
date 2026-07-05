@@ -6,6 +6,7 @@ import discussionClient from '@/services/discussionClient'
 export interface Comment {
   id: string
   threadId: string
+  parentCommentId: string | null
   author: string
   body: string
   createdAt: string
@@ -15,6 +16,16 @@ export interface Comment {
   redactedBy?: string | null
   redactedReason?: string | null
   fileUid?: string
+}
+
+export interface Revision {
+  body: string
+  editedAt: string
+}
+
+export interface MentionUser {
+  user: string
+  email: string
 }
 
 export interface Thread {
@@ -93,6 +104,7 @@ function toComment(c: Record<string, unknown>): Comment {
   return {
     id: c.id as string,
     threadId: c.thread_id as string,
+    parentCommentId: (c.parent_comment_id as string) ?? null,
     author: c.author as string,
     body: (c.body as string) ?? '',
     createdAt: c.created_at as string,
@@ -148,6 +160,12 @@ function toActivity(a: Record<string, unknown>): Activity {
   }
 }
 
+// Pull @handles out of a comment body so they can be sent as the mentions array
+// (the backend validates each against who-can-read; §5.1).
+export function extractMentions(text: string): string[] {
+  return [...new Set([...(text || '').matchAll(/@([\w.@-]+)/g)].map((m) => m[1]))]
+}
+
 export const discussionService = {
   // -- threads & comments -------------------------------------------------
   async listThreads(fileUid: string, status?: 'open' | 'resolved'): Promise<Thread[]> {
@@ -157,7 +175,10 @@ export const discussionService = {
     return (data?.threads ?? []).map(toThread)
   },
 
-  async openThread(fileUid: string, payload: { title?: string; body: string; version?: string }): Promise<Thread> {
+  async openThread(
+    fileUid: string,
+    payload: { title?: string; body: string; version?: string; mentions?: string[] },
+  ): Promise<Thread> {
     const { data } = await discussionClient.post(`/files/${fileUid}/threads`, payload)
     return toThread(data)
   },
@@ -167,9 +188,31 @@ export const discussionService = {
     return toThread(data)
   },
 
-  async reply(threadId: string, body: string, mentions: string[] = []): Promise<Comment> {
-    const { data } = await discussionClient.post(`/threads/${threadId}/comments`, { body, mentions })
+  async reply(
+    threadId: string,
+    body: string,
+    opts: { mentions?: string[]; parentCommentId?: string } = {},
+  ): Promise<Comment> {
+    const { data } = await discussionClient.post(`/threads/${threadId}/comments`, {
+      body,
+      mentions: opts.mentions ?? [],
+      parent_comment_id: opts.parentCommentId,
+    })
     return toComment(data)
+  },
+
+  async revisions(commentId: string): Promise<Revision[]> {
+    const { data } = await discussionClient.get(`/comments/${commentId}/revisions`)
+    return (data?.revisions ?? []).map((r: Record<string, unknown>) => ({
+      body: (r.body as string) ?? '',
+      editedAt: r.edited_at as string,
+    }))
+  },
+
+  async mentionable(fileUid: string, q: string): Promise<MentionUser[]> {
+    if (!q) return []
+    const { data } = await discussionClient.get(`/files/${fileUid}/mentionable`, { params: { q } })
+    return (data?.users ?? []) as MentionUser[]
   },
 
   async setThreadStatus(threadId: string, status: 'open' | 'resolved', resolvedVersion?: string): Promise<Thread> {
