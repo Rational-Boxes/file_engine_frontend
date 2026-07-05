@@ -4,7 +4,7 @@ title: Viewing CAD & BIM models
 category: 3D & CAD/BIM
 keywords: [cad, bim, 3d, model, ifc, gltf, step, point cloud, mesh, viewer]
 order: 1
-related: [comments]
+related: [comments, search]
 ---
 
 FileEngine includes an interactive **3D viewer** for engineering and building
@@ -46,3 +46,9 @@ Toggle the tree with the **☰** button to give the model more room.
 You can open [comments](#comments) alongside the model and dock them to the side or
 bottom, so you can point at and talk about specific parts of the design while
 viewing it.
+
+## Finding models
+
+The metadata inside these files — IFC element and property names, CAD part and
+product names, materials, and header details — is indexed, so you can locate a model
+by what it contains using [search](#search), not just by its filename.
