@@ -346,7 +346,7 @@ function assistantHtml(m: Msg): string {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
   color: var(--text);
   font-size: 13px;
   cursor: pointer;
@@ -461,7 +461,7 @@ function assistantHtml(m: Msg): string {
   max-width: 80%;
   padding: 8px 12px;
   border-radius: 12px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   font-size: 14px;
 }

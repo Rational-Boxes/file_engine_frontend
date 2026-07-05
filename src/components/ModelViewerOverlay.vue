@@ -2,7 +2,7 @@
   <Teleport to="body">
     <!-- Maximal, full-bleed overlay: the 3D canvas must own as much space as
          possible so navigation is never cramped. Not a drawer/centered modal. -->
-    <div v-if="model3d.isOpen" class="mv-root" role="dialog" aria-modal="true" aria-label="3D model viewer">
+    <div v-if="model3d.isOpen" class="mv-root theme-dark" role="dialog" aria-modal="true" aria-label="3D model viewer">
       <header class="mv-head">
         <button class="mv-toggle" :aria-pressed="!collapsed" title="Toggle object tree" @click="toggleSidebar">
           ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} tree</span>
@@ -34,7 +34,19 @@
         <button class="mv-act" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset camera</button>
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
-        <div id="mv-titlebar" class="mv-slot"></div>
+
+        <!-- Discussion controls live in the viewer's title bar (dark chrome). -->
+        <div class="mv-disc">
+          <template v-if="!discMin">
+            <button class="mv-act mv-icon" :class="{ 'mv-on': discussionPos === 'side' }" title="Comments on the right" @click="setPos('side')">▐</button>
+            <button class="mv-act mv-icon" :class="{ 'mv-on': discussionPos === 'bottom' }" title="Comments below" @click="setPos('bottom')">▄</button>
+            <button class="mv-act mv-icon" title="Minimize comments" @click="discMin = true">💬 —</button>
+          </template>
+          <button v-else class="mv-act" title="Show comments" @click="discMin = false">
+            💬 Comments ({{ discCount }})
+          </button>
+        </div>
+
         <button class="mv-x" aria-label="Close viewer" @click="model3d.close()">✕</button>
       </header>
 
@@ -78,15 +90,17 @@
             @pointerdown="startDrag"
           ></div>
 
-          <section v-if="model3d.uid" class="mv-discussion" :style="discStyle">
+          <section v-show="!discMin" class="mv-discussion" :style="discStyle">
             <ThreadPanel
+              v-if="model3d.uid"
               :file-uid="model3d.uid"
               embedded
-              titlebar-target="#mv-titlebar"
+              hide-dock
               :pos="discussionPos"
-              :class="['mv-thread', { 'mv-thread-min': discLayout === 'collapsed' }]"
+              class="mv-thread"
               @layout="discLayout = $event"
               @update:pos="setPos"
+              @count="discCount = $event"
             />
           </section>
         </div>
@@ -113,6 +127,8 @@ const router = useRouter()
 // Docked discussion — same behaviour as the document preview. Available whenever a
 // file is open (comments are per-file, independent of the 3D rendition).
 const hasDiscussion = computed(() => !!model3d.uid)
+const discMin = ref(false) // comments minimized to the title-bar chip
+const discCount = ref(0) // comment count surfaced by the panel (for the chip)
 const {
   discussionPos,
   discLayout,
@@ -123,7 +139,7 @@ const {
   discStyle,
   setPos,
   startDrag,
-} = useDiscussionDock(hasDiscussion, computed(() => true))
+} = useDiscussionDock(hasDiscussion, computed(() => !discMin.value))
 
 // Download the source file (same affordance as the document preview).
 async function downloadOriginal() {
@@ -420,7 +436,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--card);
   color: var(--fg);
 }
 .mv-side-by-side .mv-discussion {
@@ -477,10 +493,19 @@ onBeforeUnmount(() => {
 .mv-splitter:hover::before {
   background: #6ea8fe;
 }
-.mv-slot {
+.mv-disc {
   display: flex;
   align-items: center;
+  gap: 0.3rem;
   flex: 0 0 auto;
+}
+.mv-icon {
+  padding: 0.25rem 0.45rem;
+}
+.mv-on {
+  background: #2a2d31;
+  border-color: #6ea8fe;
+  color: #cfe0ff;
 }
 .mv-err,
 .mv-muted {

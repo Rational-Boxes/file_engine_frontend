@@ -10,6 +10,12 @@
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/ops">System</router-link>
     </nav>
     <div class="user">
+      <button
+        class="theme-toggle"
+        :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+        :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+        @click="toggleTheme"
+      >{{ theme === 'dark' ? '☀️' : '🌙' }}</button>
       <TenantSelector />
       <router-link v-if="auth.user" class="who" to="/profile" :title="`${auth.tenant} · ${auth.accessLevel}`">{{ auth.user }}</router-link>
       <button class="link" @click="logout">Sign out</button>
@@ -20,10 +26,12 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useTheme } from '@/composables/useTheme'
 import TenantSelector from '@/components/TenantSelector.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
+const { theme, toggleTheme } = useTheme()
 
 async function logout() {
   await auth.logout()
@@ -32,12 +40,24 @@ async function logout() {
 </script>
 
 <style scoped>
+.theme-toggle {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 8px;
+  padding: 3px 9px;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  background: var(--bg);
+}
 .topbar {
   display: flex;
   align-items: center;
   gap: 20px;
   padding: 10px 18px;
-  background: #fff;
+  background: var(--card);
   border-bottom: 1px solid var(--border);
   /* Keep the nav pinned to the top as content scrolls beneath it. */
   position: sticky;

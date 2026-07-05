@@ -293,7 +293,7 @@ async function removeMeta(key: string) {
   /* Wide enough for the ACL editor's permission/effect/grant row; capped so it
      stays usable on small viewports. */
   width: min(440px, 92vw);
-  background: #fff;
+  background: var(--card);
   border-left: 1px solid var(--border);
   box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
   z-index: 25;
@@ -507,7 +507,7 @@ dd {
   padding: 7px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--card);
   font-size: 13px;
 }
 

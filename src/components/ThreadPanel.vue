@@ -31,7 +31,7 @@
         <button class="tp-lbtn" :class="{ on: layout === 'bottom' }" title="Dock bottom" @click="setLayout('bottom')">▄</button>
         <button class="tp-lbtn" title="Collapse" @click="setLayout('collapsed')">✕</button>
       </template>
-      <template v-else>
+      <template v-else-if="!hideDock">
         <button v-if="pos" class="tp-lbtn" :class="{ on: pos === 'side' }" title="Dock to the right" @click="emit('update:pos', 'side')">▐</button>
         <button v-if="pos" class="tp-lbtn" :class="{ on: pos === 'bottom' }" title="Dock below" @click="emit('update:pos', 'bottom')">▄</button>
         <button class="tp-lbtn" title="Minimize comments" @click="setLayout('collapsed')">—</button>
@@ -127,10 +127,12 @@ const props = defineProps<{
   embedded?: boolean // rendered inside a container (drawer tab): no collapse/dock chrome
   titlebarTarget?: string // CSS selector of the window's title-bar slot for the minimized chip
   pos?: 'side' | 'bottom' // parent-owned dock orientation, shown in the header
+  hideDock?: boolean // parent owns the dock/minimize controls (e.g. the 3D viewer header)
 }>()
 const emit = defineEmits<{
   (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void
   (e: 'update:pos', p: 'side' | 'bottom'): void
+  (e: 'count', n: number): void
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
@@ -159,6 +161,8 @@ let session: LiveSession | null = null
 const totalComments = computed(() =>
   threads.value.reduce((n, t) => n + (t.comments?.length || 0), 0),
 )
+// Surface the count so a parent-owned header control (e.g. the 3D viewer) can show it.
+watch(totalComments, (n) => emit('count', n), { immediate: true })
 const flagText = computed(() => {
   if (!flag.value) return ''
   const parts: string[] = []
@@ -402,7 +406,7 @@ onBeforeUnmount(() => session?.close())
 <style scoped>
 .tp-toggle {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--card);
   border-radius: 8px;
   padding: 4px 10px;
   cursor: pointer;
@@ -428,7 +432,7 @@ onBeforeUnmount(() => session?.close())
 .tp {
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   min-height: 0;
 }

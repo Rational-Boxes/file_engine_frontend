@@ -177,7 +177,7 @@ function kindLabel(k: PrincipalKind): string {
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   font-size: 13px;
   color: var(--fg);
 }
@@ -193,7 +193,7 @@ function kindLabel(k: PrincipalKind): string {
   list-style: none;
   max-height: 240px;
   overflow-y: auto;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);

@@ -127,7 +127,7 @@ onBeforeUnmount(() => {
   padding: 4px;
   list-style: none;
   min-width: 150px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);

@@ -466,7 +466,7 @@ function cleanup() {
   height: 70vh;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
 }
 
 .dp-frame-full {

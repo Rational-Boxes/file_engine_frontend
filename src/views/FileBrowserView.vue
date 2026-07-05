@@ -579,7 +579,7 @@ onDeactivated(() => {
   padding: 8px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   font-weight: 500;
 }
 
@@ -758,7 +758,7 @@ onDeactivated(() => {
   min-width: 100%;      /* fill the view when content is narrow… */
   width: max-content;   /* …but grow with long, no-wrap names (list-area scrolls) */
   border-collapse: collapse;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
@@ -876,7 +876,7 @@ onDeactivated(() => {
   width: min(520px, 92vw);
   max-height: 70vh;
   overflow: auto;
-  background: #fff;
+  background: var(--card);
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   padding: 16px 18px;

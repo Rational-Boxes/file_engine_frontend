@@ -395,7 +395,7 @@ async function revoke(e: AclEntry, permKey: string) {
 }
 
 .btn-tpl {
-  background: #fff;
+  background: var(--card);
   color: var(--fg);
   border: 1px solid var(--border);
   font-size: 12px;
@@ -448,7 +448,7 @@ async function revoke(e: AclEntry, permKey: string) {
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   font-size: 13px;
 }
 

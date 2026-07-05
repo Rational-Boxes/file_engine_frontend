@@ -186,7 +186,7 @@ function submit() {
 .ce {
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
 }
 .ce-toolbar {
   display: flex;
@@ -231,7 +231,7 @@ function submit() {
   min-width: 200px;
   max-height: 180px;
   overflow: auto;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);

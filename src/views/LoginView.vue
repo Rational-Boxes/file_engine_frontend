@@ -84,7 +84,7 @@ const loginLdap = async () => {
 .login-card {
   width: 100%;
   max-width: 360px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 32px;
@@ -112,7 +112,7 @@ h1 {
   padding: 10px 14px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--card);
   font-weight: 500;
 }
 
@@ -154,7 +154,7 @@ h1 {
 }
 
 .divider span {
-  background: #fff;
+  background: var(--card);
   padding: 0 10px;
   position: relative;
 }

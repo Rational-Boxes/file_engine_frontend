@@ -55,7 +55,7 @@ const onChange = (e: Event) => {
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   font-size: 13px;
   color: var(--fg);
 }

@@ -98,7 +98,7 @@ async function sync() {
 }
 
 .panel {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px;

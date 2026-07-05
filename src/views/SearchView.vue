@@ -207,7 +207,7 @@ async function run() {
 }
 
 .result {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
 }

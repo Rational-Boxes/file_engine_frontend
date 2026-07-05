@@ -89,7 +89,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   justify-content: space-between;
   gap: 12px;
   padding: 12px 18px;
-  background: #fff;
+  background: var(--card);
   border-bottom: 1px solid var(--border);
 }
 

@@ -261,7 +261,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .badge { font-size: 10px; background: #dbeafe; color: #1e40af; padding: 1px 6px; border-radius: 999px; }
 .dot { color: var(--primary); margin-left: 4px; }
 .btn { padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--primary); color: #fff; font-size: 13px; cursor: pointer; flex: 0 0 auto; }
-.btn.ghost { background: #fff; color: var(--fg); }
+.btn.ghost { background: var(--card); color: var(--fg); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .link { border: none; background: none; color: var(--primary); cursor: pointer; font-size: 13px; }
 .link.danger { color: #b00020; }

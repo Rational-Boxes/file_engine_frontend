@@ -69,7 +69,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   height: min(80vh, 900px);
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--card);
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
