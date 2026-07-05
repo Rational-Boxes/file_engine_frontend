@@ -4,7 +4,13 @@
     <p v-else-if="loading" class="dp-muted">Loading preview…</p>
 
     <template v-else>
-      <div class="dp-combined" :class="{ 'dp-side-by-side': fullWidth && hasPreview && discussionPos === 'side' && discLayout !== 'collapsed' }">
+      <div
+        class="dp-combined"
+        :class="{
+          'dp-side-by-side': combinedActive && discussionPos === 'side',
+          'dp-fit-bottom': combinedActive && discussionPos === 'bottom',
+        }"
+      >
       <div class="dp-main">
       <!-- A chat-generated report carries a hidden "chatlog" provenance child;
            when present, split the preview into Document / Chat log tabs. -->
@@ -236,6 +242,10 @@ const canOpen = computed(() => mediaKind.value !== null)
 // Whether a document preview is actually on screen (vs. the "no preview" state).
 const hasPreview = computed(() =>
   !!(previewUrl.value || pdfUrl.value || videoUrl.value || set.value.chatlog),
+)
+// The combined preview+discussion is live (full page, previewed, not minimized).
+const combinedActive = computed(
+  () => !!props.fullWidth && hasPreview.value && discLayout.value !== 'collapsed',
 )
 const openLabel = computed(() => (mediaKind.value === 'video' ? '▶ Preview 10 seconds' : 'Open document (PDF)'))
 const openHint = computed(() => (mediaKind.value === 'video' ? 'Play the video' : 'Open the full document'))
@@ -564,6 +574,41 @@ function cleanup() {
   width: 380px;
   border-left: 1px solid var(--border);
   padding-left: 10px;
+}
+
+/* Docked below: fit preview + discussion within the viewport (no page scroll) —
+   shrink the preview and let each pane scroll internally. */
+.dp-fit-bottom {
+  height: calc(100vh - 140px);
+  min-height: 0;
+}
+.dp-fit-bottom .dp-main {
+  flex: 1 1 58%;
+  min-height: 0;
+  overflow: auto;
+}
+.dp-fit-bottom .dp-main .dp-pdf {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.dp-fit-bottom .dp-frame,
+.dp-fit-bottom .dp-frame-full {
+  height: 100%;
+}
+.dp-fit-bottom .dp-img {
+  max-height: 100%;
+  object-fit: contain;
+}
+.dp-fit-bottom .dp-discussion {
+  flex: 1 1 42%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dp-fit-bottom .dp-thread {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
 }
 .dp-thread {
   display: block;
