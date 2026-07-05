@@ -9,17 +9,26 @@
     </router-view>
     <PdfPreviewOverlay />
     <ModelViewerOverlay />
+    <ThreadOverlay
+      :open="comments.isOpen"
+      :file-uid="comments.uid"
+      :name="comments.name"
+      @close="comments.close()"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useCommentsStore } from '@/stores/comments'
 import { initTheme } from '@/composables/useTheme'
 import PdfPreviewOverlay from '@/components/PdfPreviewOverlay.vue'
 import ModelViewerOverlay from '@/components/ModelViewerOverlay.vue'
+import ThreadOverlay from '@/components/ThreadOverlay.vue'
 
 const authStore = useAuthStore()
+const comments = useCommentsStore()
 
 initTheme()
 

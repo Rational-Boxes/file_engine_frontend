@@ -24,6 +24,15 @@
         >
           🔗 {{ linkCopied ? 'Copied!' : 'Copy link' }}
         </button>
+        <!-- Always-available comment window — independent of any preview/rendition. -->
+        <button
+          v-if="!item.isDirectory"
+          class="copy-link"
+          title="Open the discussion for this file"
+          @click="comments.open(item.uid, item.name)"
+        >
+          💬 Comments
+        </button>
       </div>
       <!-- 3D/BIM models use the dedicated viewer, never the document preview.
            If no model rendition exists yet, offer an on-demand conversion. -->
@@ -126,6 +135,7 @@ import AclEditor from '@/components/AclEditor.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import FileVersions from '@/components/FileVersions.vue'
 import { useModel3dStore } from '@/stores/model3d'
+import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
 import { searchService } from '@/services/searchService'
@@ -133,6 +143,7 @@ import { searchService } from '@/services/searchService'
 const files = useFileStore()
 const auth = useAuthStore()
 const model3d = useModel3dStore()
+const comments = useCommentsStore()
 // Close the drawer on Escape. Capture phase so a focused in-content element (e.g.
 // the 3D canvas) can't swallow the key; defaultPrevented means an overlay above
 // the drawer (3D viewer / PDF preview, mounted earlier in App.vue so they run

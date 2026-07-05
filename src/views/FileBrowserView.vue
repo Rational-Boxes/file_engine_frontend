@@ -215,6 +215,7 @@ import AppNav from '@/components/AppNav.vue'
 import FileThumbnail from '@/components/FileThumbnail.vue'
 import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
 import { useModel3dStore } from '@/stores/model3d'
+import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'
 import { discussionService, type FlagCounts } from '@/services/discussionService'
 
@@ -222,6 +223,7 @@ const auth = useAuthStore()
 const files = useFileStore()
 const upload = useUploadStore()
 const model3d = useModel3dStore()
+const comments = useCommentsStore()
 
 // A file is viewable in 3D when it's a known model format AND has been converted
 // (its `model` XKT rendition lives among its hidden children).
@@ -393,6 +395,8 @@ const menuFor = (item: FileItem): KebabItem[] => {
   if (item.isDirectory) m.push({ action: 'open', label: 'Open' })
   else if (canDo('download', auth.accessLevel)) m.push({ action: 'download', label: 'Download' })
   if (canView3D(item)) m.push({ action: 'view3d', label: 'View in 3D' })
+  // Always reachable — the comment window doesn't need a preview/rendition.
+  if (!item.isDirectory) m.push({ action: 'comments', label: '💬 Comments' })
   if (!item.isDirectory && item.hasRenditions)
     m.push({ action: 'renditions', label: `Renditions (${item.renditionCount})` })
   if (files.canWrite) m.push({ action: 'rename', label: 'Rename' })
@@ -425,6 +429,7 @@ const onAction = (action: string, item: FileItem) => {
     case 'open': return files.openDirectory(item)
     case 'download': return files.downloadItem(item)
     case 'info': return files.openDetails(item)
+    case 'comments': return comments.open(item.uid, item.name)
     case 'view3d': return model3d.open(item.uid, item.name)
     case 'renditions': return files.openRenditions(item)
     case 'rename': return rename(item)

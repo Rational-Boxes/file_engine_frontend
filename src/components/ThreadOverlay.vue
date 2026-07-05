@@ -15,12 +15,15 @@
           <button class="tov-x" aria-label="Close" @click="emit('close')">✕</button>
         </header>
         <div class="tov-body">
+          <!-- Standalone window: no dock/minimize (the window has its own close),
+               but keep the ⚑ Review request + reviewer actions. -->
           <ThreadPanel
             v-if="open"
             :file-uid="fileUid"
             :focus-thread="focusThread"
             :focus-comment="focusComment"
             embedded
+            hide-dock
           />
         </div>
       </div>
