@@ -24,7 +24,7 @@
       <span class="ce-count" :class="{ over: modelValue.length > maxChars }">
         {{ modelValue.length }}/{{ maxChars }}
       </span>
-      <button class="ce-submit" type="button" :disabled="!canSubmit" @click="submit">
+      <button v-if="!hideSubmit" class="ce-submit" type="button" :disabled="!canSubmit" @click="submit">
         {{ submitLabel }}
       </button>
     </div>
@@ -43,6 +43,7 @@ const props = withDefaults(
     placeholder?: string
     submitLabel?: string
     maxChars?: number
+    hideSubmit?: boolean
   }>(),
   { placeholder: 'Write a comment…', submitLabel: 'Comment', maxChars: 10000 },
 )

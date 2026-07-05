@@ -90,11 +90,14 @@
         <input v-model="newTitle" class="nt-title" placeholder="Title (optional)" />
         <CommentEditor
           v-model="newBody"
-          placeholder="Start a new discussion…"
-          submit-label="Post"
+          placeholder="Start the discussion…"
           :max-chars="maxChars"
+          hide-submit
           @submit="open"
         />
+        <div class="nt-actions">
+          <button class="nt-create" :disabled="!canCreate" @click="open">Create thread</button>
+        </div>
       </details>
     </div>
   </section>
@@ -231,8 +234,12 @@ function threadOf(id: string): Thread | undefined {
   return threads.value.find((t) => t.id === id)
 }
 
+// A thread needs an opening comment; if only a title was typed, use it as the body
+// so "type a name → Create" works.
+const canCreate = computed(() => !!(newTitle.value.trim() || newBody.value.trim()))
+
 async function open() {
-  const body = newBody.value.trim()
+  const body = newBody.value.trim() || newTitle.value.trim()
   if (!body) return
   try {
     const t = await discussionService.openThread(props.fileUid, {
@@ -574,6 +581,24 @@ onBeforeUnmount(() => session?.close())
   padding: 6px 8px;
   margin-bottom: 6px;
   font: inherit;
+}
+.nt-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.nt-create {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: #fff;
+  border-radius: 8px;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.nt-create:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* New content flashes in (§10h) — respects reduced-motion. */

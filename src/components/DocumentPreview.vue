@@ -4,7 +4,7 @@
     <p v-else-if="loading" class="dp-muted">Loading preview…</p>
 
     <template v-else>
-      <div class="dp-combined" :class="{ 'dp-side-by-side': fullWidth && hasPreview }">
+      <div class="dp-combined" :class="{ 'dp-side-by-side': fullWidth && hasPreview && discussionPos === 'side' }">
       <div class="dp-main">
       <!-- A chat-generated report carries a hidden "chatlog" provenance child;
            when present, split the preview into Document / Chat log tabs. -->
@@ -102,6 +102,21 @@
            there's no preview, the fallback is a button that opens the discussion
            overlay (§10g). -->
       <section class="dp-discussion">
+        <div v-if="fullWidth && hasPreview" class="dp-disc-ctl">
+          <span class="dp-disc-lbl">💬 Discussion</span>
+          <button
+            class="dp-pos"
+            :class="{ on: discussionPos === 'side' }"
+            title="Dock to the right"
+            @click="setPos('side')"
+          >▐</button>
+          <button
+            class="dp-pos"
+            :class="{ on: discussionPos === 'bottom' }"
+            title="Dock below"
+            @click="setPos('bottom')"
+          >▄</button>
+        </div>
         <ThreadPanel
           v-if="hasPreview"
           :file-uid="uid"
@@ -157,6 +172,20 @@ const auth = useAuthStore()
 const discussionOpen = ref(false)
 const focusThread = computed(() => (route.query?.thread as string) || undefined)
 const focusComment = computed(() => (route.query?.comment as string) || undefined)
+
+// Where the discussion sits relative to a full-width preview: to the side or below.
+const POS_KEY = 'fe.discuss.previewPos'
+const discussionPos = ref<'side' | 'bottom'>(
+  (typeof localStorage !== 'undefined' && localStorage.getItem(POS_KEY)) === 'bottom' ? 'bottom' : 'side',
+)
+function setPos(p: 'side' | 'bottom') {
+  discussionPos.value = p
+  try {
+    localStorage.setItem(POS_KEY, p)
+  } catch {
+    /* ignore */
+  }
+}
 
 // `fullWidth` = the overlay review (PdfPreviewOverlay): the PDF is embedded in a
 // full-width iframe and auto-opened. Otherwise (the narrow drawer), opening the
@@ -499,6 +528,29 @@ function cleanup() {
 .dp-discussion {
   width: 100%;
   min-width: 0;
+}
+.dp-disc-ctl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.dp-disc-lbl {
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: auto;
+}
+.dp-pos {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 6px;
+  padding: 1px 7px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.dp-pos.on {
+  color: var(--fg);
+  background: var(--bg);
 }
 .dp-combined:not(.dp-side-by-side) .dp-discussion {
   border-top: 1px solid var(--border);
