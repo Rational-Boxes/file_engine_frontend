@@ -264,16 +264,19 @@ function submit() {
   color: var(--danger);
 }
 .ce-submit {
-  border: 1px solid var(--border);
+  border: 1px solid var(--primary);
   background: var(--primary);
   color: #fff;
   border-radius: 8px;
-  padding: 4px 12px;
+  padding: 5px 16px;
   font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
 }
+/* Stay visibly a button when empty (outlined), rather than fading away. */
 .ce-submit:disabled {
-  opacity: 0.5;
+  background: transparent;
+  color: var(--primary);
   cursor: default;
 }
 </style>
