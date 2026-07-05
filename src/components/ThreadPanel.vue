@@ -32,9 +32,21 @@
     </div>
 
     <div class="tp-body">
-      <p v-if="error" class="tp-err">{{ error }}</p>
-      <p v-else-if="loading" class="tp-muted">Loading…</p>
-      <p v-else-if="!threads.length" class="tp-muted">No comments yet. Start the discussion.</p>
+      <!-- Composer: post a message with rich text. Replies use the same editor. -->
+      <div class="tp-composer">
+        <CommentEditor
+          v-model="newBody"
+          placeholder="Write a comment…"
+          submit-label="Post"
+          :max-chars="maxChars"
+          :mention-source="mentionSource"
+          @submit="open"
+        />
+        <p v-if="error" class="tp-err">{{ error }}</p>
+      </div>
+
+      <p v-if="loading" class="tp-muted">Loading…</p>
+      <p v-else-if="!threads.length" class="tp-muted">No comments yet — be the first to post.</p>
 
       <article
         v-for="t in threads"
@@ -42,20 +54,19 @@
         class="thread"
         :class="{ resolved: t.status === 'resolved' }"
       >
-        <div class="thread-head">
-          <strong v-if="t.title">{{ t.title }}</strong>
+        <div v-if="t.anchorStale || t.status === 'resolved' || t.status === 'open'" class="thread-head">
           <span v-if="t.anchorStale" class="stale" title="Commented on an earlier revision">stale</span>
           <span v-if="t.status === 'resolved'" class="badge-res">resolved</span>
           <span class="thread-spacer"></span>
           <button
             v-if="t.status === 'open'"
             class="tp-resolve"
-            title="Mark this thread resolved"
+            title="Mark this discussion resolved"
             @click="resolve(t)"
           >Resolve</button>
         </div>
 
-        <!-- The comment tree: root comments + unlimited-depth replies. -->
+        <!-- The post + its replies (unlimited-depth tree). -->
         <CommentNode
           v-for="root in treeFor(t)"
           :key="root.id"
@@ -72,22 +83,6 @@
           @deleted="onDeleted"
         />
       </article>
-
-      <details class="new-thread" open>
-        <summary>New thread</summary>
-        <input v-model="newTitle" class="nt-title" placeholder="Title (optional)" />
-        <CommentEditor
-          v-model="newBody"
-          placeholder="Start the discussion…"
-          :max-chars="maxChars"
-          :mention-source="mentionSource"
-          hide-submit
-          @submit="open"
-        />
-        <div class="nt-actions">
-          <button class="nt-create" :disabled="!canCreate" @click="open">Create thread</button>
-        </div>
-      </details>
     </div>
   </section>
 </template>
@@ -126,7 +121,6 @@ const error = ref('')
 const presence = ref<string[]>([])
 const flag = ref<FlagCounts | null>(null)
 const flashing = reactive(new Set<string>())
-const newTitle = ref('')
 const newBody = ref('')
 const reviewOpen = ref(false)
 const reviewInput = ref('')
@@ -226,22 +220,16 @@ function threadOf(id: string): Thread | undefined {
   return threads.value.find((t) => t.id === id)
 }
 
-// A thread needs an opening comment; if only a title was typed, use it as the body
-// so "type a name → Create" works.
-const canCreate = computed(() => !!(newTitle.value.trim() || newBody.value.trim()))
-
 async function open() {
-  const body = newBody.value.trim() || newTitle.value.trim()
+  const body = newBody.value.trim()
   if (!body) return
   error.value = ''
   try {
     const t = await discussionService.openThread(props.fileUid, {
-      title: newTitle.value.trim() || undefined,
       body,
       mentions: extractMentions(body),
     })
     if (!threads.value.some((x) => x.id === t.id)) threads.value.unshift(t)
-    newTitle.value = ''
     newBody.value = ''
   } catch (e: unknown) {
     const detail = (e as { response?: { data?: { detail?: { invalid_mentions?: string[] } } } })
@@ -568,37 +556,8 @@ onBeforeUnmount(() => session?.close())
   cursor: pointer;
   font-size: 0.8rem;
 }
-.new-thread summary {
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-.nt-title {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 8px;
-  margin-bottom: 6px;
-  font: inherit;
-}
-.nt-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 6px;
-}
-.nt-create {
-  border: 1px solid var(--primary);
-  background: var(--primary);
-  color: #fff;
-  border-radius: 8px;
-  padding: 5px 14px;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-.nt-create:disabled {
-  opacity: 0.5;
-  cursor: default;
+.tp-composer {
+  margin-bottom: 12px;
 }
 
 /* New content flashes in (§10h) — respects reduced-motion. */
