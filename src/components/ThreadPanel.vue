@@ -50,7 +50,7 @@
         />
         <ul v-if="reviewSug.length" class="tp-review-sug">
           <li v-for="u in reviewSug" :key="u.user" @mousedown.prevent="pickReviewer(u)">
-            <strong>{{ u.user }}</strong><span v-if="u.email">· {{ u.email }}</span>
+            <strong>{{ u.user }}</strong><span v-if="u.email && u.email !== u.user">· {{ u.email }}</span>
           </li>
         </ul>
       </div>
