@@ -27,8 +27,12 @@ vi.mock('@/services/fileService', () => ({ fileService: { downloadFile } }))
 const { open, close } = vi.hoisted(() => ({ open: vi.fn(), close: vi.fn() }))
 vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open, close }) }))
 const { push } = vi.hoisted(() => ({ push: vi.fn() }))
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ query: {} }) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ tenant: 'default' }) }))
+// The discussion children are exercised by their own tests; stub them here so the
+// preview tests stay focused (and don't pull in the discussion service / WS).
+vi.mock('@/components/ThreadPanel.vue', () => ({ default: { name: 'ThreadPanel', render: () => null } }))
+vi.mock('@/components/ThreadOverlay.vue', () => ({ default: { name: 'ThreadOverlay', render: () => null } }))
 
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import ShadowHtml from '@/components/ShadowHtml.vue'

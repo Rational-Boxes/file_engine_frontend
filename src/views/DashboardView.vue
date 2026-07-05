@@ -1,4 +1,5 @@
 <template>
+  <AppNav />
   <div class="dash">
     <header class="dash-head">
       <h1>Dashboard</h1>
@@ -53,6 +54,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { useDiscussionStore } from '@/stores/discussion'
+import AppNav from '@/components/AppNav.vue'
 import ReviewsInbox from '@/components/ReviewsInbox.vue'
 import type { Notification } from '@/services/discussionService'
 

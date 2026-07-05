@@ -4,6 +4,8 @@
     <p v-else-if="loading" class="dp-muted">Loading preview…</p>
 
     <template v-else>
+      <div class="dp-combined" :class="{ 'dp-side-by-side': fullWidth && hasPreview }">
+      <div class="dp-main">
       <!-- A chat-generated report carries a hidden "chatlog" provenance child;
            when present, split the preview into Document / Chat log tabs. -->
       <div v-if="set.chatlog" class="dp-tabs" role="tablist">
@@ -93,7 +95,36 @@
         <p v-if="!chatlogHtml" class="dp-muted">Loading chat log…</p>
         <ShadowHtml v-else :html="chatlogHtml" bare class="dp-chatlog-body" />
       </div>
+      </div><!-- /dp-main -->
+
+      <!-- Discussion (§10b): shown *alongside* the preview (combined view) whenever
+           one renders — side-by-side on a wide page, stacked in the drawer. When
+           there's no preview, the fallback is a button that opens the discussion
+           overlay (§10g). -->
+      <section class="dp-discussion">
+        <ThreadPanel
+          v-if="hasPreview"
+          :file-uid="uid"
+          :focus-thread="focusThread"
+          :focus-comment="focusComment"
+          embedded
+          class="dp-thread"
+        />
+        <button v-else class="btn dp-discuss-btn" @click="discussionOpen = true">
+          💬 Discussion
+        </button>
+      </section>
+      </div><!-- /dp-combined -->
     </template>
+
+    <ThreadOverlay
+      :open="discussionOpen"
+      :file-uid="uid"
+      :name="name"
+      :focus-thread="focusThread"
+      :focus-comment="focusComment"
+      @close="discussionOpen = false"
+    />
   </div>
 </template>
 
@@ -108,7 +139,9 @@ import {
   type RenditionSet,
 } from '@/services/renditions'
 import ShadowHtml from '@/components/ShadowHtml.vue'
-import { useRouter } from 'vue-router'
+import ThreadPanel from '@/components/ThreadPanel.vue'
+import ThreadOverlay from '@/components/ThreadOverlay.vue'
+import { useRoute, useRouter } from 'vue-router'
 import { searchService } from '@/services/searchService'
 import { fileService } from '@/services/fileService'
 import { usePreviewStore } from '@/stores/preview'
@@ -116,7 +149,14 @@ import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
+
+// Discussion (§10f deep-link). A ?thread/?comment on the route focuses the panel
+// and (when there's no inline panel) auto-opens the overlay.
+const discussionOpen = ref(false)
+const focusThread = computed(() => (route.query?.thread as string) || undefined)
+const focusComment = computed(() => (route.query?.comment as string) || undefined)
 
 // `fullWidth` = the overlay review (PdfPreviewOverlay): the PDF is embedded in a
 // full-width iframe and auto-opened. Otherwise (the narrow drawer), opening the
@@ -161,6 +201,10 @@ const mediaKind = computed<'pdf' | 'video' | null>(() =>
   canOpenPdf.value ? 'pdf' : videoRef.value ? 'video' : null,
 )
 const canOpen = computed(() => mediaKind.value !== null)
+// Whether a document preview is actually on screen (vs. the "no preview" state).
+const hasPreview = computed(() =>
+  !!(previewUrl.value || pdfUrl.value || videoUrl.value || set.value.chatlog),
+)
 const openLabel = computed(() => (mediaKind.value === 'video' ? '▶ Preview 10 seconds' : 'Open document (PDF)'))
 const openHint = computed(() => (mediaKind.value === 'video' ? 'Play the video' : 'Open the full document'))
 
@@ -187,6 +231,11 @@ async function reload() {
     error.value = errorMessage(e, 'Failed to load preview')
   } finally {
     loading.value = false
+  }
+  // A discussion deep-link with no inline panel (no preview, or the compact drawer)
+  // pops the overlay so the linked comment is reachable (§10f/§10g).
+  if ((focusThread.value || focusComment.value) && !(props.fullWidth && hasPreview.value)) {
+    discussionOpen.value = true
   }
 }
 
@@ -424,5 +473,55 @@ function cleanup() {
   font-size: 12px;
   cursor: pointer;
   padding: 0;
+}
+
+/* Combined preview + discussion (§10b). Stacked by default (e.g. the drawer);
+   side-by-side when there's room on a full-width page. */
+.dp-combined {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+.dp-combined.dp-side-by-side {
+  flex-direction: row;
+  align-items: stretch;
+}
+.dp-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.dp-discussion {
+  width: 100%;
+  min-width: 0;
+}
+.dp-combined:not(.dp-side-by-side) .dp-discussion {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.dp-side-by-side .dp-discussion {
+  flex: 0 0 380px;
+  width: 380px;
+  border-left: 1px solid var(--border);
+  padding-left: 10px;
+}
+.dp-thread {
+  display: block;
+  height: 65vh;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.dp-side-by-side .dp-thread {
+  height: calc(100vh - 180px);
+}
+.dp-discuss-btn {
+  background: transparent;
+  color: var(--accent, #2563eb);
+  border: 1px solid var(--border);
 }
 </style>

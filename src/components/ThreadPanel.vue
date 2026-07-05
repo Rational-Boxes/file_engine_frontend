@@ -1,11 +1,11 @@
 <template>
   <!-- Collapsed: only a toggle with the comment count + attention flag (§10b-i). -->
-  <button v-if="layout === 'collapsed'" class="tp-toggle" @click="setLayout(lastOpen)">
+  <button v-if="!embedded && layout === 'collapsed'" class="tp-toggle" @click="setLayout(lastOpen)">
     💬 Comments ({{ totalComments }})
     <span v-if="flag" class="tp-flag" :title="flagTitle">{{ flagText }}</span>
   </button>
 
-  <section v-else class="tp" :class="`tp-${layout}`">
+  <section v-else class="tp" :class="embedded ? 'tp-embedded' : `tp-${layout}`">
     <header class="tp-head">
       <span class="tp-title">Comments ({{ totalComments }})</span>
       <span v-if="presence.length" class="tp-presence" :title="presence.join(', ')">
@@ -13,9 +13,11 @@
       </span>
       <button class="tp-review-btn" title="Request review of this document" @click="reviewOpen = !reviewOpen">⚑ Review</button>
       <span class="tp-spacer"></span>
-      <button class="tp-lbtn" :class="{ on: layout === 'right' }" title="Dock right" @click="setLayout('right')">▐</button>
-      <button class="tp-lbtn" :class="{ on: layout === 'bottom' }" title="Dock bottom" @click="setLayout('bottom')">▄</button>
-      <button class="tp-lbtn" title="Collapse" @click="setLayout('collapsed')">✕</button>
+      <template v-if="!embedded">
+        <button class="tp-lbtn" :class="{ on: layout === 'right' }" title="Dock right" @click="setLayout('right')">▐</button>
+        <button class="tp-lbtn" :class="{ on: layout === 'bottom' }" title="Dock bottom" @click="setLayout('bottom')">▄</button>
+        <button class="tp-lbtn" title="Collapse" @click="setLayout('collapsed')">✕</button>
+      </template>
     </header>
 
     <div v-if="reviewOpen" class="tp-review">
@@ -110,7 +112,12 @@ import {
 } from '@/services/discussionService'
 import { LiveSession, type LiveCommentEvent } from '@/services/discussionLive'
 
-const props = defineProps<{ fileUid: string; focusThread?: string; focusComment?: string }>()
+const props = defineProps<{
+  fileUid: string
+  focusThread?: string
+  focusComment?: string
+  embedded?: boolean // rendered inside a container (drawer tab): no collapse/dock chrome
+}>()
 const emit = defineEmits<{ (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
@@ -388,6 +395,12 @@ onBeforeUnmount(() => session?.close())
 .tp-bottom {
   width: 100%;
   max-height: 40vh;
+}
+/* Embedded in a drawer tab: fill the container, no border (the tab provides it). */
+.tp-embedded {
+  width: 100%;
+  height: 100%;
+  border: none;
 }
 .tp-head {
   display: flex;
