@@ -648,6 +648,12 @@ onDeactivated(() => {
 .files tr.active td:first-child {
   box-shadow: inset 3px 0 0 var(--primary);
 }
+/* The selection tint is a fixed light blue — keep the row's ink dark in both themes
+   so the file name stays legible (var(--fg) would be light in dark mode). */
+.files tr.sel .name,
+.files tr.active .name {
+  color: #1f2933;
+}
 
 .files tr.cut {
   opacity: 0.55;

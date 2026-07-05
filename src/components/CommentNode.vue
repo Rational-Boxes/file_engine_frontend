@@ -224,6 +224,7 @@ function mentionError(e: unknown): string | null {
 }
 .cn-body {
   font-size: 0.9rem;
+  color: var(--fg);
 }
 .cn-body :deep(p) {
   margin: 3px 0;

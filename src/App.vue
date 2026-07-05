@@ -81,5 +81,8 @@ body {
 button {
   font: inherit;
   cursor: pointer;
+  /* Inherit the theme ink by default (UA default is black → unreadable in dark
+     mode). Buttons that set their own color (primary, links) still win. */
+  color: inherit;
 }
 </style>

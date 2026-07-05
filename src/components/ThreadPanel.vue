@@ -39,12 +39,21 @@
     </header>
 
     <div v-if="reviewOpen" class="tp-review">
-      <input
-        v-model="reviewInput"
-        class="tp-review-in"
-        placeholder="Reviewer emails, comma-separated"
-        @keydown.enter="requestReview"
-      />
+      <div class="tp-review-field">
+        <input
+          v-model="reviewInput"
+          class="tp-review-in"
+          placeholder="Reviewers — type a name…"
+          @input="onReviewInput"
+          @keydown.enter="requestReview"
+          @blur="reviewSug = []"
+        />
+        <ul v-if="reviewSug.length" class="tp-review-sug">
+          <li v-for="u in reviewSug" :key="u.user" @mousedown.prevent="pickReviewer(u)">
+            <strong>{{ u.user }}</strong><span v-if="u.email">· {{ u.email }}</span>
+          </li>
+        </ul>
+      </div>
       <button class="tp-review-go" @click="requestReview">Request</button>
       <span v-if="reviewMsg" class="tp-review-msg">{{ reviewMsg }}</span>
     </div>
@@ -115,6 +124,7 @@ import {
   type Thread,
   type Comment,
   type FlagCounts,
+  type MentionUser,
 } from '@/services/discussionService'
 import { LiveSession, type LiveCommentEvent } from '@/services/discussionLive'
 
@@ -153,7 +163,9 @@ const reviewOpen = ref(false)
 const reviewInput = ref('')
 const reviewMsg = ref('')
 
-const layout = ref<Layout>(readLayout())
+// When the parent owns minimize (hideDock, e.g. the 3D viewer), never start in the
+// shared "collapsed" state — the parent controls visibility, so keep the panel open.
+const layout = ref<Layout>(props.hideDock ? 'right' : readLayout())
 const lastOpen = ref<Layout>(layout.value === 'collapsed' ? 'right' : layout.value)
 
 let session: LiveSession | null = null
@@ -198,6 +210,29 @@ function setLayout(l: Layout) {
 
 // @mention autocomplete source for the editors (only users who can READ this file).
 const mentionSource = (q: string) => discussionService.mentionable(props.fileUid, q)
+
+// Reviewer field uses the SAME who-can-read filter as @mentions. Autocomplete on the
+// current comma-separated token.
+const reviewSug = ref<MentionUser[]>([])
+function reviewerTokenStart(): number {
+  return reviewInput.value.lastIndexOf(',') + 1
+}
+function onReviewInput() {
+  const q = reviewInput.value.slice(reviewerTokenStart()).trim()
+  if (!q) {
+    reviewSug.value = []
+    return
+  }
+  discussionService
+    .mentionable(props.fileUid, q)
+    .then((list) => (reviewSug.value = list.slice(0, 8)))
+    .catch(() => (reviewSug.value = []))
+}
+function pickReviewer(u: MentionUser) {
+  const before = reviewInput.value.slice(0, reviewerTokenStart()).trimEnd()
+  reviewInput.value = (before ? before + ' ' : '') + (u.email || u.user) + ', '
+  reviewSug.value = []
+}
 
 // Build the comment tree (roots = comments with no parent) for CommentNode.
 function treeFor(t: Thread): CommentTreeNode[] {
@@ -433,6 +468,7 @@ onBeforeUnmount(() => session?.close())
   display: flex;
   flex-direction: column;
   background: var(--card);
+  color: var(--fg);
   border: 1px solid var(--border);
   min-height: 0;
 }
@@ -483,13 +519,49 @@ onBeforeUnmount(() => session?.close())
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
-.tp-review-in {
+.tp-review-field {
+  position: relative;
   flex: 1 1 auto;
   min-width: 140px;
+}
+.tp-review-in {
+  width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 4px 8px;
   font: inherit;
+  background: var(--card);
+  color: var(--fg);
+}
+.tp-review-sug {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 30;
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 4px;
+  max-height: 180px;
+  overflow: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+.tp-review-sug li {
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: flex;
+  gap: 6px;
+}
+.tp-review-sug li:hover {
+  background: var(--bg);
+}
+.tp-review-sug span {
+  color: var(--muted);
 }
 .tp-review-go {
   border: 1px solid var(--primary);
