@@ -34,6 +34,7 @@
         <button class="mv-act" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset camera</button>
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
+        <div id="mv-titlebar" class="mv-slot"></div>
         <button class="mv-x" aria-label="Close viewer" @click="model3d.close()">✕</button>
       </header>
 
@@ -45,17 +46,50 @@
           <div id="mv-object-tree" class="mv-tree"></div>
         </aside>
 
-        <section class="mv-stage">
-          <p v-if="resolveError" class="mv-err">{{ resolveError }}</p>
-          <Model3DViewer
-            v-else-if="xktUid"
-            ref="viewerRef"
-            :xkt-uid="xktUid"
-            :nav-step="navStep"
-            tree-container-id="mv-object-tree"
-          />
-          <p v-else class="mv-muted">Loading…</p>
-        </section>
+        <!-- 3D viewport + docked discussion (same model as the document preview:
+             side/bottom orientation, minimize to the title bar, draggable divider,
+             independent scrolling). -->
+        <div
+          class="mv-main"
+          :class="{
+            'mv-side-by-side': combinedActive && discussionPos === 'side',
+            'mv-fit-bottom': combinedActive && discussionPos === 'bottom',
+            dragging,
+          }"
+        >
+          <section class="mv-stage">
+            <p v-if="resolveError" class="mv-err">{{ resolveError }}</p>
+            <Model3DViewer
+              v-else-if="xktUid"
+              ref="viewerRef"
+              :xkt-uid="xktUid"
+              :nav-step="navStep"
+              tree-container-id="mv-object-tree"
+            />
+            <p v-else class="mv-muted">Loading…</p>
+          </section>
+
+          <div
+            v-if="combinedActive"
+            class="mv-splitter"
+            :class="discussionPos === 'side' ? 'vertical' : 'horizontal'"
+            role="separator"
+            title="Drag to resize"
+            @pointerdown="startDrag"
+          ></div>
+
+          <section v-if="model3d.uid" class="mv-discussion" :style="discStyle">
+            <ThreadPanel
+              :file-uid="model3d.uid"
+              embedded
+              titlebar-target="#mv-titlebar"
+              :pos="discussionPos"
+              :class="['mv-thread', { 'mv-thread-min': discLayout === 'collapsed' }]"
+              @layout="discLayout = $event"
+              @update:pos="setPos"
+            />
+          </section>
+        </div>
       </div>
     </div>
   </Teleport>
@@ -65,14 +99,31 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import Model3DViewer from '@/components/Model3DViewer.vue'
+import ThreadPanel from '@/components/ThreadPanel.vue'
 import { useModel3dStore } from '@/stores/model3d'
 import { useAuthStore } from '@/stores/auth'
+import { useDiscussionDock } from '@/composables/useDiscussionDock'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
 
 const model3d = useModel3dStore()
 const auth = useAuthStore()
 const router = useRouter()
+
+// Docked discussion — same behaviour as the document preview. Available whenever a
+// file is open (comments are per-file, independent of the 3D rendition).
+const hasDiscussion = computed(() => !!model3d.uid)
+const {
+  discussionPos,
+  discLayout,
+  discSideW,
+  discBottomPct,
+  dragging,
+  combinedActive,
+  discStyle,
+  setPos,
+  startDrag,
+} = useDiscussionDock(hasDiscussion, computed(() => true))
 
 // Download the source file (same affordance as the document preview).
 async function downloadOriginal() {
@@ -107,6 +158,13 @@ function openLocation() {
 const xktUid = ref('')
 const resolveError = ref('')
 const viewerRef = ref<InstanceType<typeof Model3DViewer> | null>(null)
+
+// The 3D viewport's free space changes as the discussion docks/resizes/minimizes —
+// let xeokit recompute the canvas each time (including live during a divider drag).
+watch([combinedActive, discussionPos, discLayout, discSideW, discBottomPct], async () => {
+  await nextTick()
+  viewerRef.value?.resize()
+})
 
 const COLLAPSE_KEY = 'fe.model3d.sidebarCollapsed'
 const collapsed = ref(readCollapsed())
@@ -335,10 +393,94 @@ onBeforeUnmount(() => {
 .mv-tree {
   font-size: 0.85rem;
 }
+/* 3D viewport + docked discussion. */
+.mv-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+.mv-main.mv-fit-bottom {
+  flex-direction: column;
+}
+.mv-main.dragging {
+  user-select: none;
+}
+.mv-main.dragging canvas {
+  pointer-events: none;
+}
 .mv-stage {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   position: relative;
+}
+.mv-discussion {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  color: var(--fg);
+}
+.mv-side-by-side .mv-discussion {
+  border-left: 1px solid #2a2d31;
+}
+.mv-fit-bottom .mv-discussion {
+  border-top: 1px solid #2a2d31;
+}
+.mv-thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: block;
+  border: none;
+}
+.mv-thread-min {
+  flex: 0 0 auto;
+  height: auto;
+}
+/* Draggable divider (both orientations). */
+.mv-splitter {
+  flex: 0 0 auto;
+  position: relative;
+  align-self: stretch;
+}
+.mv-splitter.vertical {
+  width: 9px;
+  cursor: col-resize;
+}
+.mv-splitter.horizontal {
+  height: 9px;
+  cursor: row-resize;
+}
+.mv-splitter::before {
+  content: '';
+  position: absolute;
+  background: #3a3d42;
+  border-radius: 2px;
+}
+.mv-splitter.vertical::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+.mv-splitter.horizontal::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+.mv-splitter:hover::before {
+  background: #6ea8fe;
+}
+.mv-slot {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
 }
 .mv-err,
 .mv-muted {

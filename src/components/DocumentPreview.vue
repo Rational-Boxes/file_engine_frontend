@@ -163,6 +163,7 @@ import ShadowHtml from '@/components/ShadowHtml.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
 import ThreadOverlay from '@/components/ThreadOverlay.vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useDiscussionDock } from '@/composables/useDiscussionDock'
 import { searchService } from '@/services/searchService'
 import { fileService } from '@/services/fileService'
 import { usePreviewStore } from '@/stores/preview'
@@ -178,77 +179,6 @@ const auth = useAuthStore()
 const discussionOpen = ref(false)
 const focusThread = computed(() => (route.query?.thread as string) || undefined)
 const focusComment = computed(() => (route.query?.comment as string) || undefined)
-
-// Where the discussion sits relative to a full-width preview: to the side or below.
-const POS_KEY = 'fe.discuss.previewPos'
-const discussionPos = ref<'side' | 'bottom'>(
-  (typeof localStorage !== 'undefined' && localStorage.getItem(POS_KEY)) === 'bottom' ? 'bottom' : 'side',
-)
-// Mirror the embedded panel's own layout so a minimized panel reflows the preview.
-const discLayout = ref<'collapsed' | 'right' | 'bottom'>('right')
-function setPos(p: 'side' | 'bottom') {
-  discussionPos.value = p
-  try {
-    localStorage.setItem(POS_KEY, p)
-  } catch {
-    /* ignore */
-  }
-}
-
-// --- draggable divider: discussion size per orientation (px side / % bottom) ---
-function readNum(key: string, fallback: number): number {
-  try {
-    const v = parseFloat(localStorage.getItem(key) || '')
-    return Number.isFinite(v) ? v : fallback
-  } catch {
-    return fallback
-  }
-}
-const discSideW = ref(readNum('fe.discuss.sideW', 380)) // px
-const discBottomPct = ref(readNum('fe.discuss.bottomPct', 42)) // %
-const dragging = ref(false)
-let dragRect: DOMRect | null = null
-
-const discStyle = computed(() => {
-  if (!combinedActive.value) return {}
-  return discussionPos.value === 'side'
-    ? { flex: `0 0 ${discSideW.value}px`, width: `${discSideW.value}px` }
-    : { flex: `0 0 ${discBottomPct.value}%` }
-})
-
-const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
-
-function startDrag(e: PointerEvent) {
-  e.preventDefault()
-  const combined = (e.currentTarget as HTMLElement).parentElement
-  if (!combined) return
-  dragRect = combined.getBoundingClientRect()
-  dragging.value = true
-  window.addEventListener('pointermove', onDrag)
-  window.addEventListener('pointerup', endDrag)
-}
-function onDrag(e: PointerEvent) {
-  if (!dragRect) return
-  if (discussionPos.value === 'side') {
-    const w = dragRect.right - e.clientX
-    discSideW.value = Math.round(clamp(w, 260, Math.max(300, dragRect.width - 320)))
-  } else {
-    const pct = ((dragRect.bottom - e.clientY) / dragRect.height) * 100
-    discBottomPct.value = Math.round(clamp(pct, 20, 75))
-  }
-}
-function endDrag() {
-  dragging.value = false
-  dragRect = null
-  window.removeEventListener('pointermove', onDrag)
-  window.removeEventListener('pointerup', endDrag)
-  try {
-    localStorage.setItem('fe.discuss.sideW', String(discSideW.value))
-    localStorage.setItem('fe.discuss.bottomPct', String(discBottomPct.value))
-  } catch {
-    /* ignore */
-  }
-}
 
 // `fullWidth` = the overlay review (PdfPreviewOverlay): the PDF is embedded in a
 // full-width iframe and auto-opened. Otherwise (the narrow drawer), opening the
@@ -303,12 +233,13 @@ const canOpen = computed(() => mediaKind.value !== null)
 const hasPreview = computed(() =>
   !!(previewUrl.value || pdfUrl.value || videoUrl.value || set.value.chatlog),
 )
-// The combined preview+discussion is live (full page, previewed, not minimized).
-const combinedActive = computed(
-  () => !!props.fullWidth && hasPreview.value && discLayout.value !== 'collapsed',
-)
 const openLabel = computed(() => (mediaKind.value === 'video' ? '▶ Preview 10 seconds' : 'Open document (PDF)'))
 const openHint = computed(() => (mediaKind.value === 'video' ? 'Play the video' : 'Open the full document'))
+
+// Docking behaviour (orientation, minimize, draggable divider) is shared with the
+// 3D viewer via a composable; combined only on the full preview surface.
+const { discussionPos, discLayout, dragging, combinedActive, discStyle, setPos, startDrag } =
+  useDiscussionDock(hasPreview, computed(() => !!props.fullWidth))
 
 watch(() => props.uid, reload, { immediate: true })
 onBeforeUnmount(cleanup)
