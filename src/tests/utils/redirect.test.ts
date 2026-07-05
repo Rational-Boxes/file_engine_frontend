@@ -7,12 +7,12 @@ describe('safeRedirect (open-redirect guard)', () => {
     expect(safeRedirect('/admin/tenant')).toBe('/admin/tenant')
   })
 
-  it('rejects external / protocol-relative / junk targets', () => {
-    expect(safeRedirect('//evil.com')).toBe('/files')
-    expect(safeRedirect('https://evil.com')).toBe('/files')
-    expect(safeRedirect('javascript:alert(1)')).toBe('/files')
-    expect(safeRedirect('')).toBe('/files')
-    expect(safeRedirect(undefined)).toBe('/files')
+  it('rejects external / protocol-relative / junk targets (→ the dashboard landing)', () => {
+    expect(safeRedirect('//evil.com')).toBe('/dashboard')
+    expect(safeRedirect('https://evil.com')).toBe('/dashboard')
+    expect(safeRedirect('javascript:alert(1)')).toBe('/dashboard')
+    expect(safeRedirect('')).toBe('/dashboard')
+    expect(safeRedirect(undefined)).toBe('/dashboard')
   })
 })
 
@@ -22,12 +22,12 @@ describe('stash/takeRedirect (survives login round-trips)', () => {
   it('stashes a target and reads-and-clears it once', () => {
     stashRedirect('/files?file=abc&tenant=acme')
     expect(takeRedirect()).toBe('/files?file=abc&tenant=acme')
-    expect(takeRedirect()).toBe('/files') // cleared after first read
+    expect(takeRedirect()).toBe('/dashboard') // cleared after first read → default landing
   })
 
   it('a meaningless target clears any stale stash', () => {
     stashRedirect('/files?file=abc')
     stashRedirect(undefined) // e.g. arriving at /login with no redirect
-    expect(takeRedirect()).toBe('/files')
+    expect(takeRedirect()).toBe('/dashboard')
   })
 })

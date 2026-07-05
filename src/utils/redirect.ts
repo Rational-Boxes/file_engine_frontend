@@ -9,26 +9,26 @@ const KEY = 'fe.postLoginRedirect'
 // protocol-relative ("//host") one (open-redirect guard).
 export function safeRedirect(raw: unknown): string {
   if (typeof raw === 'string' && raw.startsWith('/') && !raw.startsWith('//')) return raw
-  return '/files'
+  return '/dashboard'
 }
 
 export function stashRedirect(raw: unknown): void {
   const path = safeRedirect(raw)
   try {
-    if (path !== '/files') sessionStorage.setItem(KEY, path)
+    if (path !== '/dashboard') sessionStorage.setItem(KEY, path)
     else sessionStorage.removeItem(KEY) // no meaningful target -> clear any stale stash
   } catch {
     /* sessionStorage may be unavailable */
   }
 }
 
-// Read-and-clear the stashed destination (defaults to /files).
+// Read-and-clear the stashed destination (defaults to the dashboard landing).
 export function takeRedirect(): string {
   try {
     const v = sessionStorage.getItem(KEY)
     sessionStorage.removeItem(KEY)
     return safeRedirect(v)
   } catch {
-    return '/files'
+    return '/dashboard'
   }
 }
