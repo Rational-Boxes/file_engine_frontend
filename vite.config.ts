@@ -37,6 +37,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/ldapadmin/, ''),
       },
+      '/discuss': {
+        target: 'http://localhost:8094',
+        changeOrigin: true,
+        ws: true, // /files/{uid}/live WebSocket (§10h)
+        rewrite: (p) => p.replace(/^\/discuss/, ''),
+      },
     },
   },
   test: {

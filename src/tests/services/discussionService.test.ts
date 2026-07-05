@@ -1,0 +1,74 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+const client = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() }))
+vi.mock('@/services/discussionClient', () => ({ default: client, liveSocketUrl: vi.fn() }))
+
+import { discussionService } from '@/services/discussionService'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+describe('discussionService', () => {
+  it('listThreads maps snake_case → camelCase (incl. comments)', async () => {
+    client.get.mockResolvedValue({
+      data: {
+        threads: [{
+          id: 't1', file_uid: 'f1', opened_by: 'bob', status: 'open', version: '',
+          created_at: 'x', updated_at: 'x', anchor_stale: true, resolved_by: null,
+          resolved_version: null, title: 'Q',
+          comments: [{ id: 'c1', thread_id: 't1', author: 'bob', body: 'hi', created_at: 'x',
+                       edited_at: null, deleted: false, redacted: false }],
+        }],
+      },
+    })
+    const threads = await discussionService.listThreads('f1')
+    expect(client.get).toHaveBeenCalledWith('/files/f1/threads', { params: {} })
+    expect(threads[0].fileUid).toBe('f1')
+    expect(threads[0].openedBy).toBe('bob')
+    expect(threads[0].anchorStale).toBe(true)
+    expect(threads[0].comments![0].threadId).toBe('t1')
+  })
+
+  it('reply posts body + mentions and maps the comment', async () => {
+    client.post.mockResolvedValue({
+      data: { id: 'c2', thread_id: 't1', author: 'carol', body: 'yo', created_at: 'x',
+              edited_at: null, deleted: false, redacted: false },
+    })
+    const c = await discussionService.reply('t1', 'yo', ['dave@x'])
+    expect(client.post).toHaveBeenCalledWith('/threads/t1/comments', { body: 'yo', mentions: ['dave@x'] })
+    expect(c.author).toBe('carol')
+  })
+
+  it('flags posts file_uids and returns the map', async () => {
+    client.post.mockResolvedValue({ data: { flags: { f1: { mentions: 2, reviews: 1 } } } })
+    const flags = await discussionService.flags(['f1', 'f2'])
+    expect(client.post).toHaveBeenCalledWith('/attention/flags', { file_uids: ['f1', 'f2'] })
+    expect(flags.f1).toEqual({ mentions: 2, reviews: 1 })
+  })
+
+  it('flags short-circuits with no uids (no request)', async () => {
+    expect(await discussionService.flags([])).toEqual({})
+    expect(client.post).not.toHaveBeenCalled()
+  })
+
+  it('attention maps notification items', async () => {
+    client.get.mockResolvedValue({
+      data: { items: [{ id: 7, kind: 'mention', file_uid: 'f1', thread_id: 't1', review_id: null,
+                        actor: 'carol', created_at: 'x', read_at: null }] },
+    })
+    const items = await discussionService.attention({ unread: true })
+    expect(client.get).toHaveBeenCalledWith('/dashboard/attention', { params: { unread: true } })
+    expect(items[0].fileUid).toBe('f1')
+    expect(items[0].readAt).toBeNull()
+  })
+
+  it('setThreadStatus sends resolved_version', async () => {
+    client.patch.mockResolvedValue({ data: { id: 't1', file_uid: 'f1', opened_by: 'bob',
+      status: 'resolved', created_at: 'x', updated_at: 'x', anchor_stale: false,
+      resolved_by: 'bob', resolved_version: 'v2', version: '', title: '' } })
+    const t = await discussionService.setThreadStatus('t1', 'resolved', 'v2')
+    expect(client.patch).toHaveBeenCalledWith('/threads/t1', { status: 'resolved', resolved_version: 'v2' })
+    expect(t.resolvedVersion).toBe('v2')
+  })
+})

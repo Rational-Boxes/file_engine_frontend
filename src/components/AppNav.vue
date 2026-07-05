@@ -2,6 +2,7 @@
   <header class="topbar">
     <div class="brand">FileEngine</div>
     <nav class="mainnav">
+      <router-link to="/dashboard">Dashboard</router-link>
       <router-link to="/files">Files</router-link>
       <router-link to="/search">Search</router-link>
       <router-link to="/chat">Chat</router-link>

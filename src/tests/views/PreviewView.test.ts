@@ -15,7 +15,7 @@ import { useModel3dStore } from '@/stores/model3d'
 
 const mountView = () =>
   mount(PreviewView, {
-    global: { stubs: { AppNav: true, DocumentPreview: true } },
+    global: { stubs: { AppNav: true, DocumentPreview: true, ThreadPanel: true } },
   })
 
 describe('PreviewView', () => {

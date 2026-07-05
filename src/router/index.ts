@@ -4,6 +4,7 @@ import { safeRedirect } from '@/utils/redirect'
 
 const LoginView = () => import('@/views/LoginView.vue')
 const OAuthCallbackView = () => import('@/views/OAuthCallbackView.vue')
+const DashboardView = () => import('@/views/DashboardView.vue')
 const FileBrowserView = () => import('@/views/FileBrowserView.vue')
 const SearchView = () => import('@/views/SearchView.vue')
 const ChatView = () => import('@/views/ChatView.vue')
@@ -17,6 +18,7 @@ const ResetPasswordView = () => import('@/views/ResetPasswordView.vue')
 const routes = [
   { path: '/login', name: 'Login', component: LoginView, meta: { requiresAuth: false } },
   { path: '/oauth/callback', name: 'OAuthCallback', component: OAuthCallbackView, meta: { requiresAuth: false } },
+  { path: '/dashboard', name: 'Dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/files', name: 'FileBrowser', component: FileBrowserView, meta: { requiresAuth: true } },
   { path: '/search', name: 'Search', component: SearchView, meta: { requiresAuth: true } },
   { path: '/chat', name: 'Chat', component: ChatView, meta: { requiresAuth: true } },
@@ -36,7 +38,7 @@ const routes = [
   { path: '/profile', name: 'Profile', component: ProfileView, meta: { requiresAuth: true } },
   { path: '/set-password', name: 'SetPassword', component: SetPasswordView, meta: { requiresAuth: false } },
   { path: '/reset-password', name: 'ResetPassword', component: ResetPasswordView, meta: { requiresAuth: false } },
-  { path: '/', redirect: '/files' },
+  { path: '/', redirect: '/dashboard' },
 ]
 
 const router = createRouter({
