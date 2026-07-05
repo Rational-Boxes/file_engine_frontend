@@ -59,6 +59,36 @@ export interface FlagCounts {
   reviews: number
 }
 
+export interface ReviewRequest {
+  id: string
+  fileUid: string
+  version: string
+  threadId: string | null
+  requester: string
+  reviewer: string
+  status: 'requested' | 'acknowledged' | 'completed' | 'declined'
+  outcome: string | null
+  createdAt: string
+  acknowledgedAt: string | null
+  completedAt: string | null
+}
+
+function toReview(r: Record<string, unknown>): ReviewRequest {
+  return {
+    id: r.id as string,
+    fileUid: r.file_uid as string,
+    version: (r.version as string) ?? '',
+    threadId: (r.thread_id as string) ?? null,
+    requester: r.requester as string,
+    reviewer: r.reviewer as string,
+    status: (r.status as ReviewRequest['status']) ?? 'requested',
+    outcome: (r.outcome as string) ?? null,
+    createdAt: r.created_at as string,
+    acknowledgedAt: (r.acknowledged_at as string) ?? null,
+    completedAt: (r.completed_at as string) ?? null,
+  }
+}
+
 function toComment(c: Record<string, unknown>): Comment {
   return {
     id: c.id as string,
@@ -168,6 +198,35 @@ export const discussionService = {
   async getComment(commentId: string): Promise<Comment> {
     const { data } = await discussionClient.get(`/comments/${commentId}`)
     return toComment(data)
+  },
+
+  // -- reviews ------------------------------------------------------------
+  async raiseReview(
+    fileUid: string,
+    reviewers: string[],
+    opts: { version?: string; threadId?: string } = {},
+  ): Promise<ReviewRequest[]> {
+    const { data } = await discussionClient.post(`/files/${fileUid}/reviews`, {
+      reviewers,
+      version: opts.version,
+      thread_id: opts.threadId,
+    })
+    return (data?.reviews ?? []).map(toReview)
+  },
+
+  async listReviews(role: 'requester' | 'reviewer' | 'both' = 'both', status?: string): Promise<ReviewRequest[]> {
+    const { data } = await discussionClient.get('/reviews', { params: { role, status } })
+    return (data?.reviews ?? []).map(toReview)
+  },
+
+  async acknowledgeReview(reviewId: string): Promise<ReviewRequest> {
+    const { data } = await discussionClient.post(`/reviews/${reviewId}/acknowledge`)
+    return toReview(data)
+  },
+
+  async completeReview(reviewId: string, outcome?: string): Promise<ReviewRequest> {
+    const { data } = await discussionClient.post(`/reviews/${reviewId}/complete`, { outcome })
+    return toReview(data)
   },
 
   // -- dashboard ----------------------------------------------------------

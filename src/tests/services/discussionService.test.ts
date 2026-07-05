@@ -63,6 +63,38 @@ describe('discussionService', () => {
     expect(items[0].readAt).toBeNull()
   })
 
+  it('raiseReview posts reviewers and maps the result', async () => {
+    client.post.mockResolvedValue({
+      data: { reviews: [{ id: 'r1', file_uid: 'f1', requester: 'bob', reviewer: 'carol',
+                          status: 'requested', version: '', thread_id: null, outcome: null,
+                          created_at: 'x', acknowledged_at: null, completed_at: null }] },
+    })
+    const rs = await discussionService.raiseReview('f1', ['carol@x'], { version: 'v1' })
+    expect(client.post).toHaveBeenCalledWith('/files/f1/reviews',
+      { reviewers: ['carol@x'], version: 'v1', thread_id: undefined })
+    expect(rs[0].reviewer).toBe('carol')
+  })
+
+  it('acknowledgeReview + completeReview post to the right routes', async () => {
+    client.post.mockResolvedValue({
+      data: { id: 'r1', file_uid: 'f1', requester: 'bob', reviewer: 'carol', status: 'acknowledged',
+              version: '', thread_id: null, outcome: null, created_at: 'x',
+              acknowledged_at: 'y', completed_at: null },
+    })
+    const r = await discussionService.acknowledgeReview('r1')
+    expect(client.post).toHaveBeenCalledWith('/reviews/r1/acknowledge')
+    expect(r.status).toBe('acknowledged')
+
+    await discussionService.completeReview('r1', 'approved')
+    expect(client.post).toHaveBeenCalledWith('/reviews/r1/complete', { outcome: 'approved' })
+  })
+
+  it('listReviews forwards role + status', async () => {
+    client.get.mockResolvedValue({ data: { reviews: [] } })
+    await discussionService.listReviews('reviewer', 'requested')
+    expect(client.get).toHaveBeenCalledWith('/reviews', { params: { role: 'reviewer', status: 'requested' } })
+  })
+
   it('setThreadStatus sends resolved_version', async () => {
     client.patch.mockResolvedValue({ data: { id: 't1', file_uid: 'f1', opened_by: 'bob',
       status: 'resolved', created_at: 'x', updated_at: 'x', anchor_stale: false,

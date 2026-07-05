@@ -141,6 +141,13 @@
                 :title="`${item.renditionCount} alternate format(s)`"
                 @click.stop="files.openRenditions(item)"
               >⧉ {{ item.renditionCount }}</button>
+              <router-link
+                v-if="flagFor(item.uid)"
+                class="attn-badge"
+                :to="`/preview/${item.uid}`"
+                :title="flagTitle(item.uid)"
+                @click.stop
+              >{{ flagText(item.uid) }}</router-link>
             </td>
             <td class="size">{{ item.isDirectory ? '—' : formatSize(item.size) }}</td>
             <td class="datetime">{{ formatDateTime(item.createdAt) }}</td>
@@ -209,6 +216,7 @@ import FileThumbnail from '@/components/FileThumbnail.vue'
 import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
 import { useModel3dStore } from '@/stores/model3d'
 import { is3DModel } from '@/utils/modelFormat'
+import { discussionService, type FlagCounts } from '@/services/discussionService'
 
 const auth = useAuthStore()
 const files = useFileStore()
@@ -234,6 +242,44 @@ const sortKey = ref<SortKey>('name')
 const sortDir = ref<SortDir>('asc')
 
 const displayItems = computed(() => sortFiles(files.items, sortKey.value, sortDir.value))
+
+// Attention flags (§10e): batch-fetch per-file @mention / pending-review counts for
+// the current listing and badge the rows. Best-effort — if the discussion service is
+// unreachable the file browser is unaffected.
+const attentionFlags = ref<Record<string, FlagCounts>>({})
+async function loadAttentionFlags() {
+  const uids = files.items.filter((i) => !i.isDirectory && !i.deleted).map((i) => i.uid)
+  if (!uids.length) {
+    attentionFlags.value = {}
+    return
+  }
+  try {
+    attentionFlags.value = await discussionService.flags(uids)
+  } catch {
+    attentionFlags.value = {}
+  }
+}
+function flagFor(uid: string): FlagCounts | undefined {
+  return attentionFlags.value[uid]
+}
+function flagText(uid: string): string {
+  const f = attentionFlags.value[uid]
+  if (!f) return ''
+  const parts: string[] = []
+  if (f.mentions) parts.push(`@${f.mentions}`)
+  if (f.reviews) parts.push(`⚑${f.reviews}`)
+  return parts.join(' ')
+}
+function flagTitle(uid: string): string {
+  const f = attentionFlags.value[uid]
+  return f ? `${f.mentions} mention(s), ${f.reviews} pending review(s) for you` : ''
+}
+// Reload whenever the listing changes (navigation, refresh, show/hide deleted).
+watch(
+  () => files.items.map((i) => i.uid).join(','),
+  () => loadAttentionFlags(),
+  { immediate: true },
+)
 
 const sortBy = (key: SortKey) => {
   if (sortKey.value === key) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
@@ -799,6 +845,18 @@ onDeactivated(() => {
   border-radius: 10px;
   background: var(--bg);
   color: var(--muted);
+}
+/* Attention flag (§10e): @mention / pending-review count for the caller. */
+.attn-badge {
+  margin-left: 8px;
+  padding: 0 7px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
 }
 .rendition-badge:hover {
   color: var(--primary);

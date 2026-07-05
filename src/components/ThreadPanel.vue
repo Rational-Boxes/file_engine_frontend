@@ -11,11 +11,23 @@
       <span v-if="presence.length" class="tp-presence" :title="presence.join(', ')">
         👁 {{ presence.length }} here
       </span>
+      <button class="tp-review-btn" title="Request review of this document" @click="reviewOpen = !reviewOpen">⚑ Review</button>
       <span class="tp-spacer"></span>
       <button class="tp-lbtn" :class="{ on: layout === 'right' }" title="Dock right" @click="setLayout('right')">▐</button>
       <button class="tp-lbtn" :class="{ on: layout === 'bottom' }" title="Dock bottom" @click="setLayout('bottom')">▄</button>
       <button class="tp-lbtn" title="Collapse" @click="setLayout('collapsed')">✕</button>
     </header>
+
+    <div v-if="reviewOpen" class="tp-review">
+      <input
+        v-model="reviewInput"
+        class="tp-review-in"
+        placeholder="Reviewer emails, comma-separated"
+        @keydown.enter="requestReview"
+      />
+      <button class="tp-review-go" @click="requestReview">Request</button>
+      <span v-if="reviewMsg" class="tp-review-msg">{{ reviewMsg }}</span>
+    </div>
 
     <div class="tp-body">
       <p v-if="error" class="tp-err">{{ error }}</p>
@@ -117,6 +129,9 @@ const flashing = reactive(new Set<string>())
 const newTitle = ref('')
 const newBody = ref('')
 const replyDrafts = reactive<Record<string, string>>({})
+const reviewOpen = ref(false)
+const reviewInput = ref('')
+const reviewMsg = ref('')
 
 const layout = ref<Layout>(readLayout())
 const lastOpen = ref<Layout>(layout.value === 'collapsed' ? 'right' : layout.value)
@@ -246,6 +261,23 @@ async function resolve(t: Thread) {
   }
 }
 
+async function requestReview() {
+  const reviewers = reviewInput.value.split(',').map((s) => s.trim()).filter(Boolean)
+  if (!reviewers.length) return
+  reviewMsg.value = ''
+  try {
+    const created = await discussionService.raiseReview(props.fileUid, reviewers)
+    reviewMsg.value = `Requested from ${created.map((r) => r.reviewer).join(', ')}`
+    reviewInput.value = ''
+  } catch (e: unknown) {
+    const detail = (e as { response?: { data?: { detail?: { invalid_reviewers?: string[] } } } })
+      ?.response?.data?.detail
+    reviewMsg.value = detail?.invalid_reviewers?.length
+      ? `No access: ${detail.invalid_reviewers.join(', ')}`
+      : 'Could not request review.'
+  }
+}
+
 async function del(c: Comment) {
   try {
     await discussionService.deleteComment(c.id)
@@ -371,6 +403,46 @@ onBeforeUnmount(() => session?.close())
 .tp-presence {
   font-size: 0.75rem;
   color: var(--muted);
+}
+.tp-review-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 6px;
+  padding: 1px 8px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--fg);
+}
+.tp-review {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.tp-review-in {
+  flex: 1 1 auto;
+  min-width: 140px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font: inherit;
+}
+.tp-review-go {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: #fff;
+  border-radius: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.tp-review-msg {
+  font-size: 0.75rem;
+  color: var(--muted);
+  flex-basis: 100%;
 }
 .tp-spacer {
   flex: 1;

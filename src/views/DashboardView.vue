@@ -9,6 +9,8 @@
 
     <p v-if="d.error" class="dash-err">{{ d.error }}</p>
 
+    <ReviewsInbox class="dash-reviews" />
+
     <div class="dash-cols">
       <!-- Attention feed: things requesting the user's attention (§10a). -->
       <section class="feed">
@@ -51,6 +53,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { useDiscussionStore } from '@/stores/discussion'
+import ReviewsInbox from '@/components/ReviewsInbox.vue'
 import type { Notification } from '@/services/discussionService'
 
 const d = useDiscussionStore()
@@ -105,6 +108,9 @@ onBeforeUnmount(() => d.stopPolling())
 }
 .dash-err {
   color: var(--danger);
+}
+.dash-reviews {
+  margin-top: 12px;
 }
 .dash-cols {
   display: grid;
