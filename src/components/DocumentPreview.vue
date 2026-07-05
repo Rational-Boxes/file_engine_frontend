@@ -4,7 +4,7 @@
     <p v-else-if="loading" class="dp-muted">Loading preview…</p>
 
     <template v-else>
-      <div class="dp-combined" :class="{ 'dp-side-by-side': fullWidth && hasPreview && discussionPos === 'side' }">
+      <div class="dp-combined" :class="{ 'dp-side-by-side': fullWidth && hasPreview && discussionPos === 'side' && discLayout !== 'collapsed' }">
       <div class="dp-main">
       <!-- A chat-generated report carries a hidden "chatlog" provenance child;
            when present, split the preview into Document / Chat log tabs. -->
@@ -97,12 +97,11 @@
       </div>
       </div><!-- /dp-main -->
 
-      <!-- Discussion (§10b): shown *alongside* the preview (combined view) whenever
-           one renders — side-by-side on a wide page, stacked in the drawer. When
-           there's no preview, the fallback is a button that opens the discussion
-           overlay (§10g). -->
-      <section class="dp-discussion">
-        <div v-if="fullWidth && hasPreview" class="dp-disc-ctl">
+      <!-- Discussion (§10b): only on the full preview surface (not the compact
+           drawer). Shown alongside the preview — side-by-side or stacked, and
+           minimizable to a toggle. No preview → a button that opens the overlay. -->
+      <section v-if="fullWidth" class="dp-discussion">
+        <div v-if="hasPreview && discLayout !== 'collapsed'" class="dp-disc-ctl">
           <span class="dp-disc-lbl">💬 Discussion</span>
           <button
             class="dp-pos"
@@ -123,7 +122,8 @@
           :focus-thread="focusThread"
           :focus-comment="focusComment"
           embedded
-          class="dp-thread"
+          :class="['dp-thread', { 'dp-thread-min': discLayout === 'collapsed' }]"
+          @layout="discLayout = $event"
         />
         <button v-else class="btn dp-discuss-btn" @click="discussionOpen = true">
           💬 Discussion
@@ -133,6 +133,7 @@
     </template>
 
     <ThreadOverlay
+      v-if="fullWidth"
       :open="discussionOpen"
       :file-uid="uid"
       :name="name"
@@ -178,6 +179,8 @@ const POS_KEY = 'fe.discuss.previewPos'
 const discussionPos = ref<'side' | 'bottom'>(
   (typeof localStorage !== 'undefined' && localStorage.getItem(POS_KEY)) === 'bottom' ? 'bottom' : 'side',
 )
+// Mirror the embedded panel's own layout so a minimized panel reflows the preview.
+const discLayout = ref<'collapsed' | 'right' | 'bottom'>('right')
 function setPos(p: 'side' | 'bottom') {
   discussionPos.value = p
   try {
@@ -567,6 +570,11 @@ function cleanup() {
   height: 65vh;
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+/* Minimized: the panel is just its toggle button — no fixed height/border. */
+.dp-thread-min {
+  height: auto;
+  border: none;
 }
 .dp-side-by-side .dp-thread {
   height: calc(100vh - 180px);

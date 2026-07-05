@@ -1,6 +1,6 @@
 <template>
-  <!-- Collapsed: only a toggle with the comment count + attention flag (§10b-i). -->
-  <button v-if="!embedded && layout === 'collapsed'" class="tp-toggle" @click="setLayout(lastOpen)">
+  <!-- Minimized: only a toggle with the comment count + attention flag (§10b-i). -->
+  <button v-if="layout === 'collapsed'" class="tp-toggle" @click="setLayout(lastOpen)">
     💬 Comments ({{ totalComments }})
     <span v-if="flag" class="tp-flag" :title="flagTitle">{{ flagText }}</span>
   </button>
@@ -18,6 +18,7 @@
         <button class="tp-lbtn" :class="{ on: layout === 'bottom' }" title="Dock bottom" @click="setLayout('bottom')">▄</button>
         <button class="tp-lbtn" title="Collapse" @click="setLayout('collapsed')">✕</button>
       </template>
+      <button v-else class="tp-lbtn" title="Minimize comments" @click="setLayout('collapsed')">—</button>
     </header>
 
     <div v-if="reviewOpen" class="tp-review">
