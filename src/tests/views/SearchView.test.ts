@@ -11,7 +11,7 @@ vi.mock('@/stores/model3d', () => ({ useModel3dStore: () => ({ open: m3dOpen }) 
 
 import SearchView from '@/views/SearchView.vue'
 
-const mountView = () => mount(SearchView, { global: { stubs: { AppNav: true } } })
+const mountView = () => mount(SearchView, { global: { stubs: { AppNav: true, HelpIcon: true } } })
 
 describe('SearchView', () => {
   beforeEach(() => {

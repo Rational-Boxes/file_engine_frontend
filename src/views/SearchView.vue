@@ -26,6 +26,7 @@
         <button class="btn" :disabled="!query.trim() || loading" type="submit">
           {{ loading ? 'Searching…' : 'Search' }}
         </button>
+        <HelpIcon topic="search" label="What you can search for" />
       </form>
 
       <p v-if="error" class="err">{{ error }}</p>
@@ -63,6 +64,7 @@ export default { name: 'SearchView' }
 <script setup lang="ts">
 import { ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'
+import HelpIcon from '@/components/HelpIcon.vue'
 import { searchService } from '@/services/searchService'
 import { usePreviewStore } from '@/stores/preview'
 import { useModel3dStore } from '@/stores/model3d'
