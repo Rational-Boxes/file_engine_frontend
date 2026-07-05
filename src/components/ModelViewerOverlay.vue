@@ -8,6 +8,7 @@
           ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} tree</span>
         </button>
         <h1 class="mv-title" :title="title">{{ title }}</h1>
+        <HelpIcon topic="cad-bim" label="About CAD &amp; BIM model viewing" />
         <label class="mv-zoom" title="How far each zoom and pan step moves — lower it for fine control on small CAD models">
           <span class="mv-zoom-lbl">Nav step</span>
           <input
@@ -114,6 +115,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import Model3DViewer from '@/components/Model3DViewer.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
+import HelpIcon from '@/components/HelpIcon.vue'
 import { useModel3dStore } from '@/stores/model3d'
 import { useAuthStore } from '@/stores/auth'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'

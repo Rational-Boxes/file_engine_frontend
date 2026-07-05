@@ -16,6 +16,12 @@
         :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
         @click="toggleTheme"
       >{{ theme === 'dark' ? '☀️' : '🌙' }}</button>
+      <button
+        class="help-btn"
+        title="Help &amp; documentation"
+        aria-label="Help and documentation"
+        @click="help.openAtLastPosition()"
+      >?</button>
       <TenantSelector />
       <router-link v-if="auth.user" class="who" to="/profile" :title="`${auth.tenant} · ${auth.accessLevel}`">{{ auth.user }}</router-link>
       <button class="link" @click="logout">Sign out</button>
@@ -27,11 +33,13 @@
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
+import { useHelpStore } from '@/stores/help'
 import TenantSelector from '@/components/TenantSelector.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
 const { theme, toggleTheme } = useTheme()
+const help = useHelpStore()
 
 async function logout() {
   await auth.logout()
@@ -50,6 +58,21 @@ async function logout() {
   cursor: pointer;
 }
 .theme-toggle:hover {
+  background: var(--bg);
+}
+.help-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.help-btn:hover {
   background: var(--bg);
 }
 .topbar {
