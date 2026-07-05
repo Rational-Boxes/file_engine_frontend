@@ -130,5 +130,7 @@ export function searchTopics(query: string): HelpTopic[] {
 // the shared sanitizing pipeline (defense in depth).
 export function renderTopic(id: string): string {
   const t = registry[id]
-  return t ? renderMarkdown(t.body) : ''
+  // breaks:false — help content is hard-wrapped prose, so a single newline is a
+  // wrap, not an intentional line break (unlike chat answers).
+  return t ? renderMarkdown(t.body, { breaks: false }) : ''
 }
