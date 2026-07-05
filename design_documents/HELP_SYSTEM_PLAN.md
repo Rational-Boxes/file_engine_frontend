@@ -41,9 +41,10 @@ cover writing the full prose of every article (tracked separately per topic).
 ### Goals
 - A single **global help modal overlay** reachable from the top nav that opens
   over the current view **without changing or unmounting it**.
-- **Persistent reading position:** the overlay remembers the active topic, scroll
-  position, navigation history, and search state across close/reopen (and across
-  page reloads), so the user never loses their place.
+- **Persistent reading position (in-memory):** the overlay remembers the active
+  topic, scroll position, navigation history, and search state across close/reopen
+  within a session, so the user never loses their place while working. This is
+  in-memory only; a full page reload starts fresh (see §6).
 - Reusable `<HelpIcon topic="...">` component placed beside complex features that
   opens the same overlay directly to the relevant article.
 - Markdown-authored content, versioned in-repo, rendered with the existing
@@ -135,7 +136,7 @@ headers/controls. Behaviour:
   the triggering icon on close.
 
 The two entry points differ only in *where* the modal opens; they share one
-component, one store, and one persisted reading position. Opening a specific topic
+component, one store, and one shared reading position. Opening a specific topic
 via a help icon still preserves the prior history, so the user can page back to
 what they were reading before.
 
@@ -171,9 +172,9 @@ browser navigating after going back):
   / last index).
 - The stack is bounded (e.g. cap at ~50 entries, dropping the oldest) so it can't
   grow without limit.
-- The entire stack and cursor are part of the persisted `nav` state (§6), so
-  back/forward memory survives close/reopen and page reloads — not just the single
-  active topic.
+- The entire stack and cursor are part of the in-memory `nav` state (§6), so
+  back/forward memory survives close/reopen and in-app view navigation — not just
+  the single active topic. (A full page reload resets it; see §6.)
 
 The **back/forward control** in the modal header (§4.1) is a direct view of
 `historyIndex` within `history`; there is no separate UI state to keep in sync.
@@ -199,8 +200,10 @@ src/help/
 ```
 
 ### Topic metadata
-Authored as YAML frontmatter in each `.md` (parsed at build), or as a sibling
-registry entry. Fields:
+**Decision:** metadata is authored as **YAML frontmatter** in each `.md` file and
+compiled into the registry at build time (via the Vite glob loader). This keeps
+metadata next to the prose it describes while still producing a single typed
+registry the app consumes — no hand-maintained parallel list to drift. Fields:
 
 ```ts
 interface HelpTopic {
@@ -233,6 +236,13 @@ The store is the single source of truth for both *whether* the modal is open and
 close the modal without losing the user's place: closing only flips `open`, leaving
 the navigation state intact for the next open.
 
+**Persistence scope (decision): in-memory only.** The reading position lives in the
+Pinia store for the lifetime of the page. It survives close/reopen (and view
+navigation, since the store outlives any single view) but is intentionally **not**
+persisted to `localStorage` — a full page reload resets help to a clean state. This
+keeps the implementation simple and avoids stale/shared-machine state; it can be
+upgraded to persisted storage later without changing the store's shape.
+
 ```ts
 interface HelpNavState {
   history: string[]              // in-modal back/forward stack of topic ids
@@ -246,7 +256,7 @@ const MAX_HISTORY = 50
 export const useHelpStore = defineStore('help', {
   state: () => ({
     open: false,
-    nav: loadPersistedNav(),       // hydrated from localStorage on init
+    nav: emptyNav(),               // in-memory; fresh on each page load
     dismissedHints: [] as string[],
   }),
   getters: {
@@ -290,24 +300,26 @@ Deriving `activeTopicId` from `history[historyIndex]` (rather than storing it
 separately) removes the risk of the shown article and the history cursor drifting
 out of sync — Back/Forward simply move the cursor and the content pane follows.
 
-### Persistence mechanism
-The `nav` slice (active topic, history, scroll positions, search) and
-`dismissedHints` are **persisted to `localStorage`** — the same approach used for
-theme preference — via a store subscription (`$subscribe`) or a small persistence
-plugin. Consequences:
+### Persistence behaviour
+State lives only in the Pinia store (in memory), so:
 
-- **Close/reopen within a session:** state is in memory; reopen is instant and
-  exact. The modal is never unmounted (only `v-show`/conditionally rendered), so
-  even scroll position of the DOM can be preserved directly.
-- **Across page reloads:** `loadPersistedNav()` rehydrates the last position from
-  `localStorage`, so a reload followed by opening help still lands the reader where
-  they were.
-- **Scope:** persisted per browser/profile. (If it should be per-user, key the
-  `localStorage` entry by the authenticated user id from the `auth` store — see
-  §13.)
+- **Close/reopen within a session:** state is retained; reopen is instant and
+  exact. The modal is never unmounted while the page lives (only `v-show`/
+  conditionally rendered), so the scroll position of the DOM is preserved directly
+  and `scrollTops` acts as a backstop for re-render.
+- **View navigation within the SPA:** the store outlives any single `<router-view>`
+  component, so moving between views and reopening help preserves position.
+- **Across a full page reload:** state resets — help opens fresh. This is the
+  accepted trade-off for keeping it in-memory (no stale or shared-machine state,
+  no storage plumbing).
+
+Upgrading to persisted storage later is a localized change (swap `emptyNav()` for a
+hydrating loader + a `$subscribe` writer) that does not alter the store's shape or
+any consumer.
 
 `dismissedHints` reserves room for future "new feature" nudges without a schema
-change (see §10).
+change (see §10); note that being in-memory, a dismissal currently lasts only for
+the session — fine for now, revisit if hints ship.
 
 ---
 
@@ -379,7 +391,17 @@ Each complex feature listed above gets a `<HelpIcon>` beside its primary UI:
 
 ## 9. Content Authoring & i18n readiness
 
-- Content is plain markdown, reviewable in PRs like code.
+- **Ownership (decision): end-user documentation lives in this frontend repo** —
+  the markdown under `src/help/content/` is the source of truth, not synced from
+  core. It is versioned and reviewed in PRs like code.
+- **Authoring rule (decision): always consult the internal/engineering
+  documentation when creating or editing any end-user article**, and re-check it
+  when the underlying feature changes. The end-user docs are a deliberately
+  simplified retelling of authoritative internal docs (and, for subtle subsystems
+  like ACLs, the core source itself) — they must not contradict them. In practice:
+  a PR that touches `content/*.md` should cite the internal doc/source it was
+  derived from so a reviewer can confirm accuracy. This is how we accept a
+  frontend-owned copy without it silently drifting from core semantics.
 - Topic text is **not** inlined into `.vue` templates — it lives in `content/*.md`.
   This isolation is the single most important thing for a future i18n pass: adding
   locales becomes "add `content/<locale>/*.md`" plus a locale switch in the
@@ -433,23 +455,24 @@ Each step is independently shippable behind the always-visible Help link.
 
 ---
 
-## 13. Open Questions
+## 13. Resolved Decisions
 
-- **Frontmatter vs. registry file** for topic metadata — frontmatter keeps
-  metadata next to content; a central registry is easier to lint. Leaning
-  frontmatter parsed at build into the registry (best of both). *Needs decision.*
-- **Modal presentation** — centered dialog vs. large side panel for the overlay.
-  Both satisfy "overlay without changing the view"; centered dialog reads more as
-  "reference material," a side panel lets the user see more of the app alongside.
-  Leaning **centered dialog** (resizable/large). *Needs UX decision.*
-- **Optional deep-linking** — should we mirror the open article into a URL query
-  param (e.g. `?help=acl-basics`) so help state is shareable/bookmarkable? This can
-  be added without making help a route: write the param on open, read it on load,
-  and it never swaps `<router-view>`. Adds shareability at the cost of touching the
-  URL. *Needs decision — default to not doing it in phase 1.*
-- **Persistence scope** — persist reading position per browser (simple) or per
-  authenticated user (key the `localStorage` entry by `auth` user id)? Per-user is
-  friendlier on shared machines. *Needs decision.*
-- Should ACL content also live in the **backend/core repo** as the canonical
-  source and be synced, given it documents core semantics? Or is a frontend-owned
-  copy acceptable, accepting drift risk? *Needs decision.*
+The open questions from earlier drafts are now decided:
+
+- **Topic metadata → YAML frontmatter compiled into the registry.** Metadata sits
+  next to the prose; the build produces one typed registry. (§5)
+- **Modal presentation → centered modal window** (large/resizable, dimming
+  backdrop), read as reference material over the current view. Not a side panel.
+  (§4.1)
+- **Deep-linking → deferred.** No `?help=` URL param in this phase; help state
+  stays entirely in the store. Can be added later without making help a route. (§4)
+- **Persistence scope → in-memory only.** Reading position and history survive
+  close/reopen and in-app navigation but reset on a full page reload. No
+  `localStorage`, no per-user keying for now. (§6)
+- **Content ownership → frontend-owned, internal-docs-reviewed.** End-user docs
+  live in this repo (`src/help/content/`), not synced from core; but every
+  create/edit must be checked against the authoritative internal documentation (and
+  core source for subtle subsystems like ACLs) so the simplified retelling never
+  drifts from real behaviour. (§9)
+
+No open questions remain blocking phase-1 implementation.
