@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import CommentEditor from '@/components/CommentEditor.vue'
 import CommentNode, { type CommentTreeNode } from '@/components/CommentNode.vue'
@@ -339,9 +339,8 @@ function mapLive(raw: Record<string, unknown>): Comment | null {
   }
 }
 
-onMounted(() => {
-  emit('layout', layout.value)
-  load()
+function connectLive() {
+  session?.close()
   try {
     session = new LiveSession(props.fileUid, {
       onComment: onLiveComment,
@@ -356,7 +355,23 @@ onMounted(() => {
   } catch {
     /* live is enhancement-only */
   }
+}
+
+onMounted(() => {
+  emit('layout', layout.value)
+  load()
+  connectLive()
 })
+// Reload + reconnect when the anchored file changes without a remount
+// (e.g. navigating /preview/:uid, or reusing a kept-alive panel).
+watch(
+  () => props.fileUid,
+  () => {
+    threads.value = []
+    load()
+    connectLive()
+  },
+)
 onBeforeUnmount(() => session?.close())
 </script>
 
