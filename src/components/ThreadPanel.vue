@@ -21,6 +21,7 @@
   >
     <header class="tp-head">
       <span class="tp-title">Comments ({{ totalComments }})</span>
+      <HelpIcon topic="comments" label="How comments &amp; discussions work" />
       <span v-if="presence.length" class="tp-presence" :title="presence.join(', ')">
         👁 {{ presence.length }} here
       </span>
@@ -127,6 +128,7 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import CommentEditor from '@/components/CommentEditor.vue'
+import HelpIcon from '@/components/HelpIcon.vue'
 import CommentNode, { type CommentTreeNode } from '@/components/CommentNode.vue'
 import {
   discussionService,

@@ -4,9 +4,12 @@
     <div class="layout">
       <!-- Chat history: the user's persisted conversations (resume / delete). -->
       <aside class="history">
-        <button class="new-chat" type="button" @click="newChat" :disabled="!currentConversationId && !messages.length">
-          + New chat
-        </button>
+        <div class="hist-head">
+          <button class="new-chat" type="button" @click="newChat" :disabled="!currentConversationId && !messages.length">
+            + New chat
+          </button>
+          <HelpIcon topic="ai-research" label="About the AI research chat" />
+        </div>
         <ul class="conv-list">
           <li
             v-for="c in conversations"
@@ -112,6 +115,7 @@ export default { name: 'ChatView' }
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import AppNav from '@/components/AppNav.vue'
+import HelpIcon from '@/components/HelpIcon.vue'
 import { ChatSession, type ChatSendOptions } from '@/services/chatService'
 import { conversationService } from '@/services/conversationService'
 import { usePreviewStore } from '@/stores/preview'
@@ -342,7 +346,13 @@ function assistantHtml(m: Msg): string {
   background: var(--bg);
 }
 
+.hist-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .new-chat {
+  flex: 1;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;

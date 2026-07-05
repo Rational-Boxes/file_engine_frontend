@@ -27,7 +27,7 @@ vi.mock('@/services/conversationService', () => ({
 import ChatView from '@/views/ChatView.vue'
 import ShadowHtml from '@/components/ShadowHtml.vue'
 
-const mountView = () => mount(ChatView, { global: { stubs: { AppNav: true } } })
+const mountView = () => mount(ChatView, { global: { stubs: { AppNav: true, HelpIcon: true } } })
 
 // Assistant answers render inside ShadowHtml's shadow root (style isolation), so
 // they're not visible to w.text()/w.find() — reach into the shadow root instead.

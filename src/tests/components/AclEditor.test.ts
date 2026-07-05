@@ -29,7 +29,7 @@ const PrincipalPickerStub = {
 function mountEditor(props: Record<string, unknown> = {}) {
   return mount(AclEditor, {
     props: { uid: 'f1', canManage: true, ...props },
-    global: { stubs: { PrincipalPicker: PrincipalPickerStub } },
+    global: { stubs: { PrincipalPicker: PrincipalPickerStub, HelpIcon: true } },
   })
 }
 

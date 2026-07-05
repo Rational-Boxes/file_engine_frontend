@@ -39,6 +39,7 @@
     <p v-if="canManage" class="acl-note">
       Evaluated top-down: User rules, then Roles &amp; Claims, then Everyone —
       within a group, DENY wins. Anything left unset is read-by-default.
+      <HelpIcon topic="acl-basics" label="How permissions (ACLs) work" />
     </p>
 
     <form v-if="canManage" class="acl-add" @submit.prevent>
@@ -88,6 +89,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import PrincipalPicker from '@/components/PrincipalPicker.vue'
+import HelpIcon from '@/components/HelpIcon.vue'
 import { aclService } from '@/services/aclService'
 import { fileService } from '@/services/fileService'
 import { errorMessage } from '@/services/apiClient'

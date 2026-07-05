@@ -15,6 +15,7 @@
       :name="comments.name"
       @close="comments.close()"
     />
+    <HelpModal />
   </div>
 </template>
 
@@ -26,6 +27,7 @@ import { initTheme } from '@/composables/useTheme'
 import PdfPreviewOverlay from '@/components/PdfPreviewOverlay.vue'
 import ModelViewerOverlay from '@/components/ModelViewerOverlay.vue'
 import ThreadOverlay from '@/components/ThreadOverlay.vue'
+import HelpModal from '@/components/HelpModal.vue'
 
 const authStore = useAuthStore()
 const comments = useCommentsStore()
