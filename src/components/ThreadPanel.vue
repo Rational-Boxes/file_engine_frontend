@@ -59,6 +59,16 @@
     </div>
 
     <div class="tp-body">
+      <!-- Review requested of me on this document — approve / send back right here. -->
+      <div v-for="r in myReviews" :key="r.id" class="tp-review-ask">
+        <span class="tp-review-ask-lbl">⚑ Review requested by {{ r.requester }}</span>
+        <span class="tp-review-ask-actions">
+          <button v-if="r.status === 'requested'" class="tp-rbtn" @click="ackMyReview(r)">Acknowledge</button>
+          <button class="tp-rbtn ok" @click="resolveMyReview(r, 'approved')">Approve</button>
+          <button class="tp-rbtn" @click="resolveMyReview(r, 'changes')">Request changes</button>
+        </span>
+      </div>
+
       <p v-if="loading" class="tp-muted">Loading…</p>
 
       <article
@@ -125,6 +135,7 @@ import {
   type Comment,
   type FlagCounts,
   type MentionUser,
+  type ReviewRequest,
 } from '@/services/discussionService'
 import { LiveSession, type LiveCommentEvent } from '@/services/discussionLive'
 
@@ -162,6 +173,7 @@ const newBody = ref('')
 const reviewOpen = ref(false)
 const reviewInput = ref('')
 const reviewMsg = ref('')
+const myReviews = ref<ReviewRequest[]>([])
 
 // When the parent owns minimize (hideDock, e.g. the 3D viewer), never start in the
 // shared "collapsed" state — the parent controls visibility, so keep the panel open.
@@ -257,11 +269,40 @@ async function load() {
       .flags([props.fileUid])
       .catch(() => ({}) as Record<string, FlagCounts>)
     flag.value = flags[props.fileUid] ?? null
+    loadMyReviews()
     focusDeepLink()
   } catch {
     error.value = 'Could not load comments.'
   } finally {
     loading.value = false
+  }
+}
+
+// Open review requests assigned to me on THIS file — surfaced inline so I can
+// approve / request changes right in the preview, not only on the dashboard.
+const REVIEW_OPEN = new Set(['requested', 'acknowledged'])
+async function loadMyReviews() {
+  try {
+    const mine = await discussionService.listReviews('reviewer')
+    myReviews.value = mine.filter((r) => r.fileUid === props.fileUid && REVIEW_OPEN.has(r.status))
+  } catch {
+    myReviews.value = []
+  }
+}
+async function ackMyReview(r: ReviewRequest) {
+  try {
+    await discussionService.acknowledgeReview(r.id)
+    await loadMyReviews()
+  } catch {
+    reviewMsg.value = 'Could not acknowledge.'
+  }
+}
+async function resolveMyReview(r: ReviewRequest, outcome: 'approved' | 'changes') {
+  try {
+    await discussionService.completeReview(r.id, outcome)
+    await loadMyReviews()
+  } catch {
+    reviewMsg.value = 'Could not submit the review.'
   }
 }
 
@@ -562,6 +603,38 @@ onBeforeUnmount(() => session?.close())
 }
 .tp-review-sug span {
   color: var(--muted);
+}
+.tp-review-ask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 0.85rem;
+}
+.tp-review-ask-lbl {
+  font-weight: 600;
+}
+.tp-review-ask-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.tp-rbtn {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 2px 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.tp-rbtn.ok {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .tp-review-go {
   border: 1px solid var(--primary);
