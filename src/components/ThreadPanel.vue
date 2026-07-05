@@ -89,6 +89,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import CommentEditor from '@/components/CommentEditor.vue'
 import CommentNode, { type CommentTreeNode } from '@/components/CommentNode.vue'
 import {
   discussionService,
