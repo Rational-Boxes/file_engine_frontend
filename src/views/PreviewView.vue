@@ -3,11 +3,14 @@
     <AppNav />
     <main class="content">
       <button class="link back" @click="back">← Back</button>
-      <h1 class="title">{{ name || uid }}</h1>
+      <div class="pv-titlebar">
+        <h1 class="title">{{ name || uid }}</h1>
+        <div id="pv-titlebar" class="pv-slot"></div>
+      </div>
       <p v-if="error" class="err">{{ error }}</p>
 
       <p v-if="is3d" class="muted">Opening the 3D viewer…</p>
-      <DocumentPreview v-else :uid="uid" :name="name" full-width />
+      <DocumentPreview v-else :uid="uid" :name="name" full-width titlebar="#pv-titlebar" />
     </main>
   </div>
 </template>
@@ -69,10 +72,21 @@ function back() {
   padding: 0;
 }
 
+.pv-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 16px;
+}
 .title {
   font-size: 18px;
-  margin: 8px 0 16px;
+  margin: 0;
   word-break: break-all;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pv-slot {
+  flex: 0 0 auto;
 }
 
 .err {

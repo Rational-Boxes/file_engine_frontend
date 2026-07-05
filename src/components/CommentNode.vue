@@ -27,14 +27,16 @@
       </ul>
 
       <!-- inline edit -->
-      <CommentEditor
-        v-if="editing"
-        v-model="editDraft"
-        submit-label="Save"
-        :max-chars="maxChars"
-        :mention-source="mentionSource"
-        @submit="submitEdit"
-      />
+      <div v-if="editing" class="cn-compose">
+        <CommentEditor
+          v-model="editDraft"
+          submit-label="Save"
+          :max-chars="maxChars"
+          :mention-source="mentionSource"
+          @submit="submitEdit"
+        />
+        <button class="cn-link" @click="cancelEdit">Cancel</button>
+      </div>
 
       <div v-if="!node.deleted && !node.redacted && !editing" class="cn-actions">
         <button class="cn-link" @click="replying = !replying">Reply</button>
@@ -44,15 +46,17 @@
       <p v-if="error" class="cn-err">{{ error }}</p>
 
       <!-- inline reply -->
-      <CommentEditor
-        v-if="replying"
-        v-model="replyDraft"
-        placeholder="Write a reply…"
-        submit-label="Reply"
-        :max-chars="maxChars"
-        :mention-source="mentionSource"
-        @submit="submitReply"
-      />
+      <div v-if="replying" class="cn-compose">
+        <CommentEditor
+          v-model="replyDraft"
+          placeholder="Write a reply…"
+          submit-label="Reply"
+          :max-chars="maxChars"
+          :mention-source="mentionSource"
+          @submit="submitReply"
+        />
+        <button class="cn-link" @click="cancelReply">Cancel</button>
+      </div>
     </div>
 
     <!-- children (recursive, unlimited depth) -->
@@ -152,6 +156,16 @@ function startEdit() {
   editDraft.value = props.node.body
   editing.value = true
 }
+function cancelEdit() {
+  editing.value = false
+  editDraft.value = ''
+  error.value = ''
+}
+function cancelReply() {
+  replying.value = false
+  replyDraft.value = ''
+  error.value = ''
+}
 
 async function submitEdit() {
   const body = editDraft.value.trim()
@@ -223,6 +237,13 @@ function mentionError(e: unknown): string | null {
   display: flex;
   gap: 10px;
   margin-top: 2px;
+}
+.cn-compose {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  margin-top: 4px;
 }
 .cn-link {
   border: none;

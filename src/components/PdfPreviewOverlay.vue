@@ -4,12 +4,13 @@
       <div class="ov-panel" role="dialog" aria-modal="true" aria-label="Document preview">
         <header class="ov-head">
           <h1 class="ov-title" :title="title">{{ title }}</h1>
+          <div id="ov-titlebar" class="ov-slot"></div>
           <button class="ov-x" aria-label="Close preview" @click="preview.close()">✕</button>
         </header>
 
         <div class="ov-body">
           <p v-if="error" class="ov-err">{{ error }}</p>
-          <DocumentPreview :uid="preview.uid" :name="name" full-width />
+          <DocumentPreview :uid="preview.uid" :name="name" full-width titlebar="#ov-titlebar" />
         </div>
       </div>
     </div>
@@ -98,6 +99,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Slot for the discussion's minimized chip (teleported in when minimized). */
+.ov-slot {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .ov-x {

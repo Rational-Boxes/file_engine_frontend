@@ -9,6 +9,7 @@
         :class="{
           'dp-side-by-side': combinedActive && discussionPos === 'side',
           'dp-fit-bottom': combinedActive && discussionPos === 'bottom',
+          dragging,
         }"
       >
       <div class="dp-main">
@@ -103,33 +104,31 @@
       </div>
       </div><!-- /dp-main -->
 
+      <!-- Draggable divider between preview and discussion (both orientations). -->
+      <div
+        v-if="combinedActive"
+        class="dp-splitter"
+        :class="discussionPos === 'side' ? 'vertical' : 'horizontal'"
+        role="separator"
+        title="Drag to resize"
+        @pointerdown="startDrag"
+      ></div>
+
       <!-- Discussion (§10b): only on the full preview surface (not the compact
            drawer). Shown alongside the preview — side-by-side or stacked, and
            minimizable to a toggle. No preview → a button that opens the overlay. -->
-      <section v-if="fullWidth" class="dp-discussion">
-        <div v-if="hasPreview && discLayout !== 'collapsed'" class="dp-disc-ctl">
-          <span class="dp-disc-lbl">💬 Discussion</span>
-          <button
-            class="dp-pos"
-            :class="{ on: discussionPos === 'side' }"
-            title="Dock to the right"
-            @click="setPos('side')"
-          >▐</button>
-          <button
-            class="dp-pos"
-            :class="{ on: discussionPos === 'bottom' }"
-            title="Dock below"
-            @click="setPos('bottom')"
-          >▄</button>
-        </div>
+      <section v-if="fullWidth" class="dp-discussion" :style="discStyle">
         <ThreadPanel
           v-if="hasPreview"
           :file-uid="uid"
           :focus-thread="focusThread"
           :focus-comment="focusComment"
           embedded
+          :titlebar-target="titlebar"
+          :pos="discussionPos"
           :class="['dp-thread', { 'dp-thread-min': discLayout === 'collapsed' }]"
           @layout="discLayout = $event"
+          @update:pos="setPos"
         />
         <button v-else class="btn dp-discuss-btn" @click="discussionOpen = true">
           💬 Discussion
@@ -196,11 +195,72 @@ function setPos(p: 'side' | 'bottom') {
   }
 }
 
+// --- draggable divider: discussion size per orientation (px side / % bottom) ---
+function readNum(key: string, fallback: number): number {
+  try {
+    const v = parseFloat(localStorage.getItem(key) || '')
+    return Number.isFinite(v) ? v : fallback
+  } catch {
+    return fallback
+  }
+}
+const discSideW = ref(readNum('fe.discuss.sideW', 380)) // px
+const discBottomPct = ref(readNum('fe.discuss.bottomPct', 42)) // %
+const dragging = ref(false)
+let dragRect: DOMRect | null = null
+
+const discStyle = computed(() => {
+  if (!combinedActive.value) return {}
+  return discussionPos.value === 'side'
+    ? { flex: `0 0 ${discSideW.value}px`, width: `${discSideW.value}px` }
+    : { flex: `0 0 ${discBottomPct.value}%` }
+})
+
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
+
+function startDrag(e: PointerEvent) {
+  e.preventDefault()
+  const combined = (e.currentTarget as HTMLElement).parentElement
+  if (!combined) return
+  dragRect = combined.getBoundingClientRect()
+  dragging.value = true
+  window.addEventListener('pointermove', onDrag)
+  window.addEventListener('pointerup', endDrag)
+}
+function onDrag(e: PointerEvent) {
+  if (!dragRect) return
+  if (discussionPos.value === 'side') {
+    const w = dragRect.right - e.clientX
+    discSideW.value = Math.round(clamp(w, 260, Math.max(300, dragRect.width - 320)))
+  } else {
+    const pct = ((dragRect.bottom - e.clientY) / dragRect.height) * 100
+    discBottomPct.value = Math.round(clamp(pct, 20, 75))
+  }
+}
+function endDrag() {
+  dragging.value = false
+  dragRect = null
+  window.removeEventListener('pointermove', onDrag)
+  window.removeEventListener('pointerup', endDrag)
+  try {
+    localStorage.setItem('fe.discuss.sideW', String(discSideW.value))
+    localStorage.setItem('fe.discuss.bottomPct', String(discBottomPct.value))
+  } catch {
+    /* ignore */
+  }
+}
+
 // `fullWidth` = the overlay review (PdfPreviewOverlay): the PDF is embedded in a
 // full-width iframe and auto-opened. Otherwise (the narrow drawer), opening the
 // PDF raises that overlay instead of cramming an iframe into the drawer — an
 // overlay, NOT a route change, so the underlying view never resets.
-const props = defineProps<{ uid: string; name?: string; hasRenditions?: boolean; fullWidth?: boolean }>()
+const props = defineProps<{
+  uid: string
+  name?: string
+  hasRenditions?: boolean
+  fullWidth?: boolean
+  titlebar?: string // CSS selector of the window's title-bar slot (for the minimized chip)
+}>()
 
 const preview = usePreviewStore()
 
@@ -529,6 +589,21 @@ function cleanup() {
 .dp-combined.dp-side-by-side {
   flex-direction: row;
   align-items: stretch;
+  /* Bound to the viewport so each pane scrolls independently — the document stays
+     put while the chat scrolls, and vice versa (no page scroll). */
+  height: calc(100vh - 140px);
+  min-height: 0;
+}
+.dp-side-by-side .dp-main {
+  overflow: auto;
+}
+.dp-side-by-side .dp-main .dp-frame,
+.dp-side-by-side .dp-frame-full {
+  height: 100%;
+}
+.dp-side-by-side .dp-main .dp-pdf {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .dp-main {
   min-width: 0;
@@ -542,29 +617,6 @@ function cleanup() {
   width: 100%;
   min-width: 0;
 }
-.dp-disc-ctl {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 6px;
-}
-.dp-disc-lbl {
-  font-size: 12px;
-  color: var(--muted);
-  margin-right: auto;
-}
-.dp-pos {
-  border: 1px solid var(--border);
-  background: transparent;
-  border-radius: 6px;
-  padding: 1px 7px;
-  cursor: pointer;
-  color: var(--muted);
-}
-.dp-pos.on {
-  color: var(--fg);
-  background: var(--bg);
-}
 .dp-combined:not(.dp-side-by-side) .dp-discussion {
   border-top: 1px solid var(--border);
   padding-top: 8px;
@@ -572,6 +624,7 @@ function cleanup() {
 .dp-side-by-side .dp-discussion {
   flex: 0 0 380px;
   width: 380px;
+  min-height: 0;
   border-left: 1px solid var(--border);
   padding-left: 10px;
 }
@@ -583,7 +636,7 @@ function cleanup() {
   min-height: 0;
 }
 .dp-fit-bottom .dp-main {
-  flex: 1 1 58%;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
@@ -600,10 +653,54 @@ function cleanup() {
   object-fit: contain;
 }
 .dp-fit-bottom .dp-discussion {
-  flex: 1 1 42%;
+  flex: 0 0 42%;
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Draggable divider (both orientations). */
+.dp-splitter {
+  flex: 0 0 auto;
+  position: relative;
+  align-self: stretch;
+}
+.dp-splitter.vertical {
+  width: 9px;
+  cursor: col-resize;
+}
+.dp-splitter.horizontal {
+  height: 9px;
+  cursor: row-resize;
+}
+.dp-splitter::before {
+  content: '';
+  position: absolute;
+  background: var(--border);
+  border-radius: 2px;
+}
+.dp-splitter.vertical::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+.dp-splitter.horizontal::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+.dp-splitter:hover::before {
+  background: var(--primary);
+}
+.dp-combined.dragging {
+  user-select: none;
+}
+.dp-combined.dragging iframe {
+  pointer-events: none;
 }
 .dp-fit-bottom .dp-thread {
   flex: 1 1 auto;
@@ -622,7 +719,7 @@ function cleanup() {
   border: none;
 }
 .dp-side-by-side .dp-thread {
-  height: calc(100vh - 180px);
+  height: 100%;
 }
 .dp-discuss-btn {
   background: transparent;

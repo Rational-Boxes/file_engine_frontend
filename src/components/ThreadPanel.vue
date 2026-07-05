@@ -1,11 +1,24 @@
 <template>
-  <!-- Minimized: only a toggle with the comment count + attention flag (§10b-i). -->
-  <button v-if="layout === 'collapsed'" class="tp-toggle" @click="setLayout(lastOpen)">
-    💬 Comments ({{ totalComments }})
-    <span v-if="flag" class="tp-flag" :title="flagTitle">{{ flagText }}</span>
-  </button>
+  <!-- Minimized: only a toggle with the comment count + attention flag (§10b-i).
+       When a title-bar slot is provided (the preview window), teleport into it. -->
+  <Teleport :to="titlebarTarget || 'body'" :disabled="!titlebarTarget || layout !== 'collapsed'">
+    <button
+      v-if="layout === 'collapsed'"
+      class="tp-toggle"
+      :class="{ 'tp-toggle-chip': !!titlebarTarget }"
+      @click="setLayout(lastOpen)"
+    >
+      💬 Comments ({{ totalComments }})
+      <span v-if="flag" class="tp-flag" :title="flagTitle">{{ flagText }}</span>
+    </button>
+  </Teleport>
 
-  <section v-else class="tp" :class="embedded ? 'tp-embedded' : `tp-${layout}`">
+  <section
+    v-if="layout !== 'collapsed'"
+    v-bind="$attrs"
+    class="tp"
+    :class="embedded ? 'tp-embedded' : `tp-${layout}`"
+  >
     <header class="tp-head">
       <span class="tp-title">Comments ({{ totalComments }})</span>
       <span v-if="presence.length" class="tp-presence" :title="presence.join(', ')">
@@ -18,7 +31,11 @@
         <button class="tp-lbtn" :class="{ on: layout === 'bottom' }" title="Dock bottom" @click="setLayout('bottom')">▄</button>
         <button class="tp-lbtn" title="Collapse" @click="setLayout('collapsed')">✕</button>
       </template>
-      <button v-else class="tp-lbtn" title="Minimize comments" @click="setLayout('collapsed')">—</button>
+      <template v-else>
+        <button v-if="pos" class="tp-lbtn" :class="{ on: pos === 'side' }" title="Dock to the right" @click="emit('update:pos', 'side')">▐</button>
+        <button v-if="pos" class="tp-lbtn" :class="{ on: pos === 'bottom' }" title="Dock below" @click="emit('update:pos', 'bottom')">▄</button>
+        <button class="tp-lbtn" title="Minimize comments" @click="setLayout('collapsed')">—</button>
+      </template>
     </header>
 
     <div v-if="reviewOpen" class="tp-review">
@@ -101,13 +118,20 @@ import {
 } from '@/services/discussionService'
 import { LiveSession, type LiveCommentEvent } from '@/services/discussionLive'
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps<{
   fileUid: string
   focusThread?: string
   focusComment?: string
   embedded?: boolean // rendered inside a container (drawer tab): no collapse/dock chrome
+  titlebarTarget?: string // CSS selector of the window's title-bar slot for the minimized chip
+  pos?: 'side' | 'bottom' // parent-owned dock orientation, shown in the header
 }>()
-const emit = defineEmits<{ (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void }>()
+const emit = defineEmits<{
+  (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void
+  (e: 'update:pos', p: 'side' | 'bottom'): void
+}>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
 const LAYOUT_KEY = 'fe.discuss.panelLayout'
@@ -383,6 +407,15 @@ onBeforeUnmount(() => session?.close())
   padding: 4px 10px;
   cursor: pointer;
   font-size: 0.85rem;
+}
+/* Compact chip variant when docked into a window title bar. */
+.tp-toggle-chip {
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.tp-toggle-chip:hover {
+  background: var(--bg);
 }
 .tp-flag {
   margin-left: 6px;
