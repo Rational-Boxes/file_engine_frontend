@@ -73,6 +73,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   display: flex;
   flex-direction: column;
   background: var(--card);
+  /* Teleported to <body> (outside #app), so set the theme ink explicitly —
+     otherwise the title falls back to the UA default black (unreadable in dark). */
+  color: var(--fg);
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);

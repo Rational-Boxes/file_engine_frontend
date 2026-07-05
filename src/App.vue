@@ -76,6 +76,10 @@ onMounted(() => {
 body {
   margin: 0;
   font-family: var(--font-sans);
+  /* Overlays teleport to <body> (outside #app); give body the theme ink so their
+     text isn't the UA default black in dark mode. */
+  color: var(--fg);
+  background: var(--bg);
 }
 
 #app {
