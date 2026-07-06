@@ -9,6 +9,7 @@
         :class="{
           'dp-side-by-side': combinedActive && discussionPos === 'side',
           'dp-fit-bottom': combinedActive && discussionPos === 'bottom',
+          'dp-full-min': fullWidth && !combinedActive,
           dragging,
         }"
       >
@@ -588,6 +589,35 @@ function cleanup() {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Minimized discussion on the full overlay: the panel collapses to a title-bar
+   chip (combinedActive is false), so the layout gets neither the side-by-side nor
+   the fit-bottom height cap. Without one, the fixed frame height (100vh - 150px)
+   plus the action links beneath it overflow the overlay and force an outer
+   scrollbar. Bound the preview to the viewport and let the PDF/video frame
+   flex-shrink so the frame + the links below it fit with no scrolling. */
+.dp-full-min {
+  height: calc(100vh - 140px);
+  min-height: 0;
+}
+.dp-full-min .dp-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.dp-full-min .dp-main .dp-pdf {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.dp-full-min .dp-frame-full {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto; /* override the fixed calc; fill the flex space instead */
+}
+.dp-full-min .dp-img {
+  max-height: 100%;
+  object-fit: contain;
 }
 
 /* Draggable divider (both orientations). */
