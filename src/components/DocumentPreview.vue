@@ -433,6 +433,18 @@ function cleanup() {
 
 .dp-chatlog {
   width: 100%;
+  /* The chat-log is a self-contained provenance *document* (dark ink on white
+     message bubbles). It renders in a Shadow DOM as a fragment, so its own
+     `body { color }` rule never applies and the text would otherwise inherit the
+     app's theme ink — light on white in dark mode. Pin it to a light document
+     surface: `color` inherits across the shadow boundary, so the whole transcript
+     (headings, bubbles, notes) stays readable in any theme, like the PDF preview.
+     Fixed values on purpose — do NOT use theme vars here. */
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 14px;
 }
 
 .dp-chatlog-body {
