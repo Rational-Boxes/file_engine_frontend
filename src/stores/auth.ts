@@ -128,15 +128,20 @@ export const useAuthStore = defineStore('auth', {
     // single active tenant — that would wrongly hide the switcher from a
     // multi-tenant user; we keep the last-known persisted set instead.
     async loadTenants() {
+      const known = tokenStorage.getTenants()
       let list: string[]
       try {
-        // Server list is authoritative + tenant-agnostic (all the user's tenants).
-        list = (await authService.listTenants()).tenants || []
+        const fetched = (await authService.listTenants()).tenants || []
+        // /v1/tenants returns the full set at login but can come back scoped to
+        // just the active tenant once you've switched into it — which would drop
+        // the others and hide the switcher. So trust a multi-entry response as
+        // authoritative, but never SHRINK the known set: if it came back as a
+        // single tenant, union it with what we already knew.
+        list = fetched.length > 1 ? fetched : Array.from(new Set([...known, ...fetched]))
         tokenStorage.setTenants(list)
       } catch {
-        // Transient/failed (e.g. just after navigating into a tenant): keep the
-        // last-known set rather than collapsing to one and hiding the switcher.
-        list = tokenStorage.getTenants()
+        // Transient/failed: keep the last-known set rather than collapsing to one.
+        list = known
       }
       // When the URL (subdomain / ?tenant) and any prior selection didn't pin down
       // an active tenant, default sensibly: the sole tenant the user belongs to,
