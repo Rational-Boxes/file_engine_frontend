@@ -20,6 +20,8 @@ vi.mock('@/utils/tokenStorage', () => ({
     getTokens: vi.fn(() => null), // null => scheduleRefresh sets no timer in tests
     getActiveTenant: vi.fn(() => null),
     setActiveTenant: vi.fn(),
+    getTenants: vi.fn(() => []),
+    setTenants: vi.fn(),
     clearTokens: vi.fn(),
   },
 }))
