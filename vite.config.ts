@@ -5,6 +5,17 @@ import { resolve } from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  // The xeokit SDK is only reached through a dynamic import() in Model3DViewer
+  // (to code-split it out of the main bundle). Because nothing imports it
+  // statically, Vite's dev optimizer doesn't pre-bundle it at startup — it
+  // discovers it on the first model open, re-optimizes, and invalidates the
+  // dep hash, which makes that in-flight dynamic import 404 ("Failed to fetch
+  // dynamically imported module … @xeokit_xeokit-sdk.js?v=…"). Pre-bundling it
+  // here gives a stable optimized chunk from the start. Dev-only: the production
+  // dynamic import still splits xeokit into its own chunk.
+  optimizeDeps: {
+    include: ['@xeokit/xeokit-sdk'],
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
