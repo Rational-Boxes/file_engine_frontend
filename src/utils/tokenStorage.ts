@@ -8,6 +8,7 @@ interface TokenData {
 class SecureTokenStorage {
   private storageKey = 'fileengine_auth'
   private tenantKey = 'fileengine_tenant'
+  private tenantsKey = 'fileengine_tenants'
   private currentTokens: TokenData | null = null
 
   // Store tokens securely
@@ -44,9 +45,29 @@ class SecureTokenStorage {
   clearTokens() {
     localStorage.removeItem(this.storageKey)
     localStorage.removeItem(this.tenantKey)
+    localStorage.removeItem(this.tenantsKey)
     sessionStorage.removeItem('oauth_code_verifier')
     sessionStorage.removeItem('oauth_state')
     this.currentTokens = null
+  }
+
+  // The set of tenants the user can operate in, remembered across reloads so the
+  // tenant switcher's visibility (shown only for multi-tenant users) survives a
+  // transient/failed GET /v1/tenants after navigating into a tenant. Refreshed
+  // from the server on each successful load; cleared on logout.
+  getTenants(): string[] {
+    try {
+      const raw = localStorage.getItem(this.tenantsKey)
+      const parsed = raw ? JSON.parse(raw) : []
+      return Array.isArray(parsed) ? parsed.filter((t): t is string => typeof t === 'string') : []
+    } catch {
+      return []
+    }
+  }
+
+  setTenants(tenants: string[]) {
+    if (tenants.length) localStorage.setItem(this.tenantsKey, JSON.stringify(tenants))
+    else localStorage.removeItem(this.tenantsKey)
   }
 
   // Active tenant: the tenant the user has selected for subsequent requests.

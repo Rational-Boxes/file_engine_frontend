@@ -109,6 +109,8 @@ export const useAuthStore = defineStore('auth', {
     async initialize() {
       this.syncToken()
       if (!this.token) return
+      // Show the switcher immediately from the remembered set; loadTenants refreshes.
+      this.tenants = tokenStorage.getTenants()
       try {
         this.applyIdentity(await authService.whoami())
         await this.loadTenants()
@@ -119,15 +121,34 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    // Fetch the tenants the user can access. Best-effort: on failure we keep at
-    // least the active tenant so the selector still renders.
+    // Fetch the tenants the user can access, and remember them. The server list
+    // is authoritative and tenant-agnostic (all the user's tenants, regardless of
+    // the active one), so on success we replace + persist. On a transient/failed
+    // fetch (e.g. right after navigating into a tenant) we DON'T collapse to the
+    // single active tenant — that would wrongly hide the switcher from a
+    // multi-tenant user; we keep the last-known persisted set instead.
     async loadTenants() {
+      let list: string[]
       try {
-        const { tenants } = await authService.listTenants()
-        this.tenants = tenants
+        // Server list is authoritative + tenant-agnostic (all the user's tenants).
+        list = (await authService.listTenants()).tenants || []
+        tokenStorage.setTenants(list)
       } catch {
-        this.tenants = this.tenant ? [this.tenant] : []
+        // Transient/failed (e.g. just after navigating into a tenant): keep the
+        // last-known set rather than collapsing to one and hiding the switcher.
+        list = tokenStorage.getTenants()
       }
+      // When the URL (subdomain / ?tenant) and any prior selection didn't pin down
+      // an active tenant, default sensibly: the sole tenant the user belongs to,
+      // otherwise 'default'.
+      if (!this.tenant) {
+        this.tenant = list.length === 1 ? list[0] : 'default'
+        tokenStorage.setActiveTenant(this.tenant)
+      }
+      // Always include the active tenant — e.g. the one selected by the URL
+      // subdomain — so the switcher can show it selected even if the list is
+      // stale/empty. The switcher itself is only shown when there's more than one.
+      this.tenants = Array.from(new Set([...list, this.tenant].filter((t): t is string => !!t)))
     },
 
     // Switch the active tenant for all subsequent requests. Persists the choice
