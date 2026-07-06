@@ -353,7 +353,12 @@ async function revoke(e: AclEntry, permKey: string) {
   gap: 4px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--hover, #f2f4f7);
+  /* Theme-adaptive pill. The previous var(--hover, #f2f4f7) always resolved to
+     the light fallback (--hover is never defined), so in dark mode the chip was
+     light-grey with light (--fg) text — white-on-white. Use theme tokens that
+     contrast in both modes. */
+  background: var(--border);
+  color: var(--fg);
 }
 
 .acl-x {
