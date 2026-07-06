@@ -333,6 +333,8 @@ async function applyRoute(opts?: { initial?: boolean }) {
   if (route.name !== 'FileBrowser') return
   const tenant = typeof route.query.tenant === 'string' ? route.query.tenant : ''
   const file = typeof route.query.file === 'string' ? route.query.file : ''
+  const folder = typeof route.query.folder === 'string' ? route.query.folder : ''
+  const target = folder || file // a folder opens; a file opens-parent-and-selects
   const prevTenant = auth.tenant
   const switching = !!tenant && tenant !== auth.tenant
 
@@ -341,7 +343,7 @@ async function applyRoute(opts?: { initial?: boolean }) {
   // write->read->write loop). The initial call always proceeds so the first
   // listing loads even at the root.
   if (!opts?.initial && !switching) {
-    const atTarget = file ? file === files.currentUid : files.currentUid === ROOT_UID
+    const atTarget = target ? target === files.currentUid : files.currentUid === ROOT_UID
     if (atTarget) return
   }
 
@@ -359,8 +361,8 @@ async function applyRoute(opts?: { initial?: boolean }) {
     auth.switchTenant(tenant) // updates X-Tenant for the reveal below
   }
 
-  if (typeof file === 'string' && file) {
-    const res = await files.revealFile(file)
+  if (target) {
+    const res = await files.revealFile(target)
     if (res.ok) scrollToRow(files.detailItem?.uid) // reveal the file's row in the list
     // Reactive: the reveal was forbidden just after a tenant switch (e.g. the
     // tenant list was stale/unavailable). Revert to a usable workspace + explain.
@@ -372,6 +374,13 @@ async function applyRoute(opts?: { initial?: boolean }) {
       }
       files.error = tenantNoAccessMsg(tenant)
     }
+  } else if (!opts?.initial && files.currentUid !== ROOT_UID) {
+    // Returning to the kept-alive view with a bare /files URL (e.g. the top-nav
+    // "Files" link): restore the folder we're in — put the query params back —
+    // rather than resetting to root.
+    await router
+      .replace(fileBrowserLocation(files.currentUid, auth.tenant, 'folder'))
+      .catch(() => {})
   } else {
     await files.openRoot()
   }
@@ -383,7 +392,7 @@ applyRoute({ initial: true })
 // Watch a stable key (not a fresh array) so this only fires when the deep-link
 // params actually change — otherwise every route change (incl. returning to the
 // kept-alive /files tab) would re-run applyRoute and reset the view.
-watch(() => [route.query.file, route.query.tenant].join(' '), () => applyRoute())
+watch(() => [route.query.folder, route.query.file, route.query.tenant].join(' '), () => applyRoute())
 
 // WRITE side of the sync: mirror the current folder + tenant into the URL (reusing
 // the Copy-link deep-link shape) so reload and bookmarks restore where you were.
@@ -392,13 +401,14 @@ watch(() => [route.query.file, route.query.tenant].join(' '), () => applyRoute()
 // the back-stack; reload/bookmarks still work.
 async function syncUrl() {
   if (route.name !== 'FileBrowser' || applyingRoute) return
-  const targetFile = files.currentUid === ROOT_UID ? '' : files.currentUid
+  // The browser location is always a directory, so it maps to the `folder` key.
+  const targetFolder = files.currentUid === ROOT_UID ? '' : files.currentUid
   const targetTenant = auth.tenant || ''
-  const curFile = typeof route.query.file === 'string' ? route.query.file : ''
+  const curFolder = typeof route.query.folder === 'string' ? route.query.folder : ''
   const curTenant = typeof route.query.tenant === 'string' ? route.query.tenant : ''
-  if (targetFile === curFile && targetTenant === curTenant) return
+  if (targetFolder === curFolder && targetTenant === curTenant) return
   await router
-    .replace(fileBrowserLocation(targetFile || undefined, targetTenant || undefined))
+    .replace(fileBrowserLocation(targetFolder || undefined, targetTenant || undefined, 'folder'))
     .catch(() => {})
 }
 watch(() => [files.currentUid, auth.tenant].join('|'), syncUrl)
@@ -556,6 +566,10 @@ const onWinDrop = (e: DragEvent) => {
 // <KeepAlive> this view stays alive in the background, and we must not handle
 // drops while another tab (Search/Chat) is showing.
 onActivated(() => {
+  // Returning to the (kept-alive) Files tab lands on a bare /files URL, which
+  // doesn't change the deep-link query, so applyRoute's watch won't fire. Put the
+  // current folder + tenant back in the URL so reload/bookmarks still work.
+  syncUrl()
   window.addEventListener('dragenter', onWinDragEnter)
   window.addEventListener('dragover', onWinDragOver)
   window.addEventListener('dragleave', onWinDragLeave)

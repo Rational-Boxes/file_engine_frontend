@@ -213,8 +213,10 @@ const linkCopied = ref(false)
 async function copyDeepLink() {
   if (!item.value) return
   // Include the tenant — UIDs are tenant-scoped, so a shared link must carry it.
-  // Same deep-link shape the browser keeps in the URL as you navigate.
-  const href = router.resolve(fileBrowserLocation(item.value.uid, auth.tenant)).href
+  // Same deep-link shape the browser keeps in the URL as you navigate; name the
+  // query key by kind (folder vs file).
+  const kind = item.value.isDirectory ? 'folder' : 'file'
+  const href = router.resolve(fileBrowserLocation(item.value.uid, auth.tenant, kind)).href
   try {
     await navigator.clipboard.writeText(window.location.origin + href)
     linkCopied.value = true
