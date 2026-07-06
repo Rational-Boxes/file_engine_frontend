@@ -383,7 +383,7 @@ applyRoute({ initial: true })
 // Watch a stable key (not a fresh array) so this only fires when the deep-link
 // params actually change — otherwise every route change (incl. returning to the
 // kept-alive /files tab) would re-run applyRoute and reset the view.
-watch(() => [route.query.file, route.query.tenant].join(' '), () => applyRoute())
+watch(() => [route.query.file, route.query.tenant].join(' '), () => applyRoute())
 
 // WRITE side of the sync: mirror the current folder + tenant into the URL (reusing
 // the Copy-link deep-link shape) so reload and bookmarks restore where you were.
