@@ -202,7 +202,9 @@ export default { name: 'FileBrowserView' }
 
 <script setup lang="ts">
 import { ref, computed, watch, onActivated, onDeactivated, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { ROOT_UID } from '@/services/apiClient'
+import { fileBrowserLocation } from '@/utils/fileLocation'
 import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/files'
 import { useUploadStore } from '@/stores/upload'
@@ -300,6 +302,7 @@ const ariaSort = (key: SortKey) =>
 // that node (folder + select + drawer); otherwise open the root. Re-applied
 // whenever the deep-link target changes.
 const route = useRoute()
+const router = useRouter()
 const listEl = ref<HTMLElement | null>(null)
 
 // After a deep-link reveal, bring the opened file's row into view (it may be far
@@ -320,15 +323,30 @@ function tenantNoAccessMsg(t: string): string {
   )
 }
 
-async function applyRoute() {
+// True while applyRoute() is driving a reveal, so syncUrl() below stands down and
+// doesn't overwrite an incoming file-specific deep link with its folder's UID.
+let applyingRoute = false
+
+async function applyRoute(opts?: { initial?: boolean }) {
   // The view is kept alive, so these watchers also fire when leaving /files —
   // only (re)load when we're actually on the Files route.
   if (route.name !== 'FileBrowser') return
   const tenant = typeof route.query.tenant === 'string' ? route.query.tenant : ''
-  const file = route.query.file
+  const file = typeof route.query.file === 'string' ? route.query.file : ''
   const prevTenant = auth.tenant
   const switching = !!tenant && tenant !== auth.tenant
 
+  // Re-entry from our own URL sync: navigation already moved us here, so the URL
+  // merely mirrors the current location — skip the redundant reveal (breaks the
+  // write->read->write loop). The initial call always proceeds so the first
+  // listing loads even at the root.
+  if (!opts?.initial && !switching) {
+    const atTarget = file ? file === files.currentUid : files.currentUid === ROOT_UID
+    if (atTarget) return
+  }
+
+  applyingRoute = true
+  try {
   if (switching) {
     // Proactive: a tenant we already know (from the user's tenant list) is off
     // limits — clear message + their own workspace, no failed requests.
@@ -357,12 +375,33 @@ async function applyRoute() {
   } else {
     await files.openRoot()
   }
+  } finally {
+    applyingRoute = false
+  }
 }
-applyRoute()
+applyRoute({ initial: true })
 // Watch a stable key (not a fresh array) so this only fires when the deep-link
 // params actually change — otherwise every route change (incl. returning to the
 // kept-alive /files tab) would re-run applyRoute and reset the view.
-watch(() => [route.query.file, route.query.tenant].join(' '), applyRoute)
+watch(() => [route.query.file, route.query.tenant].join(' '), () => applyRoute())
+
+// WRITE side of the sync: mirror the current folder + tenant into the URL (reusing
+// the Copy-link deep-link shape) so reload and bookmarks restore where you were.
+// Skipped while a reveal runs, and a no-op when already in sync — so it never
+// fights applyRoute or spams history. replace (not push): folder nav stays out of
+// the back-stack; reload/bookmarks still work.
+async function syncUrl() {
+  if (route.name !== 'FileBrowser' || applyingRoute) return
+  const targetFile = files.currentUid === ROOT_UID ? '' : files.currentUid
+  const targetTenant = auth.tenant || ''
+  const curFile = typeof route.query.file === 'string' ? route.query.file : ''
+  const curTenant = typeof route.query.tenant === 'string' ? route.query.tenant : ''
+  if (targetFile === curFile && targetTenant === curTenant) return
+  await router
+    .replace(fileBrowserLocation(targetFile || undefined, targetTenant || undefined))
+    .catch(() => {})
+}
+watch(() => [files.currentUid, auth.tenant].join('|'), syncUrl)
 
 // Reload from the root whenever the active tenant changes: UIDs (including the
 // breadcrumb trail) are tenant-scoped, so the current path is meaningless in the

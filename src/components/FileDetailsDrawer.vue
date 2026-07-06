@@ -130,6 +130,7 @@ import { useFileStore } from '@/stores/files'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
 import { formatSize, formatVersionTimestamp } from '@/utils/format'
+import { fileBrowserLocation } from '@/utils/fileLocation'
 import { PERMS, canDo } from '@/utils/permissions'
 import AclEditor from '@/components/AclEditor.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
@@ -212,9 +213,8 @@ const linkCopied = ref(false)
 async function copyDeepLink() {
   if (!item.value) return
   // Include the tenant — UIDs are tenant-scoped, so a shared link must carry it.
-  const query: Record<string, string> = { file: item.value.uid }
-  if (auth.tenant) query.tenant = auth.tenant
-  const href = router.resolve({ name: 'FileBrowser', query }).href
+  // Same deep-link shape the browser keeps in the URL as you navigate.
+  const href = router.resolve(fileBrowserLocation(item.value.uid, auth.tenant)).href
   try {
     await navigator.clipboard.writeText(window.location.origin + href)
     linkCopied.value = true
