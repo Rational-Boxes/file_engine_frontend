@@ -166,6 +166,16 @@
     <FileDetailsDrawer />
     <UploadTray />
 
+    <ConfirmModal
+      :open="confirmState.open"
+      :title="confirmState.title"
+      :message="confirmState.message"
+      :confirm-label="confirmState.confirmLabel"
+      :danger="confirmState.danger"
+      @confirm="onConfirm"
+      @cancel="confirmState.open = false"
+    />
+
     <!-- Hidden renditions of a file, fetched on demand -->
     <div v-if="files.renditionsOpen" class="rend-overlay" @click.self="files.closeRenditions()">
       <div class="rend-panel">
@@ -201,7 +211,7 @@ export default { name: 'FileBrowserView' }
 </script>
 
 <script setup lang="ts">
-import { ref, computed, watch, onActivated, onDeactivated, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onActivated, onDeactivated, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ROOT_UID } from '@/services/apiClient'
 import { fileBrowserLocation } from '@/utils/fileLocation'
@@ -212,6 +222,7 @@ import { canDo } from '@/utils/permissions'
 import { formatSize, formatDateTime } from '@/utils/format'
 import KebabMenu, { type KebabItem } from '@/components/KebabMenu.vue'
 import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import UploadTray from '@/components/UploadTray.vue'
 import AppNav from '@/components/AppNav.vue'
 import FileThumbnail from '@/components/FileThumbnail.vue'
@@ -499,13 +510,61 @@ const rename = async (item: FileItem) => {
   if (name) await files.renameItem(item, name)
 }
 
-const remove = async (item: FileItem) => {
-  if (confirm(`Delete "${item.name}"?`)) await files.deleteItem(item)
+// Destructive/confirmable actions use one in-app modal (never window.confirm).
+// Each opener fills in the copy + the action to run on confirm.
+const confirmState = reactive<{
+  open: boolean
+  title: string
+  message: string
+  confirmLabel: string
+  danger: boolean
+  action: (() => Promise<void>) | null
+}>({
+  open: false,
+  title: '',
+  message: '',
+  confirmLabel: 'Confirm',
+  danger: false,
+  action: null,
+})
+
+function askConfirm(cfg: {
+  title: string
+  message: string
+  confirmLabel: string
+  danger?: boolean
+  action: () => Promise<void>
+}) {
+  Object.assign(confirmState, { danger: false, ...cfg, open: true })
 }
 
-const undelete = async (item: FileItem) => {
-  if (confirm(`Restore "${item.name}"?`)) await files.undeleteItem(item)
+async function onConfirm() {
+  const action = confirmState.action
+  confirmState.open = false
+  confirmState.action = null
+  if (action) await action()
 }
+
+const remove = (item: FileItem) =>
+  askConfirm({
+    // Deleting a folder soft-deletes it and hides its contents (recoverable);
+    // no need to delete each child — the server hides the subtree by reachability.
+    title: `Delete “${item.name}”?`,
+    message: item.isDirectory
+      ? 'This folder and its contents will be deleted. Deletes are soft — restore it with Undelete.'
+      : 'This file will be deleted. Deletes are soft — restore it with Undelete.',
+    confirmLabel: 'Delete',
+    danger: true,
+    action: () => files.deleteItem(item),
+  })
+
+const undelete = (item: FileItem) =>
+  askConfirm({
+    title: `Undelete “${item.name}”?`,
+    message: item.isDirectory ? 'This folder will be restored.' : 'This file will be restored.',
+    confirmLabel: 'Undelete',
+    action: () => files.undeleteItem(item),
+  })
 
 // Dim rows whose items are staged for a move (cut).
 const isCut = (item: FileItem) =>
@@ -520,9 +579,16 @@ const batchCut = () => {
   files.setClipboard('cut', files.selectedItems)
   files.clearSelection()
 }
-const batchDelete = async () => {
-  const n = files.selected.size
-  if (n && confirm(`Delete ${n} item${n > 1 ? 's' : ''}?`)) await files.deleteSelected()
+const batchDelete = () => {
+  if (!files.selected.size) return
+  const items = files.selectedItems
+  askConfirm({
+    title: `Delete ${items.length} item${items.length > 1 ? 's' : ''}?`,
+    message: 'The selected items will be deleted. Deletes are soft — restore them with Undelete.',
+    confirmLabel: 'Delete',
+    danger: true,
+    action: () => files.deleteSelected(),
+  })
 }
 
 const uploadFiles = (list: FileList | null) => {
