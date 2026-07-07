@@ -7,7 +7,7 @@
       <h3>Awaiting your review</h3>
       <ul class="ri-list">
         <li v-for="r in assigned" :key="r.id" class="ri-item">
-          <router-link class="ri-link" :to="link(r)">Review · {{ short(r.fileUid) }}</router-link>
+          <router-link class="ri-link" :to="link(r)" :title="r.fileUid">Review · {{ label(r) }}</router-link>
           <span class="ri-st" :data-st="r.status">{{ r.status }}</span>
           <span class="ri-who">from {{ r.requester }}</span>
           <span class="ri-actions">
@@ -23,7 +23,7 @@
       <h3>Requested by you</h3>
       <ul class="ri-list">
         <li v-for="r in requested" :key="r.id" class="ri-item">
-          <router-link class="ri-link" :to="link(r)">Review · {{ short(r.fileUid) }}</router-link>
+          <router-link class="ri-link" :to="link(r)" :title="r.fileUid">Review · {{ label(r) }}</router-link>
           <span class="ri-who">{{ r.reviewer }}</span>
           <span class="ri-st" :data-st="r.status">{{ r.status }}</span>
           <span v-if="r.outcome" class="ri-outcome">{{ r.outcome }}</span>
@@ -38,11 +38,14 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { discussionService, type ReviewRequest } from '@/services/discussionService'
+import { fileService } from '@/services/fileService'
 
 const assigned = ref<ReviewRequest[]>([])
 const requested = ref<ReviewRequest[]>([])
 const loading = ref(false)
 const error = ref('')
+// Resolved file names keyed by uid — reviews carry only the file uid.
+const names = ref<Record<string, string>>({})
 
 const OPEN = new Set(['requested', 'acknowledged'])
 
@@ -56,6 +59,7 @@ async function load() {
     ])
     assigned.value = asReviewer.filter((r) => OPEN.has(r.status))
     requested.value = asRequester
+    void resolveNames()
   } catch {
     error.value = 'Could not load reviews.'
   } finally {
@@ -81,8 +85,28 @@ async function complete(r: ReviewRequest, outcome: string) {
   }
 }
 
+// Resolve each review's file uid to its name (best-effort, cached). The caller
+// is a reviewer/requester on the file, so they can read it.
+async function resolveNames() {
+  const uids = [...new Set([...assigned.value, ...requested.value].map((r) => r.fileUid))]
+  await Promise.all(
+    uids.map(async (uid) => {
+      if (names.value[uid]) return
+      try {
+        names.value[uid] = (await fileService.stat(uid)).name
+      } catch {
+        /* leave unresolved — falls back to the short uid */
+      }
+    }),
+  )
+}
+
 function short(uid: string): string {
   return uid.length > 10 ? uid.slice(0, 8) + '…' : uid
+}
+// The file name if resolved, else the short uid.
+function label(r: ReviewRequest): string {
+  return names.value[r.fileUid] || short(r.fileUid)
 }
 function link(r: ReviewRequest) {
   const query: Record<string, string> = {}
