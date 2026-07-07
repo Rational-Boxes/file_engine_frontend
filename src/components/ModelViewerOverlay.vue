@@ -51,13 +51,29 @@
         <button class="mv-x" aria-label="Close viewer" @click="model3d.close()">✕</button>
       </header>
 
-      <div class="mv-body">
+      <div class="mv-body" :class="{ 'mv-resizing': sideResizing }">
         <!-- Collapsible sidebar: object tree (+ room for metadata). Collapsing it
-             hands the entire overlay to the 3D viewport. -->
-        <aside class="mv-side" :class="{ 'mv-side-collapsed': collapsed }" :aria-hidden="collapsed">
+             hands the entire overlay to the 3D viewport. Its width is drag-resizable
+             (the handle just to its right) and persisted. -->
+        <aside
+          class="mv-side"
+          :class="{ 'mv-side-collapsed': collapsed }"
+          :style="collapsed ? undefined : sideStyle"
+          :aria-hidden="collapsed"
+        >
           <h2 class="mv-side-h">Objects</h2>
           <div id="mv-object-tree" class="mv-tree"></div>
         </aside>
+
+        <!-- Drag handle to resize the object tree; hidden when the tree is collapsed. -->
+        <div
+          v-if="!collapsed"
+          class="mv-side-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize the object tree"
+          @pointerdown="startSideResize"
+        ></div>
 
         <!-- 3D viewport + docked discussion (same model as the document preview:
              side/bottom orientation, minimize to the title bar, draggable divider,
@@ -177,9 +193,18 @@ const xktUid = ref('')
 const resolveError = ref('')
 const viewerRef = ref<InstanceType<typeof Model3DViewer> | null>(null)
 
-// The 3D viewport's free space changes as the discussion docks/resizes/minimizes —
-// let xeokit recompute the canvas each time (including live during a divider drag).
-watch([combinedActive, discussionPos, discLayout, discSideW, discBottomPct], async () => {
+// Drag-resizable object-tree sidebar width (px), clamped and persisted.
+const SIDE_KEY = 'fe.model3d.sidebarWidth'
+const SIDE_MIN = 180
+const SIDE_MAX = 560
+const sideW = ref(readSideW())
+const sideResizing = ref(false)
+const sideStyle = computed(() => ({ flexBasis: `${sideW.value}px`, maxWidth: `${sideW.value}px` }))
+
+// The 3D viewport's free space changes as the sidebar resizes or the discussion
+// docks/resizes/minimizes — let xeokit recompute the canvas each time (including
+// live during a divider drag).
+watch([combinedActive, discussionPos, discLayout, discSideW, discBottomPct, sideW], async () => {
   await nextTick()
   viewerRef.value?.resize()
 })
@@ -235,6 +260,39 @@ function readCollapsed(): boolean {
   }
   // Default: collapsed on small screens, expanded on wide.
   return typeof window !== 'undefined' && window.innerWidth < 768
+}
+
+function readSideW(): number {
+  try {
+    const v = Number(localStorage.getItem(SIDE_KEY))
+    if (Number.isFinite(v) && v >= SIDE_MIN && v <= SIDE_MAX) return v
+  } catch {
+    /* ignore */
+  }
+  return 280
+}
+
+// Drag the handle right of the object tree to resize it; clamp + persist on release.
+function startSideResize(e: PointerEvent) {
+  e.preventDefault()
+  const startX = e.clientX
+  const startW = sideW.value
+  sideResizing.value = true
+  const onMove = (ev: PointerEvent) => {
+    sideW.value = Math.min(SIDE_MAX, Math.max(SIDE_MIN, startW + (ev.clientX - startX)))
+  }
+  const onUp = () => {
+    sideResizing.value = false
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    try {
+      localStorage.setItem(SIDE_KEY, String(sideW.value))
+    } catch {
+      /* ignore */
+    }
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
 }
 
 // Return the 3D camera to its default framing of the whole model.
@@ -400,6 +458,39 @@ onBeforeUnmount(() => {
   padding: 0;
   overflow: hidden;
   border-right: none;
+}
+/* Drag handle to resize the object tree (mirrors the discussion splitter). */
+.mv-side-resizer {
+  flex: 0 0 7px;
+  align-self: stretch;
+  position: relative;
+  cursor: col-resize;
+  z-index: 2;
+}
+.mv-side-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: #3a3d42;
+  border-radius: 2px;
+}
+.mv-side-resizer:hover::before,
+.mv-body.mv-resizing .mv-side-resizer::before {
+  background: #5b6470;
+}
+/* Keep the drag crisp: no width animation and no canvas/selection interference. */
+.mv-body.mv-resizing {
+  user-select: none;
+}
+.mv-body.mv-resizing .mv-side {
+  transition: none;
+}
+.mv-body.mv-resizing canvas {
+  pointer-events: none;
 }
 .mv-side-h {
   font-size: 0.75rem;
