@@ -59,7 +59,25 @@
       <span v-if="reviewMsg" class="tp-review-msg">{{ reviewMsg }}</span>
     </div>
 
+    <div class="tp-tabs" role="tablist">
+      <button
+        class="tp-tab"
+        :class="{ active: activeTab === 'comments' }"
+        role="tab"
+        :aria-selected="activeTab === 'comments'"
+        @click="activeTab = 'comments'"
+      >Comments <span class="tp-tab-n">{{ totalComments }}</span></button>
+      <button
+        class="tp-tab"
+        :class="{ active: activeTab === 'reviews' }"
+        role="tab"
+        :aria-selected="activeTab === 'reviews'"
+        @click="activeTab = 'reviews'"
+      >Reviews<span v-if="recordCount" class="tp-tab-n">{{ recordCount }}</span></button>
+    </div>
+
     <div class="tp-body">
+      <template v-if="activeTab === 'comments'">
       <!-- Review requested of me on this document — approve / send back right here. -->
       <div v-for="r in myReviews" :key="r.id" class="tp-review-ask">
         <span class="tp-review-ask-lbl">⚑ Review requested by {{ r.requester }}</span>
@@ -120,6 +138,47 @@
         />
         <p v-if="error" class="tp-err">{{ error }}</p>
       </div>
+      </template>
+
+      <!-- Reviews tab: the review-request record + resolutions for this document. -->
+      <template v-else>
+        <section class="tp-rec-sec">
+          <h4 class="tp-rec-h">Review requests</h4>
+          <p v-if="!fileReviews.length" class="tp-muted">No review requests on this document.</p>
+          <ul v-else class="tp-rec-list">
+            <li v-for="r in fileReviews" :key="r.id" class="tp-rec">
+              <span class="tp-rec-ic">⚑</span>
+              <div class="tp-rec-main">
+                <div class="tp-rec-line">
+                  <strong>{{ r.requester }}</strong> asked <strong>{{ r.reviewer }}</strong> to review
+                  <span class="tp-rec-status" :class="'st-' + r.status">{{ reviewLabel(r) }}</span>
+                </div>
+                <div class="tp-rec-when">
+                  {{ fmtDate(r.createdAt) }}<template v-if="r.completedAt"> · completed {{ fmtDate(r.completedAt) }}</template>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <section class="tp-rec-sec">
+          <h4 class="tp-rec-h">Resolutions</h4>
+          <p v-if="!resolvedThreads.length" class="tp-muted">No resolved discussions yet.</p>
+          <ul v-else class="tp-rec-list">
+            <li v-for="t in resolvedThreads" :key="t.id" class="tp-rec">
+              <span class="tp-rec-ic ok">✓</span>
+              <div class="tp-rec-main">
+                <div class="tp-rec-line">
+                  <strong>{{ t.resolvedBy }}</strong> resolved
+                  <em>{{ t.title || 'a discussion' }}</em>
+                  <span v-if="t.resolvedVersion" class="tp-rec-ver">@ {{ t.resolvedVersion }}</span>
+                </div>
+                <div class="tp-rec-when">{{ fmtDate(t.updatedAt) }}</div>
+              </div>
+            </li>
+          </ul>
+        </section>
+      </template>
     </div>
   </section>
 </template>
@@ -176,6 +235,29 @@ const reviewOpen = ref(false)
 const reviewInput = ref('')
 const reviewMsg = ref('')
 const myReviews = ref<ReviewRequest[]>([])
+// Side-bar tabs: the comment threads vs. the review-request + resolution record.
+const activeTab = ref<'comments' | 'reviews'>('comments')
+const fileReviews = ref<ReviewRequest[]>([])
+const resolvedThreads = computed(() => threads.value.filter((t) => t.status === 'resolved'))
+const recordCount = computed(() => fileReviews.value.length + resolvedThreads.value.length)
+// The discussion service returns ISO-8601 timestamp strings (unlike the file
+// store's epoch seconds), so format them locally for the record.
+function fmtDate(iso: string | null): string {
+  if (!iso) return ''
+  const t = Date.parse(iso)
+  return Number.isNaN(t)
+    ? ''
+    : new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+// Human label for a review's state/outcome (the record reads as plain English).
+function reviewLabel(r: ReviewRequest): string {
+  if (r.status === 'completed') {
+    if (r.outcome === 'approved') return 'approved'
+    if (r.outcome === 'changes') return 'changes requested'
+    return 'completed'
+  }
+  return r.status // requested | acknowledged | declined
+}
 
 // When the parent owns minimize (hideDock, e.g. the 3D viewer), never start in the
 // shared "collapsed" state — the parent controls visibility, so keep the panel open.
@@ -271,6 +353,9 @@ async function load() {
       .flags([props.fileUid])
       .catch(() => ({}) as Record<string, FlagCounts>)
     flag.value = flags[props.fileUid] ?? null
+    fileReviews.value = await discussionService
+      .listFileReviews(props.fileUid)
+      .catch(() => [] as ReviewRequest[])
     loadMyReviews()
     focusDeepLink()
   } catch {
@@ -673,6 +758,102 @@ onBeforeUnmount(() => session?.close())
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Comments / Reviews tabs */
+.tp-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.tp-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 10px;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+.tp-tab:hover {
+  color: var(--fg);
+}
+.tp-tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+.tp-tab-n {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+/* Review-record list (Reviews tab) */
+.tp-rec-sec + .tp-rec-sec {
+  margin-top: 6px;
+}
+.tp-rec-h {
+  margin: 4px 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.tp-rec-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tp-rec {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.tp-rec-ic {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.tp-rec-ic.ok {
+  color: #15803d;
+}
+.tp-rec-main {
+  min-width: 0;
+  font-size: 13px;
+}
+.tp-rec-line {
+  line-height: 1.4;
+}
+.tp-rec-status {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  background: var(--bg);
+  color: var(--muted);
+}
+.tp-rec-status.st-completed {
+  color: #15803d;
+}
+.tp-rec-ver {
+  color: var(--muted);
+  font-size: 12px;
+}
+.tp-rec-when {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 1px;
 }
 .tp-muted {
   color: var(--muted);

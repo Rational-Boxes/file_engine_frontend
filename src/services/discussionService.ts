@@ -262,6 +262,15 @@ export const discussionService = {
     return (data?.reviews ?? []).map(toReview)
   },
 
+  // The full review record for one file — every request raised on it (any
+  // requester/reviewer), READ-gated on the anchor. Backs the side-bar Reviews tab.
+  async listFileReviews(fileUid: string, status?: string): Promise<ReviewRequest[]> {
+    const { data } = await discussionClient.get(`/files/${fileUid}/reviews`, {
+      params: status ? { status } : {},
+    })
+    return (data?.reviews ?? []).map(toReview)
+  },
+
   async acknowledgeReview(reviewId: string): Promise<ReviewRequest> {
     const { data } = await discussionClient.post(`/reviews/${reviewId}/acknowledge`)
     return toReview(data)
