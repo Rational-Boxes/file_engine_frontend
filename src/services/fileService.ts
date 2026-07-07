@@ -111,6 +111,8 @@ export const fileService = {
     await apiClient.delete(`/v1/files/${uid}`)
   },
 
+  // Soft-deletes the directory node; the server allows a non-empty directory and
+  // hides its subtree by reachability, so no recursive flag is needed.
   async removeDirectory(uid: string): Promise<void> {
     await apiClient.delete(`/v1/dirs/${uid}`)
   },
