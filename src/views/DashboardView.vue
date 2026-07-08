@@ -36,9 +36,9 @@
       <!-- Document activity: new/updated docs the user may see (calm awareness). -->
       <section class="feed">
         <h2>Recent document activity</h2>
-        <p v-if="!d.activity.length" class="empty">Nothing new in your files.</p>
+        <p v-if="!d.activityFeed.length" class="empty">Nothing new in your files.</p>
         <ul v-else class="items">
-          <li v-for="a in d.activity" :key="a.id" class="item">
+          <li v-for="a in d.activityFeed" :key="a.id" class="item">
             <router-link class="item-main" :to="`/preview/${a.fileUid}`">
               <span class="kind" :data-kind="a.eventType">{{ a.eventType }}</span>
               <span class="who">{{ a.name || a.path || a.fileUid }}</span>

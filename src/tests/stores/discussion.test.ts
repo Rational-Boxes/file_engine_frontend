@@ -6,7 +6,14 @@ vi.mock('@/services/discussionService', () => ({
   discussionService: { attention: vi.fn(), activity: vi.fn(), markSeen: vi.fn() },
 }))
 import { discussionService } from '@/services/discussionService'
-import { useDiscussionStore } from '@/stores/discussion'
+import { useDiscussionStore, collapseNewFileActivity } from '@/stores/discussion'
+
+const act = (
+  id: number,
+  eventType: string,
+  fileUid: string,
+  ts: string,
+) => ({ id, fileUid, eventType, version: '', name: 'doc', path: '/doc', actor: 'a', ts })
 
 const notif = (id: number, readAt: string | null = null) => ({
   id, kind: 'mention', fileUid: 'f1', threadId: 't1', reviewId: null, actor: 'carol',
@@ -61,5 +68,42 @@ describe('discussion store', () => {
     await s.refresh()
     expect(s.error).toBeTruthy()
     expect(s.loading).toBe(false)
+  })
+
+  it('activityFeed collapses each new file\'s touch+put into a single "created"', async () => {
+    ;(discussionService.activity as ReturnType<typeof vi.fn>).mockResolvedValue([
+      act(2, 'updated', 'f1', '2026-07-08T10:00:03Z'), // put (3s after touch)
+      act(1, 'created', 'f1', '2026-07-08T10:00:00Z'), // touch
+    ])
+    const s = useDiscussionStore()
+    await s.refresh()
+    expect(s.activity.length).toBe(2) // raw feed untouched
+    const feed = s.activityFeed
+    expect(feed.length).toBe(1)
+    expect(feed[0].eventType).toBe('created')
+    expect(feed[0].fileUid).toBe('f1')
+  })
+})
+
+describe('collapseNewFileActivity', () => {
+  it('keeps a genuine later update (outside the window)', () => {
+    const out = collapseNewFileActivity([
+      act(2, 'updated', 'f1', '2026-07-08T10:10:00Z'), // 10 min later — a real edit
+      act(1, 'created', 'f1', '2026-07-08T10:00:00Z'),
+    ])
+    expect(out.map((a) => a.eventType).sort()).toEqual(['created', 'updated'])
+  })
+
+  it('keeps an update with no matching create (edit of an existing file)', () => {
+    const out = collapseNewFileActivity([act(9, 'updated', 'f2', '2026-07-08T10:00:00Z')])
+    expect(out).toHaveLength(1)
+  })
+
+  it('leaves other event types alone', () => {
+    const rows = [
+      act(1, 'created', 'a', '2026-07-08T10:00:00Z'),
+      act(2, 'restored', 'b', '2026-07-08T10:00:01Z'),
+    ]
+    expect(collapseNewFileActivity(rows)).toHaveLength(2)
   })
 })
