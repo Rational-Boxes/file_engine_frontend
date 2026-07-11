@@ -169,6 +169,108 @@
           <button class="link" :disabled="auditRows.length < auditPageSize || busy" @click="nextAuditPage">next →</button>
         </div>
       </section>
+
+      <!-- ============ SECURITY ============ -->
+      <section v-if="tab === 'Security'" class="panel">
+        <h2>Incidents</h2>
+        <div class="audit-table">
+          <table>
+            <thead><tr><th>time</th><th>rule</th><th>severity</th><th>actor</th><th>count</th><th>action</th><th>status</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="i in incidents" :key="i.id">
+                <td class="ts">{{ fmtTs(i.ts) }}</td>
+                <td>{{ i.rule_id }}</td>
+                <td><span class="sev" :class="i.severity">{{ i.severity }}</span></td>
+                <td class="actor"><button class="link" @click="auditForActor(i.actor)">{{ i.actor || i.group_key }}</button></td>
+                <td>{{ i.match_count }}</td>
+                <td>{{ i.action_taken }}<span v-if="i.dry_run" class="muted"> (dry-run)</span></td>
+                <td><span class="badge">{{ i.status }}</span></td>
+                <td><button v-if="i.status === 'open'" class="link" @click="ackIncident(i.id)">ack</button></td>
+              </tr>
+              <tr v-if="securityLoaded && !incidents.length"><td colspan="8" class="muted empty">No incidents.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="rules-head">
+          <h2>Rules</h2>
+          <button class="btn" @click="newRule">New rule</button>
+        </div>
+        <ul class="list">
+          <li v-for="r in rules" :key="r.id">
+            <span class="grow"><strong>{{ r.id }}</strong> <span class="muted">{{ r.description }}</span></span>
+            <span class="sev" :class="r.severity">{{ r.severity }}</span>
+            <span class="badge">{{ r.response }}<span v-if="r.dry_run"> · dry-run</span></span>
+            <label class="chk"><input type="checkbox" :checked="r.enabled" @change="toggleRuleEnabled(r)" /> on</label>
+            <button class="link" @click="editRule(r)">Edit</button>
+            <button class="link danger" @click="removeRule(r.id)">Delete</button>
+          </li>
+          <li v-if="securityLoaded && !rules.length" class="muted">No rules configured.</li>
+        </ul>
+
+        <div v-if="editing" class="editor">
+          <div class="rules-head">
+            <h3>{{ editing.id ? 'Edit rule' : 'New rule' }}</h3>
+            <button class="link" @click="toggleRaw">{{ rawMode ? 'Guided form' : 'Raw DSL' }}</button>
+          </div>
+          <div v-if="!rawMode" class="grid2">
+            <label>id<input v-model="editing.id" placeholder="rule_id" /></label>
+            <label>description<input v-model="editing.description" /></label>
+            <label>category
+              <select v-model="editing.category"><option v-for="c in AUDIT_CATEGORIES" :key="c" :value="c">{{ c }}</option></select>
+            </label>
+            <label>action<input v-model="editing.action" placeholder="any" /></label>
+            <label>outcome
+              <select v-model="editing.outcome"><option value="">any</option><option v-for="o in AUDIT_OUTCOMES" :key="o" :value="o">{{ o }}</option></select>
+            </label>
+            <label>group by
+              <select v-model="editing.group_by"><option v-for="g in GROUP_BYS" :key="g" :value="g">{{ g }}</option></select>
+            </label>
+            <label>window (s)<input v-model.number="editing.window_s" type="number" /></label>
+            <label>threshold<input v-model.number="editing.threshold" type="number" /></label>
+            <label>then action<input v-model="editing.then_action" placeholder="sequence seal, e.g. login_success" /></label>
+            <label>severity
+              <select v-model="editing.severity"><option v-for="s in SEVERITIES" :key="s" :value="s">{{ s }}</option></select>
+            </label>
+            <label>response
+              <select v-model="editing.response"><option v-for="rr in RESPONSES" :key="rr" :value="rr">{{ rr }}</option></select>
+            </label>
+            <label class="chk">dry-run<input type="checkbox" v-model="editing.dry_run" /></label>
+          </div>
+          <textarea v-else v-model="rawText" rows="14" spellcheck="false"></textarea>
+          <div class="row">
+            <button class="btn" :disabled="busy" @click="saveRule">Save</button>
+            <button class="btn ghost" :disabled="busy" @click="validateEditing">Validate against history</button>
+            <button class="link" @click="cancelEdit">Cancel</button>
+            <span v-if="validateResult" class="ok">would fire {{ validateResult.would_fire }}× over {{ validateResult.events_examined }} recent events</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ EVENTS ============ -->
+      <section v-if="tab === 'Events'" class="panel">
+        <div class="audit-head">
+          <h2>Live activity</h2>
+          <span class="muted">tenant-wide · auto-refresh 5s</span>
+          <button class="link" @click="toggleEventsPause">{{ eventsPaused ? 'Resume' : 'Pause' }}</button>
+        </div>
+        <div class="audit-table">
+          <table>
+            <thead><tr><th>time</th><th>category</th><th>action</th><th>outcome</th><th>actor</th><th>target</th></tr></thead>
+            <tbody>
+              <tr v-for="r in eventFeed" :key="r.seq" class="arow" :class="r.outcome">
+                <td class="ts">{{ fmtTs(r.ts) }}</td>
+                <td><span class="badge">{{ r.category }}</span></td>
+                <td>{{ r.action }}</td>
+                <td><span class="oc" :class="r.outcome">{{ r.outcome }}</span></td>
+                <td class="actor">{{ r.actor }}</td>
+                <td class="tgt">{{ r.target_name || r.target_uid || '—' }}</td>
+              </tr>
+              <tr v-if="!eventFeed.length"><td colspan="6" class="muted empty">Waiting for activity…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </main>
   </div>
 </template>
@@ -179,12 +281,14 @@ import AppNav from '@/components/AppNav.vue'
 import ShadowHtml from '@/components/ShadowHtml.vue'
 import { ldapAdminService, type EmailTemplate, type Role, type UserSummary } from '@/services/ldapAdminService'
 import { auditService, type AuditRow, type ChainResult } from '@/services/auditService'
+import { securityService, type Incident, type SecurityRule } from '@/services/securityService'
+import { onBeforeUnmount } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
 
 const auth = useAuthStore()
 
-const TABS = ['Users', 'Roles', 'Email templates', 'Audit'] as const
+const TABS = ['Users', 'Roles', 'Email templates', 'Audit', 'Security', 'Events'] as const
 const tab = ref<(typeof TABS)[number]>('Users')
 // Literal placeholder hints (kept in the script so the template compiler doesn't
 // treat the {{ }} as interpolation).
@@ -226,6 +330,23 @@ const auditLoaded = ref(false)
 const selectedRow = ref<AuditRow | null>(null)
 const chain = ref<ChainResult | null>(null)
 const chainBusy = ref(false)
+
+// security
+const SEVERITIES = ['info', 'warn', 'serious', 'critical']
+const RESPONSES = ['flag', 'alert', 'auto_disable']
+const GROUP_BYS = ['actor', 'source_addr', 'tenant']
+const incidents = ref<Incident[]>([])
+const rules = ref<SecurityRule[]>([])
+const securityLoaded = ref(false)
+const editing = ref<SecurityRule | null>(null)
+const rawMode = ref(false)
+const rawText = ref('')
+const validateResult = ref<{ would_fire: number; events_examined: number } | null>(null)
+
+// events (live poll of recent activity)
+const eventFeed = ref<AuditRow[]>([])
+const eventsPaused = ref(false)
+let eventsTimer: ReturnType<typeof setInterval> | undefined
 
 onMounted(async () => {
   await loadRoles()
@@ -392,13 +513,133 @@ function fmtTs(ts: string) {
   return isNaN(d.getTime()) ? ts : d.toLocaleString()
 }
 
-// Load the audit log lazily the first time the tab is opened.
+// --- security ---
+function blankRule(): SecurityRule {
+  return {
+    id: '', description: '', category: 'auth', group_by: 'actor', window_s: 300, threshold: 5,
+    action: '', outcome: '', then_action: '', severity: 'warn', response: 'flag',
+    dry_run: false, cooldown_s: 300, enabled: true,
+  }
+}
+const loadSecurity = wrap(async () => {
+  const t = auth.tenant ?? ''
+  incidents.value = await securityService.incidents(t)
+  rules.value = (await securityService.rules(t)).effective
+})
+const ackIncident = (id: number) => wrap(async () => {
+  await securityService.setIncidentStatus(id, 'acknowledged', auth.tenant ?? '')
+  incidents.value = await securityService.incidents(auth.tenant ?? '')
+})()
+function newRule() {
+  editing.value = blankRule()
+  rawMode.value = false
+  rawText.value = ''
+  validateResult.value = null
+}
+function editRule(r: SecurityRule) {
+  editing.value = { ...r }
+  rawText.value = JSON.stringify(r, null, 2)
+  rawMode.value = false
+  validateResult.value = null
+}
+function cancelEdit() {
+  editing.value = null
+  validateResult.value = null
+}
+function toggleRaw() {
+  if (!editing.value) return
+  if (!rawMode.value) rawText.value = JSON.stringify(editing.value, null, 2)
+  else {
+    try {
+      editing.value = { ...editing.value, ...JSON.parse(rawText.value) }
+    } catch {
+      error.value = 'Invalid JSON'
+      return
+    }
+  }
+  rawMode.value = !rawMode.value
+}
+function currentRule(): SecurityRule | null {
+  if (!editing.value) return null
+  if (!rawMode.value) return editing.value
+  try {
+    return { ...editing.value, ...JSON.parse(rawText.value) }
+  } catch {
+    error.value = 'Invalid JSON'
+    return null
+  }
+}
+const saveRule = wrap(async () => {
+  const r = currentRule()
+  if (!r || !r.id) {
+    error.value = 'A rule id is required'
+    return
+  }
+  await securityService.saveRule(r, auth.tenant ?? '')
+  editing.value = null
+  await loadSecurity()
+})
+const removeRule = (id: string) => wrap(async () => {
+  await securityService.deleteRule(id, auth.tenant ?? '')
+  await loadSecurity()
+})()
+const toggleRuleEnabled = (r: SecurityRule) => wrap(async () => {
+  await securityService.saveRule({ ...r, enabled: !r.enabled }, auth.tenant ?? '')
+  await loadSecurity()
+})()
+const validateEditing = wrap(async () => {
+  const r = currentRule()
+  if (!r) return
+  validateResult.value = await securityService.validate(r, auth.tenant ?? '')
+})
+// Jump from an incident to its evidence in the Audit tab.
+function auditForActor(actor: string | null) {
+  if (!actor) return
+  resetAudit()
+  auditFilters.actor = actor
+  tab.value = 'Audit'
+  if (!auditLoaded.value) auditLoaded.value = true
+  searchAudit()
+}
+
+// --- events (live poll) ---
+async function refreshEvents() {
+  if (eventsPaused.value) return
+  try {
+    eventFeed.value = (await auditService.query({ tenant: auth.tenant ?? '', page: 0, page_size: 30 })).rows
+  } catch {
+    /* keep the last feed on a transient error */
+  }
+}
+function startEventsPoll() {
+  refreshEvents()
+  if (!eventsTimer) eventsTimer = setInterval(refreshEvents, 5000)
+}
+function stopEventsPoll() {
+  if (eventsTimer) {
+    clearInterval(eventsTimer)
+    eventsTimer = undefined
+  }
+}
+function toggleEventsPause() {
+  eventsPaused.value = !eventsPaused.value
+  if (!eventsPaused.value) refreshEvents()
+}
+onBeforeUnmount(stopEventsPoll)
+
+// Lazy-load each tab's data the first time it is opened; poll only while on Events.
 watch(tab, (t) => {
   if (t === 'Audit' && !auditLoaded.value) {
     auditLoaded.value = true
     loadAudit()
     verifyChain()
   }
+  if (t === 'Security' && !securityLoaded.value) {
+    securityLoaded.value = true
+    loadSecurity()
+  }
+  if (t === 'Events') startEventsPoll()
+  else stopEventsPoll()
 })
 </script>
 
@@ -464,4 +705,13 @@ select { border: 1px solid var(--border); border-radius: 8px; background: var(--
 .detail pre { margin: 2px 0; padding: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; font-size: 11.5px; }
 .empty { text-align: center; padding: 16px; }
 .pager { display: flex; align-items: center; gap: 12px; justify-content: center; margin-top: 6px; }
+/* --- security --- */
+.rules-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.sev { font-size: 11px; padding: 0 6px; border-radius: 999px; text-transform: capitalize; }
+.sev.info { color: var(--muted); background: var(--bg); }
+.sev.warn { color: #92400e; background: #fffbeb; }
+.sev.serious, .sev.critical { color: #b00020; background: #fef2f2; }
+.editor { border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.editor textarea { font-family: ui-monospace, 'SFMono-Regular', monospace; font-size: 12px; }
 </style>
