@@ -54,6 +54,11 @@ export default defineConfig({
         ws: true, // /files/{uid}/live WebSocket (§10h)
         rewrite: (p) => p.replace(/^\/discuss/, ''),
       },
+      '/audit': {
+        target: 'http://localhost:8097', // audit query/export/verify API (§9)
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/audit/, ''),
+      },
     },
   },
   test: {
