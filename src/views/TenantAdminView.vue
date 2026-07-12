@@ -268,7 +268,7 @@
           <table>
             <thead><tr><th>time</th><th>category</th><th>action</th><th>outcome</th><th>actor</th><th>target</th></tr></thead>
             <tbody>
-              <tr v-for="r in eventFeed" :key="r.seq" class="arow" :class="r.outcome">
+              <tr v-for="r in visibleEvents" :key="r.seq" class="arow" :class="r.outcome">
                 <td class="ts">{{ fmtTs(r.ts) }}</td>
                 <td><span class="badge">{{ r.category }}</span></td>
                 <td>{{ r.action }}</td>
@@ -276,7 +276,7 @@
                 <td class="actor">{{ r.actor }}</td>
                 <td class="tgt">{{ r.target_name || r.target_uid || '—' }}</td>
               </tr>
-              <tr v-if="!eventFeed.length"><td colspan="6" class="muted empty">Waiting for activity…</td></tr>
+              <tr v-if="!visibleEvents.length"><td colspan="6" class="muted empty">Waiting for activity…</td></tr>
             </tbody>
           </table>
         </div>
@@ -355,6 +355,11 @@ const validateResult = ref<{ would_fire: number; events_examined: number } | nul
 
 // events (live poll of recent activity)
 const eventFeed = ref<AuditRow[]>([])
+// Hide the current user's own audit_read entries from the live feed: polling the
+// audit log to build this feed generates them, so they are self-referential noise.
+const visibleEvents = computed(() =>
+  eventFeed.value.filter((r) => !(r.action === 'audit_read' && r.actor === auth.user)),
+)
 const eventsPaused = ref(false)
 let eventsTimer: ReturnType<typeof setInterval> | undefined
 
