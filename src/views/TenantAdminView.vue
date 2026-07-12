@@ -213,7 +213,7 @@
 
         <Teleport to="body">
         <div v-if="editing" class="rule-modal-backdrop" @click.self="cancelEdit">
-          <div class="rule-modal" role="dialog" aria-modal="true" :aria-label="editing.id ? 'Edit rule' : 'New rule'">
+          <div class="rule-modal" :class="{ raw: rawMode }" role="dialog" aria-modal="true" :aria-label="editing.id ? 'Edit rule' : 'New rule'">
           <header class="rule-modal-head">
             <h3>{{ editing.id ? 'Edit rule' : 'New rule' }}</h3>
             <button class="link" @click="toggleRaw">{{ rawMode ? 'Guided form' : 'Raw DSL' }}</button>
@@ -244,7 +244,7 @@
             </label>
             <label class="chk">dry-run<input type="checkbox" v-model="editing.dry_run" /></label>
           </div>
-          <textarea v-else v-model="rawText" rows="14" spellcheck="false"></textarea>
+          <textarea v-else v-model="rawText" class="raw-dsl" rows="14" spellcheck="false"></textarea>
           </div>
           <footer class="rule-modal-foot">
             <button class="btn" :disabled="busy" @click="saveRule">Save</button>
@@ -732,6 +732,8 @@ select { border: 1px solid var(--border); border-radius: 8px; background: var(--
   width: 100%; max-width: 640px; max-height: calc(100vh - 80px);
   display: flex; flex-direction: column; overflow: hidden;
 }
+/* Raw DSL mode: take the full available height so the editor textarea fills it. */
+.rule-modal.raw { height: calc(100vh - 80px); }
 .rule-modal-head {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 18px; border-bottom: 1px solid var(--border);
@@ -741,7 +743,7 @@ select { border: 1px solid var(--border); border-radius: 8px; background: var(--
   border: none; background: none; font-size: 18px; line-height: 1;
   color: var(--muted); cursor: pointer; flex: 0 0 auto;
 }
-.rule-modal-body { padding: 16px 18px; overflow-y: auto; }
+.rule-modal-body { padding: 16px 18px; overflow-y: auto; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .rule-modal-foot {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 14px 18px; border-top: 1px solid var(--border);
@@ -766,5 +768,8 @@ select { border: 1px solid var(--border); border-radius: 8px; background: var(--
 .sev.serious, .sev.critical { color: #b00020; background: #fef2f2; }
 .editor { border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.editor textarea { font-family: ui-monospace, 'SFMono-Regular', monospace; font-size: 12px; }
+.raw-dsl {
+  flex: 1 1 auto; min-height: 240px; width: 100%; box-sizing: border-box;
+  resize: none; font-family: ui-monospace, 'SFMono-Regular', monospace; font-size: 12px;
+}
 </style>
