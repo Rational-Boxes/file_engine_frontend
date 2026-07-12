@@ -87,6 +87,6 @@ input { padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; 
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .link { color: var(--primary); font-size: 13px; }
 .muted { color: var(--muted); font-size: 13px; }
-.ok { color: #15803d; }
-.err { color: #b00020; font-size: 13px; }
+.ok { color: var(--success); }
+.err { color: var(--danger); font-size: 13px; }
 </style>

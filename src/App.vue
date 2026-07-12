@@ -53,6 +53,7 @@ onMounted(() => {
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
   --danger: #dc2626;
+  --success: #15803d;
   /* Single sans-serif stack used everywhere (no monospace/serif in the UI). */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
@@ -69,6 +70,7 @@ onMounted(() => {
   --primary: #3b82f6;
   --primary-hover: #60a5fa;
   --danger: #f87171;
+  --success: #4ade80;
 }
 
 * {

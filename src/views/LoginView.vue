@@ -30,6 +30,7 @@
         <button class="btn btn-primary" type="submit" :disabled="auth.loading">
           {{ auth.loading ? 'Signing in…' : 'Log in' }}
         </button>
+        <p class="forgot"><RouterLink to="/reset-password">Forgot password?</RouterLink></p>
       </form>
     </div>
   </div>
@@ -184,5 +185,17 @@ h1 {
   color: var(--danger);
   font-size: 13px;
   margin: 0;
+}
+.forgot {
+  text-align: center;
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+.forgot a {
+  color: var(--primary);
+  text-decoration: none;
+}
+.forgot a:hover {
+  text-decoration: underline;
 }
 </style>
