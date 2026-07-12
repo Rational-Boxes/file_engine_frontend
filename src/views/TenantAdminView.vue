@@ -1,7 +1,7 @@
 <template>
   <div class="tadmin">
     <AppNav />
-    <main class="content">
+    <main class="content" :class="{ wide: tab === 'Audit' || tab === 'Security' || tab === 'Events' }">
       <h1>Tenant administration</h1>
       <nav class="tabs">
         <button v-for="t in TABS" :key="t" :class="{ active: tab === t }" @click="tab = t">{{ t }}</button>
@@ -645,6 +645,9 @@ watch(tab, (t) => {
 
 <style scoped>
 .content { max-width: 780px; margin: 0 auto; padding: 20px 18px; }
+/* The log/table tabs (Audit, Security, Events) use a wide multi-column table,
+   so they get the full viewport width; the form tabs stay narrow for reading. */
+.content.wide { max-width: none; }
 .tabs, .subtabs { display: flex; gap: 6px; margin: 12px 0; border-bottom: 1px solid var(--border); }
 .tabs button, .subtabs button { border: none; background: none; padding: 8px 12px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
 .tabs button.active, .subtabs button.active { color: var(--fg); border-bottom-color: var(--primary); }
