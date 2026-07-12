@@ -142,14 +142,17 @@
                   <td>{{ r.action }}</td>
                   <td><span class="oc" :class="r.outcome">{{ r.outcome }}</span></td>
                   <td class="actor">{{ r.actor }}</td>
-                  <td class="tgt">{{ r.target_name || r.target_uid || '—' }}</td>
+                  <td class="tgt">
+                    <span class="tname" :title="r.target_name || r.target_uid || ''">{{ r.target_name || r.target_uid || '—' }}</span>
+                    <span v-if="r.target_name && r.target_uid" class="tuid" :title="r.target_uid">{{ r.target_uid }}</span>
+                  </td>
                   <td class="muted">{{ r.source_addr || r.source_iface || '—' }}</td>
                 </tr>
                 <tr v-if="selectedRow?.seq === r.seq" class="detail">
                   <td colspan="7">
                     <dl>
                       <div><dt>seq</dt><dd>{{ r.seq }}</dd></div>
-                      <div><dt>target</dt><dd>{{ r.target_uid || '—' }} <span class="muted">{{ r.target_type }}</span></dd></div>
+                      <div><dt>target</dt><dd><span v-if="r.target_name">{{ r.target_name }} · </span>{{ r.target_uid || '—' }} <span class="muted">{{ r.target_type }}</span></dd></div>
                       <div><dt>roles</dt><dd>{{ r.actor_roles.join(', ') || '—' }}</dd></div>
                       <div><dt>source</dt><dd>{{ r.source_iface || '—' }} {{ r.source_addr || '' }}</dd></div>
                       <div v-if="r.request_id"><dt>request id</dt><dd>{{ r.request_id }}</dd></div>
@@ -208,11 +211,15 @@
           <li v-if="securityLoaded && !rules.length" class="muted">No rules configured.</li>
         </ul>
 
-        <div v-if="editing" class="editor">
-          <div class="rules-head">
+        <Teleport to="body">
+        <div v-if="editing" class="rule-modal-backdrop" @click.self="cancelEdit">
+          <div class="rule-modal" role="dialog" aria-modal="true" :aria-label="editing.id ? 'Edit rule' : 'New rule'">
+          <header class="rule-modal-head">
             <h3>{{ editing.id ? 'Edit rule' : 'New rule' }}</h3>
             <button class="link" @click="toggleRaw">{{ rawMode ? 'Guided form' : 'Raw DSL' }}</button>
-          </div>
+            <button class="rule-modal-x" aria-label="Close" @click="cancelEdit">✕</button>
+          </header>
+          <div class="rule-modal-body">
           <div v-if="!rawMode" class="grid2">
             <label>id<input v-model="editing.id" placeholder="rule_id" /></label>
             <label>description<input v-model="editing.description" /></label>
@@ -238,13 +245,16 @@
             <label class="chk">dry-run<input type="checkbox" v-model="editing.dry_run" /></label>
           </div>
           <textarea v-else v-model="rawText" rows="14" spellcheck="false"></textarea>
-          <div class="row">
+          </div>
+          <footer class="rule-modal-foot">
             <button class="btn" :disabled="busy" @click="saveRule">Save</button>
             <button class="btn ghost" :disabled="busy" @click="validateEditing">Validate against history</button>
             <button class="link" @click="cancelEdit">Cancel</button>
             <span v-if="validateResult" class="ok">would fire {{ validateResult.would_fire }}× over {{ validateResult.events_examined }} recent events</span>
+          </footer>
           </div>
         </div>
+        </Teleport>
       </section>
 
       <!-- ============ EVENTS ============ -->
@@ -546,6 +556,15 @@ function cancelEdit() {
   editing.value = null
   validateResult.value = null
 }
+// Close the rule editor modal on Escape.
+function onRuleModalKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && editing.value) {
+    e.preventDefault()
+    cancelEdit()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onRuleModalKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onRuleModalKey))
 function toggleRaw() {
   if (!editing.value) return
   if (!rawMode.value) rawText.value = JSON.stringify(editing.value, null, 2)
@@ -695,7 +714,38 @@ select { border: 1px solid var(--border); border-radius: 8px; background: var(--
 .arow:hover { background: var(--bg); }
 .arow.denied td, .arow.error td { background: #fef2f2; }
 .ts { white-space: nowrap; color: var(--muted); }
-.actor, .tgt { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.actor { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tgt { max-width: 240px; }
+.tgt .tname, .tgt .tuid { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tgt .tuid { font-size: 11px; color: var(--muted); }
+
+/* Rule create/edit overlay modal (teleported to <body>). */
+.rule-modal-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 40px 20px; overflow-y: auto;
+}
+.rule-modal {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+  width: 100%; max-width: 640px; max-height: calc(100vh - 80px);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.rule-modal-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+}
+.rule-modal-head h3 { margin: 0; flex: 1 1 auto; }
+.rule-modal-x {
+  border: none; background: none; font-size: 18px; line-height: 1;
+  color: var(--muted); cursor: pointer; flex: 0 0 auto;
+}
+.rule-modal-body { padding: 16px 18px; overflow-y: auto; }
+.rule-modal-foot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 14px 18px; border-top: 1px solid var(--border);
+}
 .oc { font-size: 11px; padding: 0 6px; border-radius: 999px; }
 .oc.ok { color: #15803d; background: #f0fdf4; }
 .oc.denied, .oc.error { color: #b00020; background: #fef2f2; }
