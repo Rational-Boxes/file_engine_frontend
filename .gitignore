@@ -4,4 +4,4 @@ node_modules/
 .env
 dist/
 html/
-coverage/
+coverage/.claude/
