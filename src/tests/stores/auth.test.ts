@@ -4,6 +4,8 @@ import { createPinia, setActivePinia } from 'pinia'
 vi.mock('@/services/authService', () => ({
   authService: {
     ldapLogin: vi.fn(),
+    verify2fa: vi.fn(),
+    send2faCode: vi.fn(),
     whoami: vi.fn(),
     consumeOAuthFragment: vi.fn(),
     logout: vi.fn(),
@@ -39,7 +41,7 @@ describe('auth store', () => {
   })
 
   it('ldapLogin stores identity from whoami on success', async () => {
-    ;(authService.ldapLogin as any).mockResolvedValue(undefined)
+    ;(authService.ldapLogin as any).mockResolvedValue({ kind: 'session' })
     ;(authService.whoami as any).mockResolvedValue({
       user: 'alice',
       tenant: 'default',
@@ -57,7 +59,7 @@ describe('auth store', () => {
 
   it('ldapLogin carries the current subdomain tenant (X-Tenant) into the login', async () => {
     ;(activeTenantFromHost as any).mockReturnValue('acme')
-    ;(authService.ldapLogin as any).mockResolvedValue(undefined)
+    ;(authService.ldapLogin as any).mockResolvedValue({ kind: 'session' })
     ;(authService.whoami as any).mockResolvedValue({ user: 'a', tenant: 'acme', roles: [] })
     const { tokenStorage } = await import('@/utils/tokenStorage')
     const store = useAuthStore()
@@ -74,6 +76,64 @@ describe('auth store', () => {
     expect(ok).toBe(false)
     expect(store.error).toBeTruthy()
     expect(store.user).toBeNull()
+  })
+
+  it('ldapLogin sets an mfa challenge (not a session) when a second factor is required', async () => {
+    ;(authService.ldapLogin as any).mockResolvedValue({
+      kind: 'mfa',
+      mfaToken: 'mtok',
+      methods: ['totp', 'email'],
+      mustEnroll: false,
+    })
+    const store = useAuthStore()
+    const ok = await store.ldapLogin('alice', 'pw')
+    expect(ok).toBe(false) // not signed in yet
+    expect(store.error).toBeNull() // a challenge is not an error
+    expect(store.mfaChallenge).toEqual({
+      mfaToken: 'mtok',
+      methods: ['totp', 'email'],
+      mustEnroll: false,
+    })
+    expect(authService.whoami).not.toHaveBeenCalled()
+  })
+
+  it('verify2fa completes the challenge and establishes a session', async () => {
+    ;(authService.ldapLogin as any).mockResolvedValue({
+      kind: 'mfa', mfaToken: 'mtok', methods: ['totp'], mustEnroll: false,
+    })
+    ;(authService.verify2fa as any).mockResolvedValue(undefined)
+    ;(authService.whoami as any).mockResolvedValue({ user: 'alice', tenant: 'default', roles: ['editor'] })
+    const store = useAuthStore()
+    await store.ldapLogin('alice', 'pw')
+    const ok = await store.verify2fa('totp', '123456')
+    expect(ok).toBe(true)
+    expect(authService.verify2fa).toHaveBeenCalledWith('mtok', 'totp', '123456')
+    expect(store.mfaChallenge).toBeNull()
+    expect(store.user).toBe('alice')
+    expect(store.isAuthenticated).toBe(true)
+  })
+
+  it('verify2fa keeps the challenge and reports an error on a wrong code', async () => {
+    ;(authService.ldapLogin as any).mockResolvedValue({
+      kind: 'mfa', mfaToken: 'mtok', methods: ['totp'], mustEnroll: false,
+    })
+    ;(authService.verify2fa as any).mockRejectedValue(new Error('invalid'))
+    const store = useAuthStore()
+    await store.ldapLogin('alice', 'pw')
+    const ok = await store.verify2fa('totp', '000000')
+    expect(ok).toBe(false)
+    expect(store.error).toBeTruthy()
+    expect(store.mfaChallenge).not.toBeNull() // still challenging — user can retry
+  })
+
+  it('cancelMfa clears the pending challenge', async () => {
+    ;(authService.ldapLogin as any).mockResolvedValue({
+      kind: 'mfa', mfaToken: 'mtok', methods: ['totp'], mustEnroll: false,
+    })
+    const store = useAuthStore()
+    await store.ldapLogin('alice', 'pw')
+    store.cancelMfa()
+    expect(store.mfaChallenge).toBeNull()
   })
 
   it('maps administrators/system_admin to admin level', async () => {

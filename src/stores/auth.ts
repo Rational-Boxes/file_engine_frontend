@@ -31,6 +31,11 @@ interface AuthState {
   accessLevel: AccessLevel
   loading: boolean
   error: string | null
+  // Set when a password login needs a second factor (PROPOSAL §4.6): holds the
+  // short-lived challenge token + the methods the user may use. Cleared on
+  // successful verification or a fresh login attempt. Its presence drives the
+  // LoginView to show the 2FA challenge step.
+  mfaChallenge: { mfaToken: string; methods: string[]; mustEnroll: boolean } | null
 }
 
 export const useAuthStore = defineStore('auth', {
@@ -43,6 +48,7 @@ export const useAuthStore = defineStore('auth', {
     accessLevel: 'user',
     loading: false,
     error: null,
+    mfaChallenge: null,
   }),
 
   getters: {
@@ -166,9 +172,23 @@ export const useAuthStore = defineStore('auth', {
       return true
     },
 
+    // After a full session token has been stored (password-only login, 2FA
+    // completion, or OAuth), hydrate the reactive identity and start the refresh
+    // timer. Shared by every path that ends in a session.
+    async hydrateSession() {
+      this.syncToken()
+      this.applyIdentity(await authService.whoami())
+      await this.loadTenants()
+      this.scheduleRefresh()
+    },
+
+    // Returns true when a full session is established, false on error. When the
+    // bridge demands a second factor, it returns false but sets `mfaChallenge`
+    // (and no error) — the LoginView switches to the challenge step in that case.
     async ldapLogin(username: string, password: string, tenant?: string) {
       this.loading = true
       this.error = null
+      this.mfaChallenge = null
       try {
         // The subdomain is authoritative for which tenant we're logging into, so
         // carry it explicitly (X-Tenant) — don't rely on the bridge parsing the
@@ -179,11 +199,16 @@ export const useAuthStore = defineStore('auth', {
           tokenStorage.setActiveTenant(activeTenant)
           this.tenant = activeTenant
         }
-        await authService.ldapLogin(username, password, activeTenant || undefined)
-        this.syncToken()
-        this.applyIdentity(await authService.whoami())
-        await this.loadTenants()
-        this.scheduleRefresh()
+        const result = await authService.ldapLogin(username, password, activeTenant || undefined)
+        if (result.kind === 'mfa') {
+          this.mfaChallenge = {
+            mfaToken: result.mfaToken,
+            methods: result.methods,
+            mustEnroll: result.mustEnroll,
+          }
+          return false
+        }
+        await this.hydrateSession()
         return true
       } catch (e) {
         this.error = errorMessage(e, 'Login failed')
@@ -191,6 +216,42 @@ export const useAuthStore = defineStore('auth', {
       } finally {
         this.loading = false
       }
+    },
+
+    // Complete an in-progress 2FA challenge with a code (TOTP / email / recovery).
+    // On success a full session is established and the challenge is cleared.
+    async verify2fa(method: string, code: string) {
+      if (!this.mfaChallenge) return false
+      this.loading = true
+      this.error = null
+      try {
+        await authService.verify2fa(this.mfaChallenge.mfaToken, method, code)
+        this.mfaChallenge = null
+        await this.hydrateSession()
+        return true
+      } catch (e) {
+        this.error = errorMessage(e, 'Verification failed')
+        return false
+      } finally {
+        this.loading = false
+      }
+    },
+
+    // Trigger delivery of an email one-time code for the current challenge.
+    async send2faCode(method: string) {
+      if (!this.mfaChallenge) return false
+      try {
+        return await authService.send2faCode(this.mfaChallenge.mfaToken, method)
+      } catch (e) {
+        this.error = errorMessage(e, 'Could not send code')
+        return false
+      }
+    },
+
+    // Abandon an in-progress challenge (e.g. "back to login").
+    cancelMfa() {
+      this.mfaChallenge = null
+      this.error = null
     },
 
     // Finish an OAuth login: read the token from the URL fragment, then whoami.
@@ -223,6 +284,7 @@ export const useAuthStore = defineStore('auth', {
       this.tenants = []
       this.roles = []
       this.accessLevel = 'user'
+      this.mfaChallenge = null
     },
   },
 })

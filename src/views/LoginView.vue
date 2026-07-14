@@ -1,6 +1,8 @@
 <template>
   <div class="login-page">
     <div class="login-card">
+      <TwoFactorChallenge v-if="auth.mfaChallenge" @done="onMfaDone" />
+      <template v-else>
       <h1>FileEngine</h1>
       <p class="subtitle">Sign in to continue</p>
 
@@ -32,6 +34,7 @@
         </button>
         <p class="forgot"><RouterLink to="/reset-password">Forgot password?</RouterLink></p>
       </form>
+      </template>
     </div>
   </div>
 </template>
@@ -42,6 +45,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
 import { stashRedirect, takeRedirect } from '@/utils/redirect'
+import TwoFactorChallenge from '@/components/TwoFactorChallenge.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -67,9 +71,15 @@ const loginWithProvider = (p: string) => {
 }
 
 const loginLdap = async () => {
+  // Returns false (with auth.mfaChallenge set) when a second factor is needed —
+  // the template swaps to <TwoFactorChallenge>, which emits `done` on success.
   if (await auth.ldapLogin(username.value, password.value)) {
     router.push(takeRedirect())
   }
+}
+
+const onMfaDone = () => {
+  router.push(takeRedirect())
 }
 </script>
 

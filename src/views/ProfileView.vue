@@ -40,6 +40,8 @@
           <span v-if="pwError" class="err">{{ pwError }}</span>
         </div>
       </section>
+
+      <TwoFactorSettings />
     </main>
   </div>
 </template>
@@ -48,6 +50,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import PasswordRequirements from '@/components/PasswordRequirements.vue'
+import TwoFactorSettings from '@/components/TwoFactorSettings.vue'
 import { ldapAdminService, type Profile } from '@/services/ldapAdminService'
 import { errorMessage } from '@/services/apiClient'
 

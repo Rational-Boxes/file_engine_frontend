@@ -41,6 +41,19 @@ export interface PasswordPolicy {
   min_classes: number
   forbid_identity_substring: boolean
 }
+export interface TwoFactorStatus {
+  enabled: boolean
+  pending: boolean
+  recovery_remaining: number
+  required: boolean
+  methods: string[]
+}
+export interface TwoFactorSetup {
+  secret: string
+  otpauth_uri: string
+  issuer: string
+  account: string
+}
 
 export const ldapAdminService = {
   // --- tenant admin: roles ---
@@ -105,6 +118,29 @@ export const ldapAdminService = {
   },
   async changePassword(current_password: string, new_password: string): Promise<void> {
     await ldapAdminClient.post('/v1/me/password', { current_password, new_password })
+  },
+
+  // --- self-service two-factor auth (PROPOSAL §4) ---
+  async twofaStatus(): Promise<TwoFactorStatus> {
+    return (await ldapAdminClient.get('/v1/me/2fa/status')).data
+  },
+  // Begin enrollment: returns a fresh (pending) secret + otpauth URI to show as a
+  // QR / manual key. Not active until confirmed via twofaVerifySetup().
+  async twofaSetup(): Promise<TwoFactorSetup> {
+    return (await ldapAdminClient.post('/v1/me/2fa/setup')).data
+  },
+  // Confirm enrollment with a code from the authenticator; returns recovery codes
+  // (shown once).
+  async twofaVerifySetup(code: string): Promise<{ enabled: boolean; recovery_codes: string[] }> {
+    return (await ldapAdminClient.post('/v1/me/2fa/verify-setup', { code })).data
+  },
+  // Turn 2FA off; requires a current TOTP or a recovery code.
+  async twofaDisable(code: string): Promise<void> {
+    await ldapAdminClient.post('/v1/me/2fa/disable', { code })
+  },
+  // Regenerate recovery codes (invalidates the old set); requires a current TOTP.
+  async twofaRegenerateRecovery(code: string): Promise<{ recovery_codes: string[] }> {
+    return (await ldapAdminClient.post('/v1/me/2fa/recovery-codes', { code })).data
   },
 
   // --- public: policy + invite + reset ---

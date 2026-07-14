@@ -22,12 +22,14 @@
     "dompurify": "^3.4.11",
     "marked": "^18.0.5",
     "pinia": "^2.1.7",
+    "qrcode": "^1.5.4",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.8.0",
     "@types/node": "^20.12.7",
+    "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^5.0.4",
     "@vitest/coverage-v8": "^1.4.0",
     "@vitest/ui": "^1.4.0",
