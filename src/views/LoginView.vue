@@ -6,6 +6,10 @@
       <h1>FileEngine</h1>
       <p class="subtitle">Sign in to continue</p>
 
+      <p v-if="route.query.reason === '2fa'" class="notice-2fa">
+        This workspace requires two-factor authentication. Please sign in again to continue.
+      </p>
+
       <div v-if="providers.length" class="providers">
         <button
           v-for="p in providers"
@@ -195,6 +199,15 @@ h1 {
   color: var(--danger);
   font-size: 13px;
   margin: 0;
+}
+.notice-2fa {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 16px;
 }
 .forgot {
   text-align: center;

@@ -31,10 +31,17 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status
+    // 401: token missing/expired. 403 + 2fa_required: the active tenant requires a
+    // second factor this (password-only) session hasn't cleared — e.g. after
+    // switching into a tenant that mandates 2FA. Both require a fresh login; the
+    // 2FA case adds ?reason=2fa so the login page can explain, and re-login will
+    // run the challenge for the persisted active tenant.
+    const needs2fa = status === 403 && error.response?.data?.error === '2fa_required'
+    if (status === 401 || needs2fa) {
       tokenStorage.clearTokens()
       if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        window.location.assign('/login')
+        window.location.assign(needs2fa ? '/login?reason=2fa' : '/login')
       }
     }
     return Promise.reject(error)
