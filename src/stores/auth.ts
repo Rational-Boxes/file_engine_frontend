@@ -236,10 +236,15 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false
         return false
       }
-      // Verified: the session token is stored. Clear the challenge and hydrate the
-      // identity best-effort — a transient whoami/tenants error here must not throw
-      // the user back to the password form with a valid session in hand.
-      this.mfaChallenge = null
+      // Verified: the session token is stored. Hydrate the identity best-effort — a
+      // transient whoami/tenants error here must not throw the user back to the
+      // password form with a valid session in hand.
+      //
+      // NB: do NOT clear mfaChallenge here. Clearing it makes LoginView's
+      // `v-if="mfaChallenge"` unmount <TwoFactorChallenge> during the await below,
+      // so the component's subsequent emit('done') fires from a destroyed instance
+      // and navigation never runs. The successful navigation (goAfterLogin) unmounts
+      // LoginView and clears the challenge instead.
       this.syncToken()
       try {
         await this.hydrateSession()
@@ -270,7 +275,9 @@ export const useAuthStore = defineStore('auth', {
       this.error = null
       try {
         const res = await authService.complete2faEnrollment(this.mfaChallenge.mfaToken, code)
-        this.mfaChallenge = null
+        // Keep mfaChallenge set so <TwoFactorChallenge> stays mounted to show the
+        // recovery codes; it's cleared by goAfterLogin once the user continues
+        // (clearing it here would unmount the component and drop the codes).
         this.syncToken()
         try {
           await this.hydrateSession()

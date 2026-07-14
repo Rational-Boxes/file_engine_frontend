@@ -69,6 +69,9 @@ async function goAfterLogin() {
   if (router.currentRoute.value.path === '/login' && auth.isAuthenticated) {
     await router.replace(target === '/login' ? '/dashboard' : target)
   }
+  // Navigated away — drop any completed challenge state (kept set until now so the
+  // challenge/recovery-codes UI stayed mounted through completion).
+  auth.mfaChallenge = null
 }
 
 // Persist the intended post-login destination (e.g. a shared deep link) so it

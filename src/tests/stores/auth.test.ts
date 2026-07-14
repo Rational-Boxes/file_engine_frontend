@@ -108,7 +108,9 @@ describe('auth store', () => {
     const ok = await store.verify2fa('totp', '123456')
     expect(ok).toBe(true)
     expect(authService.verify2fa).toHaveBeenCalledWith('mtok', 'totp', '123456')
-    expect(store.mfaChallenge).toBeNull()
+    // mfaChallenge is intentionally NOT cleared here — clearing it would unmount
+    // <TwoFactorChallenge> before its emit('done') can trigger navigation. It is
+    // cleared by the view (goAfterLogin) after it navigates away.
     expect(store.user).toBe('alice')
     expect(store.isAuthenticated).toBe(true)
   })
