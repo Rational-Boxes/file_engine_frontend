@@ -23,14 +23,14 @@
       </div>
 
       <label class="check require">
-        <input type="checkbox" v-model="require" :disabled="policy.required_by_deployment" />
+        <input type="checkbox" v-model="requireMfa" :disabled="policy.required_by_deployment" />
         <span>
           Require two-factor for all members
           <em v-if="policy.required_by_deployment" class="muted"> — enforced deployment-wide</em>
         </span>
       </label>
 
-      <p v-if="require && !selected.length" class="err">
+      <p v-if="requireMfa && !selected.length" class="err">
         Requiring 2FA needs at least one allowed method.
       </p>
       <p class="muted small">
@@ -39,7 +39,7 @@
       </p>
 
       <div class="actions">
-        <button class="btn" :disabled="saving || !dirty || (require && !selected.length)" @click="save">
+        <button class="btn" :disabled="saving || !dirty || (requireMfa && !selected.length)" @click="save">
           {{ saving ? 'Saving…' : 'Save policy' }}
         </button>
         <button class="btn ghost" :disabled="saving || !dirty" @click="reset">Reset</button>
@@ -56,7 +56,10 @@ import { errorMessage } from '@/services/apiClient'
 
 const policy = ref<TwoFactorPolicy | null>(null)
 const selected = ref<string[]>([])
-const require = ref(false)
+// NB: do NOT name this `require` — Vue's template compiler treats `require` as a
+// global identifier and won't bind it to setup scope, throwing ReferenceError at
+// render time.
+const requireMfa = ref(false)
 const loading = ref(true)
 const saving = ref(false)
 const saved = ref(false)
@@ -67,7 +70,7 @@ const dirty = computed(() => {
   if (!policy.value) return false
   const a = [...selected.value].sort().join(',')
   const b = [...policy.value.allowed_methods].sort().join(',')
-  return a !== b || require.value !== policy.value.require
+  return a !== b || requireMfa.value !== policy.value.require
 })
 
 onMounted(load)
@@ -86,7 +89,7 @@ async function load() {
 function apply(p: TwoFactorPolicy) {
   policy.value = p
   selected.value = [...p.allowed_methods]
-  require.value = p.require || p.required_by_deployment
+  requireMfa.value = p.require || p.required_by_deployment
 }
 
 function reset() {
@@ -107,7 +110,7 @@ async function save() {
   try {
     // Send the full cap as null (inherit) so it tracks future deployment changes.
     const full = policy.value && selected.value.length === policy.value.deployment_methods.length
-    apply(await ldapAdminService.save2faPolicy(full ? null : selected.value, require.value))
+    apply(await ldapAdminService.save2faPolicy(full ? null : selected.value, requireMfa.value))
     saved.value = true
   } catch (e) {
     error.value = errorMessage(e, 'Could not save the 2FA policy')
