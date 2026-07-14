@@ -225,16 +225,29 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true
       this.error = null
       try {
+        // Only THIS call decides success/failure of the code. Once it resolves,
+        // the bridge has issued a full session (stored by authService) — the login
+        // is done and must not be undone by a later hiccup.
         await authService.verify2fa(this.mfaChallenge.mfaToken, method, code)
-        this.mfaChallenge = null
-        await this.hydrateSession()
-        return true
       } catch (e) {
+        // A bad/expired code (or IP-binding failure) — keep the challenge so the
+        // user can retry; do NOT clear the session state.
         this.error = errorMessage(e, 'Verification failed')
-        return false
-      } finally {
         this.loading = false
+        return false
       }
+      // Verified: the session token is stored. Clear the challenge and hydrate the
+      // identity best-effort — a transient whoami/tenants error here must not throw
+      // the user back to the password form with a valid session in hand.
+      this.mfaChallenge = null
+      this.syncToken()
+      try {
+        await this.hydrateSession()
+      } catch {
+        /* identity will be (re)loaded by initialize()/router guards */
+      }
+      this.loading = false
+      return true
     },
 
     // Trigger delivery of an email one-time code for the current challenge.
