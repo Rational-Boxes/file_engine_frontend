@@ -73,6 +73,30 @@ export const authService = {
     return !!data.sent
   },
 
+  // Grace enrollment during login (a mandated tenant requires 2FA but the user
+  // isn't enrolled). begin returns the TOTP setup blob to render as a QR.
+  async begin2faEnrollment(
+    mfaToken: string,
+  ): Promise<{ secret: string; otpauth_uri: string; issuer: string; account: string }> {
+    const { data } = await axios.post(`${API_BASE}/v1/auth/2fa`, {
+      mfa_token: mfaToken,
+      action: 'enroll_begin',
+    })
+    return data
+  },
+
+  // complete verifies the code, enables 2FA, and returns a full session + the
+  // one-time recovery codes.
+  async complete2faEnrollment(mfaToken: string, code: string): Promise<{ recovery_codes: string[] }> {
+    const { data } = await axios.post(`${API_BASE}/v1/auth/2fa`, {
+      mfa_token: mfaToken,
+      action: 'enroll_complete',
+      code,
+    })
+    storeToken(data.token, data.expires_in)
+    return { recovery_codes: data.recovery_codes || [] }
+  },
+
   // Begin the bridge's server-side OAuth2 flow; the bridge redirects to the IdP
   // and ultimately back to /oauth/callback with the token in the URL fragment.
   oauthRedirect(provider: string): void {

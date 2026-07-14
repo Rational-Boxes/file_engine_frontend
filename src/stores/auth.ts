@@ -250,6 +250,42 @@ export const useAuthStore = defineStore('auth', {
       return true
     },
 
+    // Grace enrollment during a mandated login: fetch the TOTP setup blob (QR).
+    async begin2faEnrollment() {
+      if (!this.mfaChallenge) return null
+      this.error = null
+      try {
+        return await authService.begin2faEnrollment(this.mfaChallenge.mfaToken)
+      } catch (e) {
+        this.error = errorMessage(e, 'Could not start 2FA setup')
+        return null
+      }
+    },
+
+    // Confirm grace enrollment with a code: enables 2FA and establishes the
+    // session. Returns the one-time recovery codes on success, or null.
+    async complete2faEnrollment(code: string) {
+      if (!this.mfaChallenge) return null
+      this.loading = true
+      this.error = null
+      try {
+        const res = await authService.complete2faEnrollment(this.mfaChallenge.mfaToken, code)
+        this.mfaChallenge = null
+        this.syncToken()
+        try {
+          await this.hydrateSession()
+        } catch {
+          /* best-effort; identity reloads via guards */
+        }
+        return res.recovery_codes
+      } catch (e) {
+        this.error = errorMessage(e, 'That code did not match — try the current one')
+        return null
+      } finally {
+        this.loading = false
+      }
+    },
+
     // Trigger delivery of an email one-time code for the current challenge.
     async send2faCode(method: string) {
       if (!this.mfaChallenge) return false

@@ -3,13 +3,34 @@
     <h1>Two-factor authentication</h1>
     <p class="subtitle">Confirm it's you to finish signing in.</p>
 
-    <!-- Mandate with no enrollment yet: the user can't complete a challenge until
-         they set up an authenticator, which needs a session they don't have.
-         Surface this clearly rather than looping on a code that can't succeed. -->
-    <div v-if="challenge.mustEnroll" class="notice">
-      Your organization requires two-factor authentication, but it isn't set up on
-      this account yet. Please contact your administrator to complete enrollment.
-    </div>
+    <!-- Mandate with no enrollment yet: guide the user through TOTP setup right
+         here (grace enrollment), rather than dead-ending on "contact your admin". -->
+    <template v-if="challenge.mustEnroll">
+      <div v-if="recoveryCodes.length" class="enroll-codes">
+        <p class="ok">2FA is on. Save these recovery codes somewhere safe — each works once if you lose your device, and they won't be shown again.</p>
+        <ul class="codes"><li v-for="c in recoveryCodes" :key="c"><code>{{ c }}</code></li></ul>
+        <button class="btn btn-primary" @click="emit('done')">Continue</button>
+      </div>
+      <template v-else>
+        <div class="notice">Your organization requires two-factor authentication. Set it up now to finish signing in.</div>
+        <div v-if="setup" class="enroll">
+          <QrCode :value="setup.otpauth_uri" :size="180" />
+          <div class="manual">
+            <div class="muted small">Scan with an authenticator app, or enter this key:</div>
+            <code class="secret">{{ groupedSecret }}</code>
+          </div>
+        </div>
+        <p v-else class="hint">Preparing your setup code…</p>
+        <form @submit.prevent="submitEnroll">
+          <input v-model="enrollCode" inputmode="numeric" autocomplete="one-time-code"
+                 maxlength="6" placeholder="123456" :disabled="!setup" autofocus />
+          <p v-if="auth.error" class="error">{{ auth.error }}</p>
+          <button class="btn btn-primary" type="submit" :disabled="auth.loading || !setup || enrollCode.length < 6">
+            {{ auth.loading ? 'Verifying…' : 'Enable & continue' }}
+          </button>
+        </form>
+      </template>
+    </template>
 
     <template v-else>
       <div v-if="methods.length > 1" class="tabs">
@@ -61,8 +82,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import QrCode from '@/components/QrCode.vue'
 
 const emit = defineEmits<{ (e: 'done'): void }>()
 const auth = useAuthStore()
@@ -72,6 +94,26 @@ const auth = useAuthStore()
 const challenge = computed(
   () => auth.mfaChallenge ?? { mfaToken: '', methods: [], mustEnroll: false },
 )
+
+// --- grace enrollment (mustEnroll): set up TOTP inline, then finish signing in ---
+const setup = ref<{ secret: string; otpauth_uri: string } | null>(null)
+const enrollCode = ref('')
+const recoveryCodes = ref<string[]>([])
+const groupedSecret = computed(() =>
+  (setup.value?.secret.match(/.{1,4}/g) || []).join(' '),
+)
+
+onMounted(async () => {
+  if (challenge.value.mustEnroll) {
+    setup.value = await auth.begin2faEnrollment()
+  }
+})
+
+async function submitEnroll() {
+  if (enrollCode.value.length < 6) return
+  const codes = await auth.complete2faEnrollment(enrollCode.value.trim())
+  if (codes) recoveryCodes.value = codes   // shows the recovery-codes step, then Continue
+}
 
 // Order methods so the strongest (authenticator) comes first; recovery last.
 const ORDER = ['totp', 'email', 'recovery']
@@ -145,4 +187,13 @@ input { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
 .error { color: var(--danger); font-size: 13px; margin: 0; }
 .link { background: none; border: none; color: var(--primary); font-size: 13px; cursor: pointer; padding: 0; }
 .back { text-align: center; margin: 6px 0 0; }
+.enroll { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+.manual { display: flex; flex-direction: column; gap: 6px; }
+.small { font-size: 12px; }
+.muted { color: var(--muted); }
+.secret { font-size: 15px; letter-spacing: 1px; background: var(--bg); padding: 6px 8px; border-radius: 6px; user-select: all; }
+.enroll-codes { display: flex; flex-direction: column; gap: 10px; }
+.ok { color: #15803d; font-size: 13px; margin: 0; }
+.codes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; list-style: none; padding: 0; margin: 0; }
+.codes code { font-size: 14px; letter-spacing: 1px; }
 </style>
