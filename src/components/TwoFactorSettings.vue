@@ -31,7 +31,11 @@
     <!-- Enrollment: QR + secret, then confirm with a code -->
     <template v-if="mode === 'setup' && setup">
       <ol class="steps">
-        <li>Scan this QR code with your authenticator app, or enter the key manually.</li>
+        <li>
+          Scan this QR code with your authenticator app, or enter the key manually.
+          <span class="muted">If you set 2FA up before, remove any old “FileEngine” entry
+          from your app first so you don't scan or read the wrong one.</span>
+        </li>
       </ol>
       <div class="enroll">
         <QrCode :value="setup.otpauth_uri" :size="196" />
