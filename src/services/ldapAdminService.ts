@@ -54,6 +54,12 @@ export interface TwoFactorSetup {
   issuer: string
   account: string
 }
+export interface TwoFactorPolicy {
+  deployment_methods: string[]   // the methods this deployment permits (the ceiling)
+  allowed_methods: string[]      // the methods this tenant permits (in force)
+  require: boolean               // 2FA required for tenant members (tenant policy)
+  required_by_deployment: boolean // env-forced required (locked on, read-only)
+}
 
 export const ldapAdminService = {
   // --- tenant admin: roles ---
@@ -87,6 +93,15 @@ export const ldapAdminService = {
   },
   async reinvite(uid: string): Promise<void> {
     await ldapAdminClient.post(`/v1/admin/users/${encodeURIComponent(uid)}/reinvite`)
+  },
+
+  // --- tenant admin: two-factor policy (PROPOSAL §4.8) ---
+  async get2faPolicy(): Promise<TwoFactorPolicy> {
+    return (await ldapAdminClient.get('/v1/admin/2fa-policy')).data
+  },
+  // allowed_methods null = inherit the full deployment cap.
+  async save2faPolicy(allowed_methods: string[] | null, require: boolean): Promise<TwoFactorPolicy> {
+    return (await ldapAdminClient.put('/v1/admin/2fa-policy', { allowed_methods, require })).data
   },
 
   // --- tenant admin: email templates ---

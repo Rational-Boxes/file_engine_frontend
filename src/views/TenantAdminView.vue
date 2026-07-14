@@ -66,6 +66,9 @@
             <li v-if="!members.length" class="muted">No members yet.</li>
           </ul>
         </div>
+
+        <!-- Per-tenant two-factor policy (PROPOSAL §4.8) -->
+        <TwoFactorPolicyEditor />
       </section>
 
       <!-- ============ EMAIL TEMPLATES ============ -->
@@ -289,6 +292,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import ShadowHtml from '@/components/ShadowHtml.vue'
+import TwoFactorPolicyEditor from '@/components/TwoFactorPolicyEditor.vue'
 import { ldapAdminService, type EmailTemplate, type Role, type UserSummary } from '@/services/ldapAdminService'
 import { auditService, type AuditRow, type ChainResult } from '@/services/auditService'
 import { securityService, type Incident, type SecurityRule } from '@/services/securityService'
