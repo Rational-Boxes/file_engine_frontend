@@ -44,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
@@ -54,6 +54,22 @@ import TwoFactorChallenge from '@/components/TwoFactorChallenge.vue'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+
+// Leave the login page once a session exists. Done as a helper (not a bare
+// router.push) because the router guard reads auth.isAuthenticated: pushing in the
+// same tick the token is stored can have the guard evaluate the *previous* value
+// and bounce straight back to /login — leaving the user on the login form with a
+// valid session until they reload. Sync + nextTick lets reactivity settle, and we
+// re-check in case a guard still redirected us back.
+async function goAfterLogin() {
+  auth.syncToken()
+  await nextTick()
+  const target = takeRedirect()
+  await router.replace(target)
+  if (router.currentRoute.value.path === '/login' && auth.isAuthenticated) {
+    await router.replace(target === '/login' ? '/dashboard' : target)
+  }
+}
 
 // Persist the intended post-login destination (e.g. a shared deep link) so it
 // survives both LDAP login and the OAuth round-trip through the IdP.
@@ -78,12 +94,12 @@ const loginLdap = async () => {
   // Returns false (with auth.mfaChallenge set) when a second factor is needed —
   // the template swaps to <TwoFactorChallenge>, which emits `done` on success.
   if (await auth.ldapLogin(username.value, password.value)) {
-    router.push(takeRedirect())
+    await goAfterLogin()
   }
 }
 
 const onMfaDone = () => {
-  router.push(takeRedirect())
+  void goAfterLogin()
 }
 </script>
 
