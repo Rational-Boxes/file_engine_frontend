@@ -69,6 +69,9 @@
 
         <!-- Per-tenant two-factor policy (PROPOSAL §4.8) -->
         <TwoFactorPolicyEditor />
+
+        <!-- Per-tenant WebDAV session TTL (PROPOSAL §14.10) -->
+        <WebDavSessionTtlEditor />
       </section>
 
       <!-- ============ EMAIL TEMPLATES ============ -->
@@ -293,6 +296,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import ShadowHtml from '@/components/ShadowHtml.vue'
 import TwoFactorPolicyEditor from '@/components/TwoFactorPolicyEditor.vue'
+import WebDavSessionTtlEditor from '@/components/WebDavSessionTtlEditor.vue'
 import { ldapAdminService, type EmailTemplate, type Role, type UserSummary } from '@/services/ldapAdminService'
 import { auditService, type AuditRow, type ChainResult } from '@/services/auditService'
 import { securityService, type Incident, type SecurityRule } from '@/services/securityService'

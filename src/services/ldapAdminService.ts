@@ -61,6 +61,29 @@ export interface TwoFactorPolicy {
   required_by_deployment: boolean // env-forced required (locked on, read-only)
 }
 
+export interface ServiceCredentialMeta {
+  key_id: string
+  label: string | null
+  scopes: string[]
+  allowed_cidrs: string[]
+  created_at: string
+  last_used_at: string | null
+  expires_at: string | null
+}
+export interface ServiceCredentialSecret {
+  key_id: string
+  secret: string          // shown ONCE, at create/rotate
+  scopes?: string[]
+  label?: string | null
+}
+export interface WebdavSessionTtl {
+  session_ttl_seconds: number | null   // tenant override, null = inherit
+  effective_ttl_seconds: number
+  default_ttl_seconds: number
+  min_ttl_seconds: number
+  max_ttl_seconds: number
+}
+
 export const ldapAdminService = {
   // --- tenant admin: roles ---
   async listRoles(): Promise<Role[]> {
@@ -156,6 +179,36 @@ export const ldapAdminService = {
   // Regenerate recovery codes (invalidates the old set); requires a current TOTP.
   async twofaRegenerateRecovery(code: string): Promise<{ recovery_codes: string[] }> {
     return (await ldapAdminClient.post('/v1/me/2fa/recovery-codes', { code })).data
+  },
+
+  // --- self-service WebDAV/MCP credentials (key:secret, PROPOSAL §15/§16) ---
+  async listServiceCredentials(): Promise<ServiceCredentialMeta[]> {
+    return (await ldapAdminClient.get('/v1/me/service-credentials')).data.credentials
+  },
+  // Returns the plaintext secret ONCE — never retrievable again.
+  async createServiceCredential(label: string, scopes: string[]): Promise<ServiceCredentialSecret> {
+    return (await ldapAdminClient.post('/v1/me/service-credentials', { label, scopes })).data
+  },
+  // Regenerate: new secret (shown once); the old one stops working immediately.
+  async rotateServiceCredential(keyId: string, newKeyId = false): Promise<ServiceCredentialSecret> {
+    return (
+      await ldapAdminClient.post(
+        `/v1/me/service-credentials/${encodeURIComponent(keyId)}/rotate`,
+        { new_key_id: newKeyId },
+      )
+    ).data
+  },
+  async revokeServiceCredential(keyId: string): Promise<void> {
+    await ldapAdminClient.delete(`/v1/me/service-credentials/${encodeURIComponent(keyId)}`)
+  },
+
+  // --- tenant admin: WebDAV session TTL (PROPOSAL §14.10) ---
+  async getWebdavSessionTtl(): Promise<WebdavSessionTtl> {
+    return (await ldapAdminClient.get('/v1/admin/webdav-session-ttl')).data
+  },
+  // null clears the override (inherit the deployment default); a value is clamped.
+  async saveWebdavSessionTtl(session_ttl_seconds: number | null): Promise<WebdavSessionTtl> {
+    return (await ldapAdminClient.put('/v1/admin/webdav-session-ttl', { session_ttl_seconds })).data
   },
 
   // --- public: policy + invite + reset ---

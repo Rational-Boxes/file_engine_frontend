@@ -30,7 +30,8 @@
 
       <section class="card">
         <h2>Change password</h2>
-        <p class="muted">You need a directory password for WebDAV even if you sign in with SSO.</p>
+        <p class="muted">Your sign-in password. For WebDAV or MCP access, create a
+          scoped credential below instead of using this password.</p>
         <label>Current password<input v-model="cur" type="password" autocomplete="current-password" /></label>
         <label>New password<input v-model="next" type="password" autocomplete="new-password" /></label>
         <PasswordRequirements :password="next" :identity="profile?.email" @valid="pwValid = $event" />
@@ -42,6 +43,8 @@
       </section>
 
       <TwoFactorSettings />
+
+      <WebDavCredentials />
     </main>
   </div>
 </template>
@@ -51,6 +54,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import PasswordRequirements from '@/components/PasswordRequirements.vue'
 import TwoFactorSettings from '@/components/TwoFactorSettings.vue'
+import WebDavCredentials from '@/components/WebDavCredentials.vue'
 import { ldapAdminService, type Profile } from '@/services/ldapAdminService'
 import { errorMessage } from '@/services/apiClient'
 

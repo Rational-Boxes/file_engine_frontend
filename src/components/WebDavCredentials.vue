@@ -1,0 +1,226 @@
+<template>
+  <section class="card">
+    <div class="head">
+      <h2>WebDAV &amp; MCP credentials</h2>
+    </div>
+    <p class="muted">
+      Connect a WebDAV client (Finder, Explorer, davfs) or an MCP agent with a
+      generated <strong>key&nbsp;:&nbsp;secret</strong> — not your account password. Each
+      credential is scoped to the door(s) you pick, can be revoked on its own, and the
+      secret is shown <strong>once</strong>. Lost it? Regenerate.
+    </p>
+
+    <p v-if="error" class="err">{{ error }}</p>
+
+    <!-- The just-created / just-rotated secret, shown once -->
+    <div v-if="freshSecret" class="secret-box">
+      <div class="row">
+        <strong>Copy your secret now — it won't be shown again.</strong>
+        <button class="btn small" @click="freshSecret = null">Done</button>
+      </div>
+      <label>Key (username)<input :value="freshSecret.key_id" readonly @focus="selectAll" /></label>
+      <label>Secret (password)<input :value="freshSecret.secret" readonly @focus="selectAll" /></label>
+      <div class="actions">
+        <button class="btn small" @click="copy(freshSecret.key_id + ':' + freshSecret.secret)">
+          Copy key:secret
+        </button>
+        <button
+          v-if="freshSecret.scopes?.includes('webdav')"
+          class="btn small ghost"
+          @click="showScript = showScript === 'bash' ? '' : 'bash'"
+        >Mount script (Bash)</button>
+        <button
+          v-if="freshSecret.scopes?.includes('webdav')"
+          class="btn small ghost"
+          @click="showScript = showScript === 'ps' ? '' : 'ps'"
+        >Mount script (PowerShell)</button>
+        <button
+          v-if="freshSecret.scopes?.includes('mcp')"
+          class="btn small ghost"
+          @click="showScript = showScript === 'mcp' ? '' : 'mcp'"
+        >MCP config</button>
+      </div>
+      <label v-if="showScript" class="muted-label">
+        Host (edit to your deployment)
+        <input v-model="hostBase" />
+      </label>
+      <pre v-if="showScript"><code>{{ generatedScript }}</code></pre>
+      <p v-if="showScript" class="muted small">
+        The secret is never written into the script — your OS prompts for it, or you paste
+        it into the shown field.
+      </p>
+    </div>
+
+    <!-- Create -->
+    <div class="create-row">
+      <input v-model="newLabel" placeholder="Label (e.g. MacBook Finder)" @keyup.enter="create" />
+      <label class="chk"><input type="checkbox" value="webdav" v-model="newScopes" /> WebDAV</label>
+      <label class="chk"><input type="checkbox" value="mcp" v-model="newScopes" /> MCP</label>
+      <button class="btn" :disabled="busy || newScopes.length === 0" @click="create">Add credential</button>
+    </div>
+
+    <!-- List -->
+    <table v-if="creds.length" class="creds">
+      <thead>
+        <tr><th>Label</th><th>Scopes</th><th>Created</th><th>Last used</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr v-for="c in creds" :key="c.key_id">
+          <td>{{ c.label || '—' }}<div class="kid">{{ c.key_id }}</div></td>
+          <td>{{ c.scopes.join(', ') }}</td>
+          <td>{{ fmt(c.created_at) }}</td>
+          <td>{{ c.last_used_at ? fmt(c.last_used_at) : 'never' }}</td>
+          <td class="right">
+            <button class="btn small ghost" :disabled="busy" @click="rotate(c.key_id)">Regenerate</button>
+            <button class="btn small danger" :disabled="busy" @click="revoke(c.key_id)">Revoke</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p v-else class="muted small">No credentials yet.</p>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import {
+  ldapAdminService,
+  type ServiceCredentialMeta,
+  type ServiceCredentialSecret,
+} from '@/services/ldapAdminService'
+import { errorMessage } from '@/services/apiClient'
+
+const creds = ref<ServiceCredentialMeta[]>([])
+const newLabel = ref('')
+const newScopes = ref<string[]>(['webdav'])
+const freshSecret = ref<ServiceCredentialSecret | null>(null)
+const error = ref('')
+const busy = ref(false)
+const showScript = ref<'' | 'bash' | 'ps' | 'mcp'>('')
+const hostBase = ref(window.location.origin)
+
+async function load() {
+  try {
+    creds.value = await ldapAdminService.listServiceCredentials()
+  } catch (e) {
+    error.value = errorMessage(e, 'Could not load credentials')
+  }
+}
+onMounted(load)
+
+async function create() {
+  if (newScopes.value.length === 0) return
+  busy.value = true
+  error.value = ''
+  try {
+    freshSecret.value = await ldapAdminService.createServiceCredential(newLabel.value, newScopes.value)
+    newLabel.value = ''
+    await load()
+  } catch (e) {
+    error.value = errorMessage(e, 'Could not create credential')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function rotate(keyId: string) {
+  busy.value = true
+  error.value = ''
+  try {
+    freshSecret.value = await ldapAdminService.rotateServiceCredential(keyId)
+    await load()
+  } catch (e) {
+    error.value = errorMessage(e, 'Could not regenerate credential')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function revoke(keyId: string) {
+  if (!confirm('Revoke this credential? Any client using it will stop working.')) return
+  busy.value = true
+  error.value = ''
+  try {
+    await ldapAdminService.revokeServiceCredential(keyId)
+    await load()
+  } catch (e) {
+    error.value = errorMessage(e, 'Could not revoke credential')
+  } finally {
+    busy.value = false
+  }
+}
+
+function fmt(iso: string): string {
+  try { return new Date(iso).toLocaleString() } catch { return iso }
+}
+function selectAll(e: FocusEvent) {
+  (e.target as HTMLInputElement).select()
+}
+async function copy(text: string) {
+  try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
+}
+
+// QOL script generators (§15.13 / §16.6). NON-SECRET only: the URL + key_id are
+// embedded; the secret is collected by the OS prompt or pasted into the shown field.
+const generatedScript = computed(() => {
+  const s = freshSecret.value
+  if (!s) return ''
+  const host = hostBase.value.replace(/\/$/, '')
+  const key = s.key_id
+  if (showScript.value === 'bash') {
+    return [
+      '#!/usr/bin/env bash',
+      '# WebDAV mount — you will be prompted for the secret (never stored here).',
+      `URL="${host}/webdav"`,
+      `USER="${key}"`,
+      'MOUNT="$HOME/FileEngine"',
+      'mkdir -p "$MOUNT"',
+      '# macOS: open Finder\'s Connect dialog (prompts for the password):',
+      '#   open "$URL"',
+      '# Linux (davfs, prompts interactively):',
+      'sudo mount -t davfs "$URL" "$MOUNT" -o username="$USER"',
+    ].join('\n')
+  }
+  if (showScript.value === 'ps') {
+    return [
+      '# WebDAV mount (PowerShell) — prompts for the secret at the console.',
+      `$Url  = "${host.replace(/^https?:\/\//, '\\\\')}@SSL\\webdav"`,
+      `$User = "${key}"`,
+      'net use * $Url /user:$User',
+    ].join('\n')
+  }
+  // MCP config snippet — secret left as a placeholder to paste locally.
+  return [
+    '# Add the FileEngine MCP server (paste your secret where shown):',
+    'claude mcp add --transport http fileengine \\',
+    `  ${host}/mcp \\`,
+    `  --header "Authorization: Basic $(printf '%s:%s' '${key}' 'YOUR_SECRET_HERE' | base64)"`,
+  ].join('\n')
+})
+</script>
+
+<style scoped>
+.card { display: flex; flex-direction: column; gap: 0.75rem; }
+.head { display: flex; align-items: center; justify-content: space-between; }
+.create-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.create-row input[type='text'], .create-row input:not([type]) { flex: 1 1 12rem; }
+.chk { display: inline-flex; gap: 0.3rem; align-items: center; white-space: nowrap; }
+.secret-box {
+  border: 1px solid var(--accent, #4a7); border-radius: 8px; padding: 0.75rem;
+  display: flex; flex-direction: column; gap: 0.5rem; background: color-mix(in srgb, var(--accent, #4a7) 8%, transparent);
+}
+.secret-box .row { display: flex; justify-content: space-between; align-items: center; }
+.secret-box label, .muted-label { display: flex; flex-direction: column; font-size: 0.85rem; gap: 0.2rem; }
+.secret-box input { font-family: monospace; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+table.creds { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.creds th, table.creds td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border, #ddd); }
+table.creds td.right { text-align: right; white-space: nowrap; }
+.kid { font-family: monospace; font-size: 0.75rem; opacity: 0.6; }
+pre { overflow-x: auto; padding: 0.6rem; border-radius: 6px; background: rgba(127,127,127,0.12); }
+.btn.small { padding: 0.2rem 0.5rem; font-size: 0.8rem; }
+.btn.ghost { background: transparent; border: 1px solid var(--border, #ccc); }
+.btn.danger { color: #c33; }
+.muted.small, .muted-label { opacity: 0.7; }
+.err { color: #c33; }
+</style>
