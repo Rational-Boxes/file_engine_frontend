@@ -219,27 +219,43 @@ const generatedScript = computed(() => {
 </script>
 
 <style scoped>
-.card { display: flex; flex-direction: column; gap: 0.75rem; }
+.card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 0.75rem; }
 .head { display: flex; align-items: center; justify-content: space-between; }
+.muted { color: var(--muted); }
+.muted.small, .muted-label { color: var(--muted); font-size: 0.85rem; }
+
 .create-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-.create-row input[type='text'], .create-row input:not([type]) { flex: 1 1 12rem; }
-.chk { display: inline-flex; gap: 0.3rem; align-items: center; white-space: nowrap; }
-.secret-box {
-  border: 1px solid var(--accent, #4a7); border-radius: 8px; padding: 0.75rem;
-  display: flex; flex-direction: column; gap: 0.5rem; background: color-mix(in srgb, var(--accent, #4a7) 8%, transparent);
+.create-row input:not([type='checkbox']) { flex: 1 1 12rem; }
+.chk { display: inline-flex; gap: 0.3rem; align-items: center; white-space: nowrap; color: var(--muted); }
+
+/* Inputs are theme-aware (dark mode had light input bg + light text before). */
+input:not([type='checkbox']) {
+  background: var(--bg); color: var(--text, inherit);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: 14px;
 }
-.secret-box .row { display: flex; justify-content: space-between; align-items: center; }
+
+.secret-box {
+  border: 1px solid var(--primary); border-radius: 8px; padding: 0.75rem;
+  display: flex; flex-direction: column; gap: 0.5rem; background: var(--card);
+}
+.secret-box .row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .secret-box label, .muted-label { display: flex; flex-direction: column; font-size: 0.85rem; gap: 0.2rem; }
 .secret-box input { font-family: monospace; }
 .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
 table.creds { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-table.creds th, table.creds td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border, #ddd); }
+table.creds th, table.creds td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
 table.creds td.right { text-align: right; white-space: nowrap; }
-.kid { font-family: monospace; font-size: 0.75rem; opacity: 0.6; }
-pre { overflow-x: auto; padding: 0.6rem; border-radius: 6px; background: rgba(127,127,127,0.12); }
-.btn.small { padding: 0.2rem 0.5rem; font-size: 0.8rem; }
-.btn.ghost { background: transparent; border: 1px solid var(--border, #ccc); }
-.btn.danger { color: #c33; }
-.muted.small, .muted-label { opacity: 0.7; }
-.err { color: #c33; }
+.kid { font-family: monospace; font-size: 0.75rem; color: var(--muted); }
+pre { overflow-x: auto; padding: 0.6rem; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); }
+
+/* Buttons — same tokens as the rest of the app (were unset → light-on-light in dark mode). */
+.btn { padding: 8px 16px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--primary); color: #fff; font-size: 14px; cursor: pointer; }
+.btn.small { padding: 4px 10px; font-size: 0.8rem; }
+.btn.ghost { background: var(--card); color: var(--text, inherit); }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.err { color: var(--danger); }
 </style>

@@ -89,8 +89,14 @@ async function save() {
 .ttl-editor { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
 .row { display: inline-flex; gap: 0.4rem; align-items: center; }
 .field { display: flex; flex-direction: column; gap: 0.2rem; max-width: 22rem; }
+.field input { background: var(--bg); color: var(--text, inherit);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
 .actions { display: flex; gap: 0.75rem; align-items: center; }
-.muted.small { opacity: 0.7; font-size: 0.85rem; }
-.err { color: #c33; }
-.ok { color: #2a7; }
+.muted, .muted.small { color: var(--muted); }
+.muted.small { font-size: 0.85rem; }
+.btn { padding: 8px 16px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--primary); color: #fff; font-size: 14px; cursor: pointer; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.err { color: var(--danger); }
+.ok { color: #15803d; }
 </style>
