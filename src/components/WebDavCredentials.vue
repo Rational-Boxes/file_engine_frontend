@@ -45,6 +45,12 @@
         <input v-model="hostOverride" :placeholder="showScript === 'mcp' ? mcpHost : driveHost" />
       </label>
       <pre v-if="showScript"><code>{{ generatedScript }}</code></pre>
+      <div v-if="showScript" class="actions">
+        <button class="btn small" @click="download(generatedScript, scriptFilename)">
+          Download {{ scriptFilename }}
+        </button>
+        <button class="btn small ghost" @click="copy(generatedScript)">Copy script</button>
+      </div>
       <p v-if="showScript" class="muted small">
         The secret is never written into the script — your OS prompts for it, or you paste
         it into the shown field.
@@ -174,6 +180,25 @@ function selectAll(e: FocusEvent) {
 }
 async function copy(text: string) {
   try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
+}
+
+const scriptFilename = computed(() => {
+  if (showScript.value === 'bash') return 'fileengine-webdav-mount.sh'
+  if (showScript.value === 'ps') return 'fileengine-webdav-mount.ps1'
+  return 'fileengine-mcp-setup.sh'
+})
+
+// Save the generated (non-secret) script to a file, client-side.
+function download(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 // QOL script generators (§15.13 / §16.6). NON-SECRET only: the URL + key_id are
