@@ -41,8 +41,8 @@
         >MCP config</button>
       </div>
       <label v-if="showScript" class="muted-label">
-        Host (edit to your deployment)
-        <input v-model="hostBase" />
+        Host (override — defaults to your deployment convention)
+        <input v-model="hostOverride" :placeholder="showScript === 'mcp' ? mcpHost : driveHost" />
       </label>
       <pre v-if="showScript"><code>{{ generatedScript }}</code></pre>
       <p v-if="showScript" class="muted small">
@@ -97,7 +97,23 @@ const freshSecret = ref<ServiceCredentialSecret | null>(null)
 const error = ref('')
 const busy = ref(false)
 const showScript = ref<'' | 'bash' | 'ps' | 'mcp'>('')
-const hostBase = ref(window.location.origin)
+
+// The SPA is served at <subdomain>.<domain>; WebDAV lives at
+// <subdomain>-drive.<domain> and MCP at <subdomain>-mcp.<domain>. Derive both from
+// the current origin; the field lets the user override for other topologies.
+function deriveHost(insert: string): string {
+  const loc = window.location
+  const parts = loc.hostname.split('.')
+  if (parts.length >= 2) {
+    parts[0] = `${parts[0]}-${insert}`
+    const host = parts.join('.') + (loc.port ? `:${loc.port}` : '')
+    return `${loc.protocol}//${host}`
+  }
+  return loc.origin // no subdomain (e.g. localhost) — nothing to transform
+}
+const driveHost = deriveHost('drive')
+const mcpHost = deriveHost('mcp')
+const hostOverride = ref('') // empty = use the derived host for the shown script
 
 async function load() {
   try {
@@ -165,13 +181,15 @@ async function copy(text: string) {
 const generatedScript = computed(() => {
   const s = freshSecret.value
   if (!s) return ''
-  const host = hostBase.value.replace(/\/$/, '')
   const key = s.key_id
+  const isMcp = showScript.value === 'mcp'
+  // WebDAV is served at the root of the -drive host; MCP at /mcp on the -mcp host.
+  const base = (hostOverride.value || (isMcp ? mcpHost : driveHost)).replace(/\/$/, '')
   if (showScript.value === 'bash') {
     return [
       '#!/usr/bin/env bash',
       '# WebDAV mount — you will be prompted for the secret (never stored here).',
-      `URL="${host}/webdav"`,
+      `URL="${base}"`,
       `USER="${key}"`,
       'MOUNT="$HOME/FileEngine"',
       'mkdir -p "$MOUNT"',
@@ -182,9 +200,10 @@ const generatedScript = computed(() => {
     ].join('\n')
   }
   if (showScript.value === 'ps') {
+    const unc = base.replace(/^https?:\/\//, '\\\\') + '@SSL\\DavWWWRoot'
     return [
       '# WebDAV mount (PowerShell) — prompts for the secret at the console.',
-      `$Url  = "${host.replace(/^https?:\/\//, '\\\\')}@SSL\\webdav"`,
+      `$Url  = "${unc}"`,
       `$User = "${key}"`,
       'net use * $Url /user:$User',
     ].join('\n')
@@ -193,7 +212,7 @@ const generatedScript = computed(() => {
   return [
     '# Add the FileEngine MCP server (paste your secret where shown):',
     'claude mcp add --transport http fileengine \\',
-    `  ${host}/mcp \\`,
+    `  ${base}/mcp \\`,
     `  --header "Authorization: Basic $(printf '%s:%s' '${key}' 'YOUR_SECRET_HERE' | base64)"`,
   ].join('\n')
 })
