@@ -211,26 +211,51 @@ const generatedScript = computed(() => {
   // WebDAV is served at the root of the -drive host; MCP at /mcp on the -mcp host.
   const base = (hostOverride.value || (isMcp ? mcpHost : driveHost)).replace(/\/$/, '')
   if (showScript.value === 'bash') {
-    return [
-      '#!/usr/bin/env bash',
-      '# WebDAV mount — you will be prompted for the secret (never stored here).',
-      `URL="${base}"`,
-      `USER="${key}"`,
-      'MOUNT="$HOME/FileEngine"',
-      'mkdir -p "$MOUNT"',
-      '# macOS: open Finder\'s Connect dialog (prompts for the password):',
-      '#   open "$URL"',
-      '# Linux (davfs, prompts interactively):',
-      'sudo mount -t davfs "$URL" "$MOUNT" -o username="$USER"',
-    ].join('\n')
+    // Prompt for the secret via the first available graphical dialog (osascript /
+    // zenity / kdialog / yad), else a hidden terminal prompt; feed it on stdin so
+    // it never appears in argv / the process list.
+    return `#!/usr/bin/env bash
+# FileEngine WebDAV mount. Prompts for the secret via a graphical dialog when one
+# is available (degrading to a hidden terminal prompt) and passes it on stdin —
+# never as a command-line argument, so it can't leak via the process list.
+URL="${base}"
+USER="${key}"
+MOUNT="$HOME/FileEngine"
+
+ask_secret() {  # first available wins: osascript / zenity / kdialog / yad / read
+  if [ "$(uname)" = Darwin ] && command -v osascript >/dev/null 2>&1; then
+    osascript -e "display dialog \\"$1\\" default answer \\"\\" with hidden answer" -e 'text returned of result' 2>/dev/null
+  elif command -v zenity  >/dev/null 2>&1; then zenity  --password --title="FileEngine" 2>/dev/null
+  elif command -v kdialog >/dev/null 2>&1; then kdialog --password "$1" 2>/dev/null
+  elif command -v yad     >/dev/null 2>&1; then yad --entry --hide-text --title="FileEngine" --text="$1" 2>/dev/null
+  else local s; printf '%s ' "$1" >&2; read -rs s; printf '\\n' >&2; printf '%s' "$s"; fi
+}
+
+mkdir -p "$MOUNT"
+SECRET="$(ask_secret "WebDAV secret for $USER:")"
+[ -n "$SECRET" ] || { echo "No secret entered — aborting." >&2; exit 1; }
+
+# printf is a shell builtin, so the secret is never in argv; the mount helper reads
+# the username + secret from stdin.
+if [ "$(uname)" = Darwin ]; then
+  printf '%s\\n%s\\n' "$USER" "$SECRET" | mount_webdav -i "$URL" "$MOUNT" \\
+    || echo "If that failed, run: open \\"$URL\\"  (Finder's Connect dialog)" >&2
+else
+  printf '%s\\n%s\\n' "$USER" "$SECRET" | sudo mount -t davfs "$URL" "$MOUNT"
+fi
+unset SECRET`
   }
   if (showScript.value === 'ps') {
     const unc = base.replace(/^https?:\/\//, '\\\\') + '@SSL\\DavWWWRoot'
     return [
-      '# WebDAV mount (PowerShell) — prompts for the secret at the console.',
+      '# FileEngine WebDAV (PowerShell). Get-Credential shows a secure prompt (a GUI',
+      '# dialog where available, else a hidden console prompt) and keeps the secret a',
+      '# SecureString; New-PSDrive takes the credential object, so it never appears on',
+      '# the command line. Needs the WebClient (WebDAV redirector) service.',
+      'Start-Service WebClient -ErrorAction SilentlyContinue',
       `$Url  = "${unc}"`,
-      `$User = "${key}"`,
-      'net use * $Url /user:$User',
+      `$Cred = Get-Credential -UserName "${key}" -Message "FileEngine WebDAV secret"`,
+      'New-PSDrive -Name F -PSProvider FileSystem -Root $Url -Credential $Cred -Persist',
     ].join('\n')
   }
   // MCP config snippet — secret left as a placeholder to paste locally.
