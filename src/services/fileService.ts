@@ -30,6 +30,9 @@ export interface NodeInfo {
   size: number
   owner: string
   version: string
+  // ctime/mtime (UNIX epoch seconds), core-derived from the version history.
+  created_at?: number
+  modified_at?: number
 }
 
 interface DirEntry {

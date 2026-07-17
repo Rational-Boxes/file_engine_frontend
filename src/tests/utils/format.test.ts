@@ -47,13 +47,15 @@ describe('formatDateTime', () => {
 
 describe('formatVersionTimestamp', () => {
   it('renders a "YYYYMMDD_HHMMSS.mmm" id as a localized date-time', () => {
-    // Compare against the same local Date so the assertion is locale/TZ-agnostic.
-    const expected = new Date(2026, 5, 25, 0, 58, 41, 132).toLocaleString()
+    // Version ids are UTC (core uses gmtime), so the expected instant is built
+    // with Date.UTC and then localized — keeping the assertion locale/TZ-agnostic
+    // while proving we do NOT treat the UTC components as local time.
+    const expected = new Date(Date.UTC(2026, 5, 25, 0, 58, 41, 132)).toLocaleString()
     expect(formatVersionTimestamp('20260625_005841.132')).toBe(expected)
   })
 
   it('handles ids without milliseconds', () => {
-    const expected = new Date(2026, 5, 25, 0, 58, 41, 0).toLocaleString()
+    const expected = new Date(Date.UTC(2026, 5, 25, 0, 58, 41, 0)).toLocaleString()
     expect(formatVersionTimestamp('20260625_005841')).toBe(expected)
   })
 

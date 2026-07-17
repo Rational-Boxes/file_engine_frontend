@@ -26,13 +26,14 @@ export function versionFilename(name: string, ts: string): string {
   return `${base} (${ts})${ext}`
 }
 
-// Core version ids are timestamps of the form "YYYYMMDD_HHMMSS.mmm". Render them
-// as a localized, human-readable date-time. Falls back to the raw value if it
-// doesn't match (e.g. an unexpected id shape).
+// Core version ids are timestamps of the form "YYYYMMDD_HHMMSS.mmm", generated in
+// UTC (the core uses gmtime). Render them as a localized, human-readable date-time
+// — parse the components as UTC (Date.UTC), NOT local, or the displayed time is
+// off by the viewer's UTC offset. Falls back to the raw value if it doesn't match.
 export function formatVersionTimestamp(v: string): string {
   const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:\.(\d+))?$/.exec(v || '')
   if (!m) return v || '—'
   const [, y, mo, d, h, mi, s, ms] = m
-  const date = new Date(+y, +mo - 1, +d, +h, +mi, +s, ms ? +ms : 0)
+  const date = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s, ms ? +ms : 0))
   return isNaN(date.getTime()) ? v : date.toLocaleString()
 }

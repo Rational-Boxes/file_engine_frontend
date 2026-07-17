@@ -59,7 +59,8 @@
         <dt>Type</dt><dd>{{ info.type }}</dd>
         <dt>Size</dt><dd>{{ formatSize(info.size) }}</dd>
         <dt>Owner</dt><dd>{{ info.owner || '—' }}</dd>
-        <dt>Version</dt><dd>{{ info.version ? formatVersionTimestamp(info.version) : '—' }}</dd>
+        <dt>Created</dt><dd>{{ formatDateTime(info.created_at ?? 0) }}</dd>
+        <dt>Modified</dt><dd>{{ formatDateTime(info.modified_at ?? 0) }}</dd>
       </dl>
       <p v-else class="muted">Loading…</p>
 
@@ -129,7 +130,7 @@ import { fileService, type NodeInfo } from '@/services/fileService'
 import { useFileStore } from '@/stores/files'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
-import { formatSize, formatVersionTimestamp } from '@/utils/format'
+import { formatSize, formatDateTime } from '@/utils/format'
 import { fileBrowserLocation } from '@/utils/fileLocation'
 import { PERMS, canDo } from '@/utils/permissions'
 import AclEditor from '@/components/AclEditor.vue'
