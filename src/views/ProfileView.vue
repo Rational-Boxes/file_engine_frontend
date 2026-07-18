@@ -15,12 +15,20 @@
           </div>
         </div>
 
-        <label>Display name<input v-model="form.display_name" /></label>
+        <label>Display name<input v-model="form.display_name" autocomplete="nickname" /></label>
         <div class="two">
-          <label>First name<input v-model="form.given_name" /></label>
-          <label>Last name<input v-model="form.surname" /></label>
+          <label>First name<input v-model="form.given_name" autocomplete="given-name" /></label>
+          <label>Last name<input v-model="form.surname" autocomplete="family-name" /></label>
         </div>
-        <label>Avatar image URL<input v-model="form.avatar_url" placeholder="https://…/me.png" /></label>
+        <!-- Chrome ignores autocomplete="off" for fields it guesses are a username,
+             and was injecting the user's email here (this text box is the nearest
+             field to the password section, so its password heuristic grabbed it).
+             readonly-until-focus is the reliable defense: Chrome never autofills a
+             readonly field; we drop readonly on focus so the user can still edit. -->
+        <label>Avatar image URL<input
+          v-model="form.avatar_url" type="url" name="avatar_url" autocomplete="off"
+          :readonly="avatarLock" @focus="avatarLock = false"
+          placeholder="https://…/me.png" /></label>
 
         <div class="actions">
           <button class="btn" :disabled="saving" @click="save">Save profile</button>
@@ -32,6 +40,11 @@
         <h2>Change password</h2>
         <p class="muted">Your sign-in password. For WebDAV or MCP access, create a
           scoped credential below instead of using this password.</p>
+        <!-- A real (off-screen) username field for the password manager: gives
+             Chrome's password heuristic a proper target so it stops designating a
+             profile field (the avatar URL) as the username and filling it. -->
+        <input class="sr-only" type="text" autocomplete="username" :value="profile?.email"
+               tabindex="-1" aria-hidden="true" readonly />
         <label>Current password<input v-model="cur" type="password" autocomplete="current-password" /></label>
         <label>New password<input v-model="next" type="password" autocomplete="new-password" /></label>
         <PasswordRequirements :password="next" :identity="profile?.email" @valid="pwValid = $event" />
@@ -64,6 +77,9 @@ const error = ref('')
 const saving = ref(false)
 const saved = ref(false)
 const avatarBroken = ref(false)
+// Keep the avatar URL field readonly until the user focuses it, so the browser
+// can't autofill it (Chrome ignores autocomplete="off" but never fills readonly).
+const avatarLock = ref(true)
 
 const cur = ref('')
 const next = ref('')
@@ -119,6 +135,9 @@ async function changePw() {
 </script>
 
 <style scoped>
+/* Off-screen (NOT display:none — Chrome skips display:none fields for autofill),
+   so the hidden username sink still anchors the password manager. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .content { max-width: 640px; margin: 0 auto; padding: 20px 18px; }
 .card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
