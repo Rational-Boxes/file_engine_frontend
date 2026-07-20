@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import axios from 'axios'
 import { authService, type Identity } from '@/services/authService'
 import { tokenStorage } from '@/utils/tokenStorage'
 import { errorMessage } from '@/services/apiClient'
@@ -211,7 +212,12 @@ export const useAuthStore = defineStore('auth', {
         await this.hydrateSession()
         return true
       } catch (e) {
-        this.error = errorMessage(e, 'Login failed')
+        // A 401 here is a rejected username/password — show a clear, in-app message
+        // (the bridge no longer sends WWW-Authenticate: Basic to the browser, so
+        // there's no native credentials dialog to fall back on).
+        this.error = axios.isAxiosError(e) && e.response?.status === 401
+          ? 'Incorrect username or password.'
+          : errorMessage(e, 'Login failed')
         return false
       } finally {
         this.loading = false
