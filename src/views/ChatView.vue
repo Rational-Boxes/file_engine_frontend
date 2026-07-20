@@ -178,9 +178,27 @@ interface Msg {
   report?: { uid: string; name: string; path: string } // saved report → "Open report" link
 }
 
-// Strip hidden reasoning (<think>…</think>) and return the visible answer text.
+// Strip hidden reasoning (<think>…</think>) and the report-save marker delimiters
+// (the body streams into the bubble but the raw [[SAVE_REPORT …]] wrappers should
+// not show — the marked body is diverted to a file server-side).
 function visibleText(m: Msg): string {
-  return m.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+  return m.content
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/\[\[\s*SAVE_REPORT\b[^\]]*?\]\]/gi, '')
+    .replace(/\[\[\s*\/\s*SAVE_REPORT\s*\]\]/gi, '')
+    .trim()
+}
+
+// Reconstruct a saved report's { uid, name, path } from an assistant message's
+// persisted confirmation ("✅ Saved the report to /Dir/name.html (file <uid>)"),
+// so a resumed chat still shows the "Open report" preview link (the live
+// report_saved event isn't replayed on reload). The path may contain spaces, so
+// capture non-greedily up to " (file <uid>)".
+function reportFromContent(content: string): Msg['report'] {
+  const m = /Saved the report to (.+?) \(file ([0-9a-fA-F-]+)\)/.exec(content || '')
+  if (!m) return undefined
+  const path = m[1]
+  return { uid: m[2], name: path.split('/').pop() || path, path }
 }
 
 // A standalone blinking caret is the working indication only while the turn is
@@ -298,6 +316,9 @@ async function selectConversation(id: string) {
       role: m.role,
       content: m.content,
       citations: m.citations,
+      // Rebuild the "Open report" preview link for a resumed chat from the saved
+      // confirmation text (the live turn's report_saved event is gone after reload).
+      report: m.role === 'assistant' ? reportFromContent(m.content) : undefined,
     }))
     currentConversationId.value = id
     error.value = ''
@@ -338,8 +359,10 @@ function send() {
   stick.value = true // sending a message should follow the reply down
   busy.value = true
   error.value = ''
-  const opts: ChatSendOptions = { history }
-  if (webSearch.value) opts.webSearch = true
+  // Always send the checkbox state (true OR false) so the user's choice is
+  // authoritative — omitting it lets the server fall back to its web_search_default
+  // (which may be on), so the model would search even with the box unchecked.
+  const opts: ChatSendOptions = { history, webSearch: webSearch.value }
   if (currentConversationId.value) opts.conversationId = currentConversationId.value
   session.send(text, opts)
   input.value = ''

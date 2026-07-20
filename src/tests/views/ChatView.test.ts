@@ -52,7 +52,7 @@ describe('ChatView', () => {
     const w = mountView()
     await w.find('input').setValue('What were northern revenues?')
     await w.find('form').trigger('submit')
-    expect(sendMock).toHaveBeenCalledWith('What were northern revenues?', { history: [] })
+    expect(sendMock).toHaveBeenCalledWith('What were northern revenues?', { history: [], webSearch: false })
 
     handlers.onToken?.('<think>let me check the table</think>')
     handlers.onToken?.('Northern revenue reached **$175M**.')
@@ -87,6 +87,7 @@ describe('ChatView', () => {
         { role: 'user', content: 'first' },
         { role: 'assistant', content: 'answer one' },
       ],
+      webSearch: false,
     })
   })
 
@@ -232,6 +233,31 @@ describe('ChatView', () => {
     expect(w.find('.cite').text()).toContain('[1] report.md')
   })
 
+  it('rebuilds the "Open report" preview link when resuming a chat with a saved report', async () => {
+    listConvs.mockResolvedValue([{ id: 'c2', title: 'Report chat', updatedAt: 't' }])
+    getConv.mockResolvedValue({
+      id: 'c2',
+      title: 'Report chat',
+      messages: [
+        { role: 'user', content: 'make a report', citations: [] },
+        {
+          role: 'assistant',
+          content:
+            'Done.\n\n✅ Saved the report to /Reports/q3.html (file abc-123). A PDF preview is being generated.\n',
+          citations: [],
+        },
+      ],
+    })
+    const w = mountView()
+    await flushPromises()
+    await w.find('.conv-open').trigger('click')
+    await flushPromises()
+    const btn = w.find('.open-report')
+    expect(btn.exists()).toBe(true) // link rebuilt from the persisted confirmation
+    await btn.trigger('click')
+    expect(open).toHaveBeenCalledWith('abc-123', 'q3.html') // opens the preview
+  })
+
   it('sends the adopted conversation_id on a follow-up after the server assigns it', async () => {
     const w = mountView()
     await flushPromises()
@@ -249,6 +275,7 @@ describe('ChatView', () => {
         { role: 'user', content: 'first' },
         { role: 'assistant', content: 'answer' },
       ],
+      webSearch: false,
       conversationId: 'srv-123',
     })
   })
@@ -291,6 +318,6 @@ describe('ChatView', () => {
     // next send carries no conversation_id (fresh chat)
     await w.find('input').setValue('brand new')
     await w.find('form').trigger('submit')
-    expect(sendMock).toHaveBeenLastCalledWith('brand new', { history: [] })
+    expect(sendMock).toHaveBeenLastCalledWith('brand new', { history: [], webSearch: false })
   })
 })
