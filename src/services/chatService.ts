@@ -11,14 +11,17 @@ import type { ChatEvent, Citation } from '@/types'
 //   {"type":"conversation","id":"..."}                               persisted chat id (resume)
 //   {"type":"done"}                                                  turn complete
 //   {"type":"error","error":"..."}                                   failure
+//   {"type":"report_saved","uid":"...","name":"...","path":"..."}    report file saved
 // Client → server: {"message", "system_prompt"?, "history"?, "k"?, "web_search"?,
-//                   "conversation_id"?}.
+//                   "conversation_id"?, "report_target_folder_uid"?,
+//                   "report_target_filename"?, "report_target_path"?}.
 
 export interface ChatHandlers {
   onToken?: (text: string) => void
   onCitations?: (citations: Citation[]) => void
   onToolCall?: (name: string, args?: Record<string, unknown>) => void
   onToolResult?: (name: string) => void
+  onReportSaved?: (report: { uid: string; name: string; path: string }) => void
   onConversation?: (id: string) => void
   onDone?: () => void
   onError?: (error: string) => void
@@ -32,6 +35,9 @@ export interface ChatSendOptions {
   k?: number
   webSearch?: boolean
   conversationId?: string
+  // "Generate report": pins the exact destination the user chose (a bridge folder
+  // UID + filename). The model never chooses where — see GENERATE_REPORT_TO_TARGET.
+  reportTarget?: { folderUid: string; folderPath: string; filename: string }
 }
 
 function parseCitation(c: unknown): Citation {
@@ -64,6 +70,13 @@ export function parseChatEvent(raw: unknown): ChatEvent | null {
       }
     case 'tool_result':
       return { type: 'tool_result', name: String(e.name ?? '') }
+    case 'report_saved':
+      return {
+        type: 'report_saved',
+        uid: String(e.uid ?? ''),
+        name: String(e.name ?? ''),
+        path: String(e.path ?? ''),
+      }
     case 'conversation':
       return { type: 'conversation', id: String(e.id ?? '') }
     case 'done':
@@ -108,6 +121,7 @@ export class ChatSession {
     else if (e.type === 'citations') this.handlers.onCitations?.(e.citations)
     else if (e.type === 'tool_call') this.handlers.onToolCall?.(e.name, e.args)
     else if (e.type === 'tool_result') this.handlers.onToolResult?.(e.name)
+    else if (e.type === 'report_saved') this.handlers.onReportSaved?.({ uid: e.uid, name: e.name, path: e.path })
     else if (e.type === 'conversation') this.handlers.onConversation?.(e.id)
     else if (e.type === 'done') this.handlers.onDone?.()
     else if (e.type === 'error') this.handlers.onError?.(e.error)
@@ -120,6 +134,11 @@ export class ChatSession {
     if (opts.k != null) payload.k = opts.k
     if (opts.webSearch != null) payload.web_search = opts.webSearch
     if (opts.conversationId) payload.conversation_id = opts.conversationId
+    if (opts.reportTarget) {
+      payload.report_target_folder_uid = opts.reportTarget.folderUid
+      payload.report_target_filename = opts.reportTarget.filename
+      payload.report_target_path = opts.reportTarget.folderPath
+    }
     const json = JSON.stringify(payload)
     // OPEN === 1 (avoid referencing the WebSocket global, absent in jsdom).
     if (this.ws.readyState === 1) this.ws.send(json)

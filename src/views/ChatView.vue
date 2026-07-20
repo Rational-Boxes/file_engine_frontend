@@ -51,10 +51,20 @@
               :streaming="!!m.streaming"
             />
             <p v-else class="text">{{ m.content }}</p>
+            <!-- User "Generate report" turn: show the pinned destination. -->
+            <div v-if="m.reportDest" class="report-dest">📄 → <code>{{ m.reportDest }}</code></div>
             <!-- Before the first token there's no text to trail, so show a
                  standalone blinking caret as the working indication. -->
             <span v-if="pendingCaret(m)" class="caret" aria-label="Working…"></span>
             <div v-if="m.searching" class="searching">🔎 Searching the web…</div>
+            <div v-if="m.writingReport" class="searching">📝 Writing report…</div>
+            <!-- Saved report → open it in the preview modal (after the turn is done). -->
+            <button
+              v-if="m.report && !m.streaming"
+              type="button"
+              class="open-report"
+              @click="openReport(m)"
+            >📄 Open report</button>
             <div v-if="m.citations && m.citations.length" class="cites">
               <template v-for="(c, ci) in m.citations" :key="ci">
                 <a
@@ -100,10 +110,19 @@
           <input type="checkbox" v-model="webSearch" :disabled="busy" aria-label="Web search" />
           <span>Web</span>
         </label>
+        <button
+          class="btn btn-report"
+          type="button"
+          :disabled="busy || !messages.length"
+          title="Generate a report of this conversation and save it to a folder you choose"
+          @click="openReportDialog"
+        >📄 Generate report</button>
         <button class="btn" type="submit" :disabled="!input.trim() || busy">Send</button>
       </form>
       </main>
     </div>
+
+    <ReportTargetDialog :open="reportDialogOpen" @select="onReportTarget" @cancel="reportDialogOpen = false" />
   </div>
 </template>
 
@@ -122,6 +141,7 @@ import { usePreviewStore } from '@/stores/preview'
 import { useFileNames } from '@/composables/useFileNames'
 import { renderMarkdown } from '@/utils/markdown'
 import ShadowHtml from '@/components/ShadowHtml.vue'
+import ReportTargetDialog from '@/components/ReportTargetDialog.vue'
 import type { Citation, ConversationSummary } from '@/types'
 
 const preview = usePreviewStore()
@@ -153,6 +173,9 @@ interface Msg {
   citations?: Citation[]
   searching?: boolean
   streaming?: boolean // tokens still arriving — drives the working caret
+  writingReport?: boolean // report-mode turn in flight (shows "Writing report…")
+  reportDest?: string // user turn: the pinned destination, shown as a badge
+  report?: { uid: string; name: string; path: string } // saved report → "Open report" link
 }
 
 // Strip hidden reasoning (<think>…</think>) and return the visible answer text.
@@ -217,6 +240,14 @@ onMounted(() => {
     onToolResult: () => {
       if (current >= 0) messages.value[current].searching = false
     },
+    // A "Generate report" save landed — stash it so the "Open report" link (into
+    // the preview modal) appears on this turn once it's done.
+    onReportSaved: (r) => {
+      if (current >= 0) {
+        messages.value[current].report = r
+        messages.value[current].writingReport = false
+      }
+    },
     // Adopt the server-assigned conversation so this chat resumes after reload,
     // and refresh the list so a brand-new chat shows up (and reorders) in the pane.
     onConversation: (id) => {
@@ -229,6 +260,7 @@ onMounted(() => {
       if (current >= 0) {
         messages.value[current].searching = false
         messages.value[current].streaming = false
+        messages.value[current].writingReport = false
       }
       busy.value = false
       current = -1
@@ -311,6 +343,38 @@ function send() {
   if (currentConversationId.value) opts.conversationId = currentConversationId.value
   session.send(text, opts)
   input.value = ''
+}
+
+// --- Generate report -------------------------------------------------------
+const reportDialogOpen = ref(false)
+
+function openReportDialog() {
+  if (busy.value) return
+  reportDialogOpen.value = true
+}
+
+// The user picked a destination. Command a report of this conversation, pinning
+// the exact target — the destination is NOT put in the message (the model never
+// chooses it); it rides in reportTarget. See GENERATE_REPORT_TO_TARGET.
+function onReportTarget(target: { folderUid: string; folderPath: string; filename: string }) {
+  reportDialogOpen.value = false
+  if (busy.value || !session) return
+  const history = messages.value.map((m) => ({ role: m.role, content: m.content }))
+  const name = /\.html?$/i.test(target.filename) ? target.filename : target.filename + '.html'
+  const dest = (target.folderPath === '/' ? '' : target.folderPath) + '/' + name
+  messages.value.push({ role: 'user', content: 'Generate a report of our conversation.', reportDest: dest })
+  messages.value.push({ role: 'assistant', content: '', streaming: true, writingReport: true })
+  current = messages.value.length - 1
+  stick.value = true
+  busy.value = true
+  error.value = ''
+  const opts: ChatSendOptions = { history, reportTarget: target }
+  if (currentConversationId.value) opts.conversationId = currentConversationId.value
+  session.send('Generate a report of our conversation.', opts)
+}
+
+function openReport(m: Msg) {
+  if (m.report) preview.open(m.report.uid, m.report.name)
 }
 
 // Render an assistant answer to sanitized HTML. Reasoning models (e.g.
@@ -683,5 +747,40 @@ function assistantHtml(m: Msg): string {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* "Generate report" is a secondary action — outline, not filled like Send. */
+.btn-report {
+  background: var(--bg);
+  color: var(--fg);
+  white-space: nowrap;
+}
+.btn-report:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+.report-dest {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.report-dest code {
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.open-report {
+  margin-top: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+.open-report:hover {
+  border-color: var(--primary);
 }
 </style>

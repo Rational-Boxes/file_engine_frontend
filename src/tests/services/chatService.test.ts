@@ -39,6 +39,15 @@ describe('parseChatEvent', () => {
     })
   })
 
+  it('parses the report_saved event', () => {
+    expect(parseChatEvent({ type: 'report_saved', uid: 'u1', name: 'r.html', path: '/Reports/r.html' })).toEqual({
+      type: 'report_saved',
+      uid: 'u1',
+      name: 'r.html',
+      path: '/Reports/r.html',
+    })
+  })
+
   it('parses the conversation id event', () => {
     expect(parseChatEvent({ type: 'conversation', id: 'abc' })).toEqual({
       type: 'conversation',
@@ -129,6 +138,25 @@ describe('ChatSession', () => {
 
     session.send('hi', { webSearch: true })
     expect(JSON.parse(ws.sent[0])).toEqual({ message: 'hi', web_search: true })
+  })
+
+  it('dispatches report_saved and sends the pinned report target', () => {
+    const ws = new FakeWS()
+    const onReportSaved = vi.fn()
+    const session = new ChatSession({ onReportSaved }, () => ws as unknown as WebSocket)
+    ws.open()
+    ws.emit({ type: 'report_saved', uid: 'u9', name: 'q3.html', path: '/Reports/q3.html' })
+    expect(onReportSaved).toHaveBeenCalledWith({ uid: 'u9', name: 'q3.html', path: '/Reports/q3.html' })
+
+    session.send('Generate a report of our conversation.', {
+      reportTarget: { folderUid: 'fold1', folderPath: '/Reports', filename: 'q3' },
+    })
+    expect(JSON.parse(ws.sent[0])).toEqual({
+      message: 'Generate a report of our conversation.',
+      report_target_folder_uid: 'fold1',
+      report_target_filename: 'q3',
+      report_target_path: '/Reports',
+    })
   })
 
   it('dispatches the conversation event and sends conversation_id', () => {

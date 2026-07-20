@@ -81,6 +81,9 @@ export type ChatEvent =
   | { type: 'citations'; citations: Citation[] }
   | { type: 'tool_call'; name: string; args?: Record<string, unknown> }
   | { type: 'tool_result'; name: string }
+  // A "Generate report" save landed; carries the new file's uid so the SPA can
+  // offer an "Open report" link into the preview modal (GENERATE_REPORT_TO_TARGET).
+  | { type: 'report_saved'; uid: string; name: string; path: string }
   // The conversation this turn was persisted to — emitted before the answer so a
   // new chat can be adopted (and resumed later) by the client.
   | { type: 'conversation'; id: string }
