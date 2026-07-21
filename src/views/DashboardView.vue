@@ -41,7 +41,9 @@
           <li v-for="a in d.activityFeed" :key="a.id" class="item">
             <router-link class="item-main" :to="`/preview/${a.fileUid}`">
               <span class="kind" :data-kind="a.eventType">{{ a.eventType }}</span>
-              <span class="who">{{ a.name || a.path || a.fileUid }}</span>
+              <span class="who" :title="a.name || a.path || a.fileUid">{{
+                truncateMiddle(a.name || a.path || a.fileUid)
+              }}</span>
               <time :title="a.ts">{{ ago(a.ts) }}</time>
             </router-link>
           </li>
@@ -56,6 +58,7 @@ import { onMounted, onBeforeUnmount } from 'vue'
 import { useDiscussionStore } from '@/stores/discussion'
 import AppNav from '@/components/AppNav.vue'
 import ReviewsInbox from '@/components/ReviewsInbox.vue'
+import { truncateMiddle } from '@/utils/format'
 import type { Notification } from '@/services/discussionService'
 
 const d = useDiscussionStore()

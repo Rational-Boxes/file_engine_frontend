@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { formatSize, formatVersionTimestamp, versionFilename, formatDateTime } from '@/utils/format'
+import { formatSize, formatVersionTimestamp, versionFilename, formatDateTime, truncateMiddle } from '@/utils/format'
+
+describe('truncateMiddle', () => {
+  it('returns short strings unchanged', () => {
+    expect(truncateMiddle('report.pdf', 40)).toBe('report.pdf')
+    expect(truncateMiddle('', 40)).toBe('')
+  })
+  it('collapses the middle, keeping start and end (extension visible)', () => {
+    const out = truncateMiddle('a-very-long-report-filename-final-v3.pdf', 20)
+    expect(out.length).toBe(20)
+    expect(out).toContain('…')
+    expect(out.startsWith('a-very')).toBe(true)
+    expect(out.endsWith('v3.pdf')).toBe(true) // tail (incl. extension) preserved
+  })
+})
 
 describe('versionFilename', () => {
   it('inserts the version id before the extension', () => {

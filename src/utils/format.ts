@@ -7,6 +7,19 @@ export function formatSize(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`
 }
 
+// Collapse the middle of a long string with an ellipsis, keeping the start and
+// the end (so a filename's extension stays visible): "a-very-long-report.pdf" ->
+// "a-very…rt.pdf". Returns the input unchanged when it already fits `max`.
+export function truncateMiddle(text: string, max = 40): string {
+  const s = text ?? ''
+  if (s.length <= max) return s
+  const ell = '…'
+  const keep = Math.max(1, max - ell.length)
+  const head = Math.ceil(keep / 2)
+  const tail = Math.floor(keep / 2)
+  return s.slice(0, head) + ell + (tail > 0 ? s.slice(s.length - tail) : '')
+}
+
 // Human-readable local date-time from a UNIX epoch-seconds value. Returns an em
 // dash for 0/falsy/invalid inputs (e.g. an unknown creation/modification time).
 export function formatDateTime(epochSeconds: number): string {
