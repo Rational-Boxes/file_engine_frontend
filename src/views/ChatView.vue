@@ -123,23 +123,33 @@
           aria-label="Message"
           :disabled="busy"
         />
+        <button class="btn" type="submit" :disabled="!input.trim() || busy">Send</button>
+      </form>
+      </main>
+
+      <!-- Right-side tools: chat-wide operations (web search, generate report) live
+           here so the composer below the chat is reserved for the user's input. -->
+      <aside class="toolbar">
+        <h2 class="tb-head">Tools</h2>
+
         <label
-          class="web-toggle"
+          class="tb-toggle"
           title="Let the assistant search the web when your documents don't have the answer"
         >
           <input type="checkbox" v-model="webSearch" :disabled="busy" aria-label="Web search" />
-          <span>Web</span>
+          <span>Web search</span>
         </label>
+        <p class="tb-hint">Let the assistant search the web when your documents don't have the answer.</p>
+
         <button
-          class="btn btn-report"
+          class="tb-action"
           type="button"
           :disabled="busy || !messages.length"
           title="Generate a report of this conversation and save it to a folder you choose"
           @click="openReportDialog"
         >📄 Generate report</button>
-        <button class="btn" type="submit" :disabled="!input.trim() || busy">Send</button>
-      </form>
-      </main>
+        <p class="tb-hint">Summarize this conversation into a document saved to a folder you choose.</p>
+      </aside>
     </div>
 
     <ReportTargetDialog :open="reportDialogOpen" @select="onReportTarget" @cancel="reportDialogOpen = false" />
@@ -754,20 +764,80 @@ function assistantHtml(m: Msg): string {
   margin-top: 4px;
 }
 
-.web-toggle {
+/* Right-side tools column — chat-wide operations, mirroring the history pane. */
+.toolbar {
+  width: 200px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 14px;
+  overflow-y: auto;
+  background: var(--bg);
+}
+.tb-head {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 2px;
+}
+.tb-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text);
   user-select: none;
   cursor: pointer;
-  white-space: nowrap;
 }
-
-.web-toggle input {
+.tb-toggle input {
   margin: 0;
   cursor: pointer;
+}
+.tb-action {
+  text-align: left;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+}
+.tb-action:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.tb-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.tb-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 6px;
+  line-height: 1.4;
+}
+
+/* On narrow screens keep the tools column but make it compact (icon-ish, no
+   descriptive hints) so the messages + composer keep their room. */
+@media (max-width: 900px) {
+  .toolbar {
+    width: 128px;
+    padding: 14px 10px;
+  }
+  .tb-hint {
+    display: none;
+  }
+  .tb-toggle {
+    font-size: 13px;
+  }
+  .tb-action {
+    font-size: 13px;
+    padding: 8px 9px;
+  }
 }
 
 .muted {
@@ -859,16 +929,6 @@ function assistantHtml(m: Msg): string {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* "Generate report" is a secondary action — outline, not filled like Send. */
-.btn-report {
-  background: var(--bg);
-  color: var(--fg);
-  white-space: nowrap;
-}
-.btn-report:hover:not(:disabled) {
-  border-color: var(--primary);
 }
 
 .report-dest {

@@ -93,8 +93,8 @@ describe('ChatView', () => {
 
   it('sends the web_search flag when the Web toggle is on', async () => {
     const w = mountView()
-    await w.find('.web-toggle input').setValue(true)
-    await w.find('input').setValue('latest news?')
+    await w.find('.tb-toggle input').setValue(true)
+    await w.find('.composer-input').setValue('latest news?')
     await w.find('form').trigger('submit')
     expect(sendMock).toHaveBeenCalledWith('latest news?', { history: [], webSearch: true })
   })
