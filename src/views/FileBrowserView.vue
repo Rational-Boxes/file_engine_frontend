@@ -133,7 +133,7 @@
               />
             </td>
             <td class="name" @click="open(item)">
-              <FileThumbnail :item="item" />{{ item.name }}
+              <FileThumbnail :item="item" /><span :title="item.name">{{ truncateMiddle(item.name, 60) }}</span>
               <span v-if="item.deleted" class="deleted-badge" title="Soft-deleted">deleted</span>
               <button
                 v-if="item.hasRenditions"
@@ -219,7 +219,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/files'
 import { useUploadStore } from '@/stores/upload'
 import { canDo } from '@/utils/permissions'
-import { formatSize, formatDateTime } from '@/utils/format'
+import { formatSize, formatDateTime, truncateMiddle } from '@/utils/format'
 import KebabMenu, { type KebabItem } from '@/components/KebabMenu.vue'
 import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
