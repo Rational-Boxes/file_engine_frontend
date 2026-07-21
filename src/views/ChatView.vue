@@ -95,6 +95,26 @@
 
       <p v-if="error" class="err">{{ error }}</p>
 
+      <!-- MCP tool consent prompt: the assistant wants to run an external tool and
+           must have the user's explicit approval first (MCP_INTEGRATIONS §6). -->
+      <div v-if="pendingConsent" class="consent" role="alertdialog" aria-label="Tool approval">
+        <div class="consent-body">
+          <p class="consent-title">
+            Allow <strong>{{ pendingConsent.integration }}</strong> to run
+            <code>{{ pendingConsent.tool }}</code>?
+          </p>
+          <p class="consent-args">{{ pendingConsent.argsSummary }}</p>
+          <label class="consent-remember">
+            <input type="checkbox" v-model="consentRemember" />
+            Don't ask again for this tool in this conversation
+          </label>
+        </div>
+        <div class="consent-actions">
+          <button class="btn ghost" @click="decideConsent(false)">Deny</button>
+          <button class="btn" @click="decideConsent(true)">Approve</button>
+        </div>
+      </div>
+
       <form class="composer" @submit.prevent="send">
         <input
           v-model="input"
@@ -135,7 +155,7 @@ export default { name: 'ChatView' }
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
-import { ChatSession, type ChatSendOptions } from '@/services/chatService'
+import { ChatSession, type ChatSendOptions, type ConsentRequest } from '@/services/chatService'
 import { conversationService } from '@/services/conversationService'
 import { usePreviewStore } from '@/stores/preview'
 import { useFileNames } from '@/composables/useFileNames'
@@ -220,6 +240,10 @@ const conversations = ref<ConversationSummary[]>([])
 const currentConversationId = ref<string | null>(null)
 
 let session: ChatSession | null = null
+// An MCP tool is awaiting the user's approve/deny (MCP_INTEGRATIONS §6). The server
+// pauses the turn until we reply; a timeout there defaults to deny.
+const pendingConsent = ref<ConsentRequest | null>(null)
+const consentRemember = ref(false)
 let current = -1 // index of the in-flight assistant message
 
 // Auto-scroll: follow the conversation to the bottom as text streams in, but
@@ -258,6 +282,10 @@ onMounted(() => {
     onToolResult: () => {
       if (current >= 0) messages.value[current].searching = false
     },
+    onConsentRequest: (req) => {
+      consentRemember.value = false
+      pendingConsent.value = req
+    },
     // A "Generate report" save landed — stash it so the "Open report" link (into
     // the preview modal) appears on this turn once it's done.
     onReportSaved: (r) => {
@@ -280,6 +308,7 @@ onMounted(() => {
         messages.value[current].streaming = false
         messages.value[current].writingReport = false
       }
+      pendingConsent.value = null
       busy.value = false
       current = -1
       // Title is derived from the first message server-side — reflect it.
@@ -291,11 +320,20 @@ onMounted(() => {
         messages.value[current].searching = false
         messages.value[current].streaming = false
       }
+      pendingConsent.value = null
       busy.value = false
       current = -1
     },
   })
 })
+
+// Answer the pending MCP tool-consent prompt and resume the turn.
+function decideConsent(approve: boolean) {
+  const req = pendingConsent.value
+  if (!req || !session) return
+  session.sendConsent(req.id, approve, consentRemember.value)
+  pendingConsent.value = null
+}
 
 onBeforeUnmount(() => session?.close())
 
@@ -741,6 +779,57 @@ function assistantHtml(m: Msg): string {
 .err {
   color: var(--danger);
   font-size: 13px;
+}
+
+/* MCP tool-consent prompt (MCP_INTEGRATIONS §6). */
+.consent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 1px solid #d9b45f;
+  background: #fff8e6;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 6px;
+}
+.consent-title {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+}
+.consent-title code,
+.consent-args {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.consent-args {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  word-break: break-word;
+}
+.consent-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.consent-actions {
+  display: flex;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.consent .btn.ghost {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+@media (prefers-color-scheme: dark) {
+  .consent {
+    background: #2a2412;
+    border-color: #5c4a1e;
+  }
 }
 
 .composer {

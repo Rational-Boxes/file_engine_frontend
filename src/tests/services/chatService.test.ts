@@ -55,6 +55,26 @@ describe('parseChatEvent', () => {
     })
   })
 
+  it('parses the MCP tool_consent_request event (snake_case → camelCase)', () => {
+    expect(
+      parseChatEvent({
+        type: 'tool_consent_request',
+        id: 'c1',
+        integration: 'CRM',
+        tool: 'create_ticket',
+        tool_full: 'mcp__crm__create_ticket',
+        args_summary: 'subject=Hi',
+      }),
+    ).toEqual({
+      type: 'tool_consent_request',
+      id: 'c1',
+      integration: 'CRM',
+      tool: 'create_ticket',
+      toolFull: 'mcp__crm__create_ticket',
+      argsSummary: 'subject=Hi',
+    })
+  })
+
   it('ignores unknown / malformed messages', () => {
     expect(parseChatEvent({ type: 'nope' })).toBeNull()
     expect(parseChatEvent(null)).toBeNull()
@@ -169,6 +189,35 @@ describe('ChatSession', () => {
 
     session.send('resume me', { conversationId: 'conv-7' })
     expect(JSON.parse(ws.sent[0])).toEqual({ message: 'resume me', conversation_id: 'conv-7' })
+  })
+
+  it('dispatches a consent request and sends the tool_consent reply', () => {
+    const ws = new FakeWS()
+    const onConsentRequest = vi.fn()
+    const session = new ChatSession({ onConsentRequest }, () => ws as unknown as WebSocket)
+    ws.open()
+    ws.emit({
+      type: 'tool_consent_request',
+      id: 'c1',
+      integration: 'CRM',
+      tool: 'create_ticket',
+      tool_full: 'mcp__crm__create_ticket',
+      args_summary: 'subject=Hi',
+    })
+    expect(onConsentRequest).toHaveBeenCalledWith({
+      id: 'c1',
+      integration: 'CRM',
+      tool: 'create_ticket',
+      toolFull: 'mcp__crm__create_ticket',
+      argsSummary: 'subject=Hi',
+    })
+    session.sendConsent('c1', true, true)
+    expect(JSON.parse(ws.sent[0])).toEqual({
+      type: 'tool_consent',
+      id: 'c1',
+      decision: true,
+      remember: true,
+    })
   })
 
   it('reports errors and ignores unparseable frames', () => {

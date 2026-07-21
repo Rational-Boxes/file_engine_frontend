@@ -81,6 +81,16 @@ export type ChatEvent =
   | { type: 'citations'; citations: Citation[] }
   | { type: 'tool_call'; name: string; args?: Record<string, unknown> }
   | { type: 'tool_result'; name: string }
+  // An MCP tool needs the user's approval before it runs (MCP_INTEGRATIONS §6). The
+  // turn pauses until the client replies with a `tool_consent` control message.
+  | {
+      type: 'tool_consent_request'
+      id: string
+      integration: string
+      tool: string
+      toolFull: string
+      argsSummary: string
+    }
   // A "Generate report" save landed; carries the new file's uid so the SPA can
   // offer an "Open report" link into the preview modal (GENERATE_REPORT_TO_TARGET).
   | { type: 'report_saved'; uid: string; name: string; path: string }
