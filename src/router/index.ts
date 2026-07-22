@@ -12,6 +12,7 @@ const AdminOpsView = () => import('@/views/AdminOpsView.vue')
 const PreviewView = () => import('@/views/PreviewView.vue')
 const ProfileView = () => import('@/views/ProfileView.vue')
 const TenantAdminView = () => import('@/views/TenantAdminView.vue')
+const McpIntegrationsView = () => import('@/views/McpIntegrationsView.vue')
 const SetPasswordView = () => import('@/views/SetPasswordView.vue')
 const ResetPasswordView = () => import('@/views/ResetPasswordView.vue')
 
@@ -33,6 +34,12 @@ const routes = [
     path: '/admin/tenant',
     name: 'TenantAdmin',
     component: TenantAdminView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/integrations',
+    name: 'McpIntegrations',
+    component: McpIntegrationsView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   { path: '/profile', name: 'Profile', component: ProfileView, meta: { requiresAuth: true } },

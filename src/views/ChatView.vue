@@ -77,6 +77,15 @@
                 >
                   {{ webLabel(c) }}
                 </a>
+                <!-- MCP tool invocation: a bibliographic note, not a link (there's
+                     no document/URL to open) — a non-interactive chip. -->
+                <span
+                  v-else-if="c.kind === 'mcp'"
+                  class="cite cite-mcp"
+                  :title="`External tool: ${c.integration} · ${c.tool}`"
+                >
+                  {{ mcpLabel(c) }}
+                </span>
                 <button
                   v-else
                   type="button"
@@ -95,6 +104,26 @@
 
       <p v-if="error" class="err">{{ error }}</p>
 
+      <!-- MCP tool consent prompt: the assistant wants to run an external tool and
+           must have the user's explicit approval first (MCP_INTEGRATIONS §6). -->
+      <div v-if="pendingConsent" class="consent" role="alertdialog" aria-label="Tool approval">
+        <div class="consent-body">
+          <p class="consent-title">
+            Allow <strong>{{ pendingConsent.integration }}</strong> to run
+            <code>{{ pendingConsent.tool }}</code>?
+          </p>
+          <p class="consent-args">{{ pendingConsent.argsSummary }}</p>
+          <label class="consent-remember">
+            <input type="checkbox" v-model="consentRemember" />
+            Don't ask again for this tool in this conversation
+          </label>
+        </div>
+        <div class="consent-actions">
+          <button class="btn ghost" @click="decideConsent(false)">Deny</button>
+          <button class="btn" @click="decideConsent(true)">Approve</button>
+        </div>
+      </div>
+
       <form class="composer" @submit.prevent="send">
         <input
           v-model="input"
@@ -103,23 +132,33 @@
           aria-label="Message"
           :disabled="busy"
         />
+        <button class="btn" type="submit" :disabled="!input.trim() || busy">Send</button>
+      </form>
+      </main>
+
+      <!-- Right-side tools: chat-wide operations (web search, generate report) live
+           here so the composer below the chat is reserved for the user's input. -->
+      <aside class="toolbar">
+        <h2 class="tb-head">Tools</h2>
+
         <label
-          class="web-toggle"
+          class="tb-toggle"
           title="Let the assistant search the web when your documents don't have the answer"
         >
           <input type="checkbox" v-model="webSearch" :disabled="busy" aria-label="Web search" />
-          <span>Web</span>
+          <span>Web search</span>
         </label>
+        <p class="tb-hint">Let the assistant search the web when your documents don't have the answer.</p>
+
         <button
-          class="btn btn-report"
+          class="tb-action"
           type="button"
           :disabled="busy || !messages.length"
           title="Generate a report of this conversation and save it to a folder you choose"
           @click="openReportDialog"
         >📄 Generate report</button>
-        <button class="btn" type="submit" :disabled="!input.trim() || busy">Send</button>
-      </form>
-      </main>
+        <p class="tb-hint">Summarize this conversation into a document saved to a folder you choose.</p>
+      </aside>
     </div>
 
     <ReportTargetDialog :open="reportDialogOpen" @select="onReportTarget" @cancel="reportDialogOpen = false" />
@@ -135,7 +174,7 @@ export default { name: 'ChatView' }
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
-import { ChatSession, type ChatSendOptions } from '@/services/chatService'
+import { ChatSession, type ChatSendOptions, type ConsentRequest } from '@/services/chatService'
 import { conversationService } from '@/services/conversationService'
 import { usePreviewStore } from '@/stores/preview'
 import { useFileNames } from '@/composables/useFileNames'
@@ -154,6 +193,13 @@ const { names, resolve: resolveNames } = useFileNames()
 function citeLabel(c: Citation): string {
   const name = c.fileUid ? names.value[c.fileUid] : ''
   return name ? `[${c.marker}] ${name}` : `[${c.marker}]`
+}
+
+// MCP citation label: the [n] marker plus "integration · tool" (a 🔌 marks it as
+// an external tool invocation, distinct from document/web sources).
+function mcpLabel(c: Citation): string {
+  const parts = [c.integration, c.tool].filter(Boolean).join(' · ')
+  return `[${c.marker}] 🔌 ${parts}`
 }
 
 // Web citation label: the [n] marker plus the result's host (or title).
@@ -220,6 +266,10 @@ const conversations = ref<ConversationSummary[]>([])
 const currentConversationId = ref<string | null>(null)
 
 let session: ChatSession | null = null
+// An MCP tool is awaiting the user's approve/deny (MCP_INTEGRATIONS §6). The server
+// pauses the turn until we reply; a timeout there defaults to deny.
+const pendingConsent = ref<ConsentRequest | null>(null)
+const consentRemember = ref(false)
 let current = -1 // index of the in-flight assistant message
 
 // Auto-scroll: follow the conversation to the bottom as text streams in, but
@@ -258,6 +308,10 @@ onMounted(() => {
     onToolResult: () => {
       if (current >= 0) messages.value[current].searching = false
     },
+    onConsentRequest: (req) => {
+      consentRemember.value = false
+      pendingConsent.value = req
+    },
     // A "Generate report" save landed — stash it so the "Open report" link (into
     // the preview modal) appears on this turn once it's done.
     onReportSaved: (r) => {
@@ -280,6 +334,7 @@ onMounted(() => {
         messages.value[current].streaming = false
         messages.value[current].writingReport = false
       }
+      pendingConsent.value = null
       busy.value = false
       current = -1
       // Title is derived from the first message server-side — reflect it.
@@ -291,11 +346,20 @@ onMounted(() => {
         messages.value[current].searching = false
         messages.value[current].streaming = false
       }
+      pendingConsent.value = null
       busy.value = false
       current = -1
     },
   })
 })
+
+// Answer the pending MCP tool-consent prompt and resume the turn.
+function decideConsent(approve: boolean) {
+  const req = pendingConsent.value
+  if (!req || !session) return
+  session.sendConsent(req.id, approve, consentRemember.value)
+  pendingConsent.value = null
+}
 
 onBeforeUnmount(() => session?.close())
 
@@ -673,6 +737,26 @@ function assistantHtml(m: Msg): string {
   color: #92400e;
 }
 
+/* MCP citations record an external tool invocation — a distinct tint, and no
+   pointer/hover affordance since there's nothing to open. */
+.cite-mcp {
+  background: #eef2ff;
+  color: #4338ca;
+  cursor: default;
+}
+.cite-mcp:hover {
+  color: #4338ca;
+}
+@media (prefers-color-scheme: dark) {
+  .cite-mcp {
+    background: #1e1b4b;
+    color: #c7d2fe;
+  }
+  .cite-mcp:hover {
+    color: #c7d2fe;
+  }
+}
+
 /* Working indication: a blinking caret while the answer streams in. The
    trailing form attaches to the end of the last rendered line; the standalone
    form (.caret) shows before any text has arrived. */
@@ -716,20 +800,80 @@ function assistantHtml(m: Msg): string {
   margin-top: 4px;
 }
 
-.web-toggle {
+/* Right-side tools column — chat-wide operations, mirroring the history pane. */
+.toolbar {
+  width: 200px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 14px;
+  overflow-y: auto;
+  background: var(--bg);
+}
+.tb-head {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 2px;
+}
+.tb-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text);
   user-select: none;
   cursor: pointer;
-  white-space: nowrap;
 }
-
-.web-toggle input {
+.tb-toggle input {
   margin: 0;
   cursor: pointer;
+}
+.tb-action {
+  text-align: left;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+}
+.tb-action:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.tb-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.tb-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 6px;
+  line-height: 1.4;
+}
+
+/* On narrow screens keep the tools column but make it compact (icon-ish, no
+   descriptive hints) so the messages + composer keep their room. */
+@media (max-width: 900px) {
+  .toolbar {
+    width: 128px;
+    padding: 14px 10px;
+  }
+  .tb-hint {
+    display: none;
+  }
+  .tb-toggle {
+    font-size: 13px;
+  }
+  .tb-action {
+    font-size: 13px;
+    padding: 8px 9px;
+  }
 }
 
 .muted {
@@ -741,6 +885,57 @@ function assistantHtml(m: Msg): string {
 .err {
   color: var(--danger);
   font-size: 13px;
+}
+
+/* MCP tool-consent prompt (MCP_INTEGRATIONS §6). */
+.consent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 1px solid #d9b45f;
+  background: #fff8e6;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 6px;
+}
+.consent-title {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+}
+.consent-title code,
+.consent-args {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.consent-args {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  word-break: break-word;
+}
+.consent-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.consent-actions {
+  display: flex;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.consent .btn.ghost {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+@media (prefers-color-scheme: dark) {
+  .consent {
+    background: #2a2412;
+    border-color: #5c4a1e;
+  }
 }
 
 .composer {
@@ -770,16 +965,6 @@ function assistantHtml(m: Msg): string {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* "Generate report" is a secondary action — outline, not filled like Send. */
-.btn-report {
-  background: var(--bg);
-  color: var(--fg);
-  white-space: nowrap;
-}
-.btn-report:hover:not(:disabled) {
-  border-color: var(--primary);
 }
 
 .report-dest {

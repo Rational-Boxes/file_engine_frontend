@@ -69,10 +69,12 @@ export interface SearchHit {
 // the web_search tool. Both share the [n] marker numbering used in the answer.
 export interface Citation {
   marker?: number // 1-based [n] reference used in the answer
-  kind?: 'doc' | 'web'
+  kind?: 'doc' | 'web' | 'mcp'
   fileUid?: string // doc citations
   url?: string // web citations
   title?: string // web citations
+  integration?: string // mcp citations — the integration's display name
+  tool?: string // mcp citations — the tool that was invoked
 }
 
 // Discriminated union of the server's streamed chat events.
@@ -81,6 +83,16 @@ export type ChatEvent =
   | { type: 'citations'; citations: Citation[] }
   | { type: 'tool_call'; name: string; args?: Record<string, unknown> }
   | { type: 'tool_result'; name: string }
+  // An MCP tool needs the user's approval before it runs (MCP_INTEGRATIONS §6). The
+  // turn pauses until the client replies with a `tool_consent` control message.
+  | {
+      type: 'tool_consent_request'
+      id: string
+      integration: string
+      tool: string
+      toolFull: string
+      argsSummary: string
+    }
   // A "Generate report" save landed; carries the new file's uid so the SPA can
   // offer an "Open report" link into the preview modal (GENERATE_REPORT_TO_TARGET).
   | { type: 'report_saved'; uid: string; name: string; path: string }

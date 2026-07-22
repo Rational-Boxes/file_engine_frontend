@@ -7,6 +7,8 @@ import type { ChatEvent, Citation } from '@/types'
 //   {"type":"token","text":"..."}                                    answer deltas
 //   {"type":"tool_call","name":"web_search","args":{...}}            model called a tool
 //   {"type":"tool_result","name":"web_search"}                       tool returned
+//   {"type":"tool_consent_request","id","integration","tool","tool_full","args_summary"}
+//                                                                    MCP tool needs approval
 //   {"type":"citations","citations":[{marker,kind,file_uid|url,...}]} doc + web sources
 //   {"type":"conversation","id":"..."}                               persisted chat id (resume)
 //   {"type":"done"}                                                  turn complete
@@ -14,13 +16,23 @@ import type { ChatEvent, Citation } from '@/types'
 //   {"type":"report_saved","uid":"...","name":"...","path":"..."}    report file saved
 // Client → server: {"message", "system_prompt"?, "history"?, "k"?, "web_search"?,
 //                   "conversation_id"?, "report_target_folder_uid"?,
-//                   "report_target_filename"?, "report_target_path"?}.
+//                   "report_target_filename"?, "report_target_path"?}
+//   or a consent reply: {"type":"tool_consent","id","decision":bool,"remember":bool}.
+
+export interface ConsentRequest {
+  id: string
+  integration: string
+  tool: string
+  toolFull: string
+  argsSummary: string
+}
 
 export interface ChatHandlers {
   onToken?: (text: string) => void
   onCitations?: (citations: Citation[]) => void
   onToolCall?: (name: string, args?: Record<string, unknown>) => void
   onToolResult?: (name: string) => void
+  onConsentRequest?: (req: ConsentRequest) => void
   onReportSaved?: (report: { uid: string; name: string; path: string }) => void
   onConversation?: (id: string) => void
   onDone?: () => void
@@ -43,6 +55,15 @@ export interface ChatSendOptions {
 function parseCitation(c: unknown): Citation {
   const o = (c ?? {}) as Record<string, unknown>
   const marker = typeof o.marker === 'number' ? o.marker : undefined
+  // MCP citations record an external tool invocation (integration + tool name).
+  if (o.kind === 'mcp') {
+    return {
+      kind: 'mcp',
+      marker,
+      integration: String(o.integration ?? ''),
+      tool: String(o.tool ?? ''),
+    }
+  }
   // Web citations carry a url (and the server tags kind:"web"); everything else
   // is a document citation keyed by file_uid.
   if (o.kind === 'web' || o.url) {
@@ -70,6 +91,15 @@ export function parseChatEvent(raw: unknown): ChatEvent | null {
       }
     case 'tool_result':
       return { type: 'tool_result', name: String(e.name ?? '') }
+    case 'tool_consent_request':
+      return {
+        type: 'tool_consent_request',
+        id: String(e.id ?? ''),
+        integration: String(e.integration ?? ''),
+        tool: String(e.tool ?? ''),
+        toolFull: String(e.tool_full ?? ''),
+        argsSummary: String(e.args_summary ?? ''),
+      }
     case 'report_saved':
       return {
         type: 'report_saved',
@@ -121,6 +151,14 @@ export class ChatSession {
     else if (e.type === 'citations') this.handlers.onCitations?.(e.citations)
     else if (e.type === 'tool_call') this.handlers.onToolCall?.(e.name, e.args)
     else if (e.type === 'tool_result') this.handlers.onToolResult?.(e.name)
+    else if (e.type === 'tool_consent_request')
+      this.handlers.onConsentRequest?.({
+        id: e.id,
+        integration: e.integration,
+        tool: e.tool,
+        toolFull: e.toolFull,
+        argsSummary: e.argsSummary,
+      })
     else if (e.type === 'report_saved') this.handlers.onReportSaved?.({ uid: e.uid, name: e.name, path: e.path })
     else if (e.type === 'conversation') this.handlers.onConversation?.(e.id)
     else if (e.type === 'done') this.handlers.onDone?.()
@@ -141,6 +179,14 @@ export class ChatSession {
     }
     const json = JSON.stringify(payload)
     // OPEN === 1 (avoid referencing the WebSocket global, absent in jsdom).
+    if (this.ws.readyState === 1) this.ws.send(json)
+    else this.queue.push(json)
+  }
+
+  // Reply to a `tool_consent_request`. `remember` allows that tool for the rest of
+  // the conversation (no re-prompt). The server default-denies on timeout/no-reply.
+  sendConsent(id: string, decision: boolean, remember = false): void {
+    const json = JSON.stringify({ type: 'tool_consent', id, decision, remember })
     if (this.ws.readyState === 1) this.ws.send(json)
     else this.queue.push(json)
   }

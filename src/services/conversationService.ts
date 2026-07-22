@@ -23,6 +23,14 @@ interface RawMessage {
 function mapCitation(c: unknown): Citation {
   const o = (c ?? {}) as Record<string, unknown>
   const marker = typeof o.marker === 'number' ? o.marker : undefined
+  if (o.kind === 'mcp') {
+    return {
+      kind: 'mcp',
+      marker,
+      integration: String(o.integration ?? ''),
+      tool: String(o.tool ?? ''),
+    }
+  }
   if (o.kind === 'web' || o.url) {
     return { kind: 'web', marker, url: String(o.url ?? ''), title: String(o.title ?? '') }
   }
