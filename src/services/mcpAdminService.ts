@@ -21,6 +21,7 @@ export interface McpIntegration {
   headers: Record<string, string>
   enabled: boolean
   allowed_tools: string[] | null // null = expose all discovered tools
+  allowed_roles: string[] | null // null/empty = all users; else only these roles may use it
   forward_identity: boolean
   token_url: string // oauth: token endpoint (client-credentials)
   oauth_client_id: string // oauth: client id
@@ -42,6 +43,7 @@ export interface McpIntegrationWrite {
   secret?: string
   headers?: Record<string, string>
   allowed_tools?: string[] | null
+  allowed_roles?: string[] | null
   enabled?: boolean
   forward_identity?: boolean
   token_url?: string
