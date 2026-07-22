@@ -2,7 +2,9 @@
 // (Phase 1.7). Mirrors the backend's editable set (convert_search_ai/onlyoffice.py)
 // so the SPA only offers "Edit" for documents the Document Server can actually open.
 
-const WORD = ['doc', 'docx', 'docm', 'dot', 'dotx', 'odt', 'ott', 'rtf', 'txt']
+// HTML is edited graphically in the word editor and saved back as HTML — so stored
+// .html files (e.g. AI-generated reports) can be edited WYSIWYG.
+const WORD = ['doc', 'docx', 'docm', 'dot', 'dotx', 'odt', 'ott', 'rtf', 'txt', 'html', 'htm']
 const CELL = ['xls', 'xlsx', 'xlsm', 'xlt', 'xltx', 'ods', 'ots', 'csv']
 const SLIDE = ['ppt', 'pptx', 'pptm', 'pot', 'potx', 'odp', 'otp']
 
