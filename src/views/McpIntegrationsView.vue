@@ -113,13 +113,18 @@
           <p v-else class="muted">No roles found for this tenant.</p>
         </fieldset>
 
-        <label class="chk">
+        <label
+          class="chk"
+          title="Separate from Authentication: OAuth/bearer credentials identify the integration (which app is calling), while this conveys the end-user (who it's acting for). Useful even with OAuth, so the server can authorize/attribute per-user."
+        >
           <input type="checkbox" v-model="form.forward_identity" />
           Forward the signed-in user's identity to this server
         </label>
         <p v-if="form.forward_identity" class="warn-note">
           A minimal claim (user id + tenant) will be sent to this external server so it
-          can authorize per-user. No roles, tokens, or file permissions are shared.
+          can authorize per-user. No roles, tokens, or file permissions are shared. This
+          is separate from <strong>Authentication</strong> above: OAuth/bearer credentials
+          identify the <em>integration</em>; this identifies the <em>end-user</em>.
         </p>
 
         <div class="test-row">
