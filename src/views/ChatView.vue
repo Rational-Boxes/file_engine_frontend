@@ -49,6 +49,7 @@
               class="text"
               :html="assistantHtml(m)"
               :streaming="!!m.streaming"
+              @file-ref="onFileRef"
             />
             <p v-else class="text">{{ m.content }}</p>
             <!-- User "Generate report" turn: show the pinned destination. -->
@@ -179,6 +180,7 @@ import { conversationService } from '@/services/conversationService'
 import { usePreviewStore } from '@/stores/preview'
 import { useFileNames } from '@/composables/useFileNames'
 import { renderMarkdown } from '@/utils/markdown'
+import { linkifyFileRefs, extractFileRefUids } from '@/utils/fileRefs'
 import ShadowHtml from '@/components/ShadowHtml.vue'
 import ReportTargetDialog from '@/components/ReportTargetDialog.vue'
 import type { Citation, ConversationSummary } from '@/types'
@@ -333,6 +335,9 @@ onMounted(() => {
         messages.value[current].searching = false
         messages.value[current].streaming = false
         messages.value[current].writingReport = false
+        // Resolve names for any "(file <uid>)" references in the finished answer so
+        // their links show the file name instead of the placeholder.
+        resolveNames(extractFileRefUids(messages.value[current].content))
       }
       pendingConsent.value = null
       busy.value = false
@@ -387,12 +392,14 @@ async function selectConversation(id: string) {
     currentConversationId.value = id
     error.value = ''
     stick.value = true // jump to the latest message of the resumed chat
-    resolveNames(
-      convo.messages
+    resolveNames([
+      ...convo.messages
         .flatMap((m) => m.citations)
         .filter((c) => c.kind !== 'web' && c.fileUid)
         .map((c) => c.fileUid as string),
-    )
+      // …plus any "(file <uid>)" references inline in the resumed answers.
+      ...convo.messages.flatMap((m) => extractFileRefUids(m.content)),
+    ])
   } catch {
     error.value = 'Could not load that conversation.'
   }
@@ -472,9 +479,19 @@ function assistantHtml(m: Msg): string {
   if (!stripped) {
     return m.content.includes('<think>') ? '<p class="thinking">…thinking…</p>' : ''
   }
+  // Rewrite "(file <uid>)" references into name-bearing links before rendering
+  // (utils/fileRefs); the click is handled by @file-ref → onFileRef. Names come
+  // from the reactive `names` cache, so the labels fill in once resolveNames lands.
+  const linked = linkifyFileRefs(stripped, names.value)
   // allowStyle: the answer renders inside ShadowHtml, so a <style> the LLM emits
   // is scoped to that shadow root (styles the answer, never the app).
-  return renderMarkdown(stripped, { allowStyle: true })
+  return renderMarkdown(linked, { allowStyle: true })
+}
+
+// A rewritten "(file <uid>)" link in an answer was clicked — open the file in the
+// preview overlay, exactly like clicking a document citation.
+function onFileRef(uid: string) {
+  preview.open(uid, names.value[uid] || '')
 }
 </script>
 
