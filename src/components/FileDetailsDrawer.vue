@@ -64,6 +64,17 @@
       </dl>
       <p v-else class="muted">Loading…</p>
 
+      <!-- In-browser editing for office documents (ONLYOFFICE, Phase 1.7). Gated on
+           the file NAME's extension; the editor page enforces WRITE + surfaces
+           "editing not enabled" when the backend flag is off. -->
+      <button
+        v-if="item && !item.isDirectory && isOfficeEditable"
+        class="btn edit-btn"
+        @click="openEditor"
+      >
+        ✎ Edit in browser
+      </button>
+
       <button
         v-if="item && !item.isDirectory && canDownload"
         class="btn dl-btn"
@@ -139,6 +150,7 @@ import FileVersions from '@/components/FileVersions.vue'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'
+import { isEditableOffice } from '@/utils/office'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
 import { searchService } from '@/services/searchService'
 
@@ -207,6 +219,12 @@ const item = computed(() => files.detailItem)
 const router = useRouter()
 const canEdit = computed(() => auth.hasAccessLevel('editor'))
 const canDownload = computed(() => canDo('download', auth.accessLevel))
+// Editability is decided by the file NAME's extension (an office document), not the
+// UID; the backend still enforces WRITE when the editor opens.
+const isOfficeEditable = computed(() => !!item.value && isEditableOffice(item.value.name))
+function openEditor() {
+  if (item.value) router.push(`/edit/${item.value.uid}`)
+}
 
 // Copy a shareable deep link (opens the file's folder, selects it, opens this
 // drawer) to the clipboard.
@@ -404,8 +422,21 @@ async function removeMeta(key: string) {
   color: var(--danger);
 }
 
-.dl-btn {
+.edit-btn {
   margin-top: 14px;
+  width: 100%;
+  text-align: center;
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.edit-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+  background: var(--primary);
+}
+
+.dl-btn {
+  margin-top: 10px;
   width: 100%;
   text-align: center;
 }
