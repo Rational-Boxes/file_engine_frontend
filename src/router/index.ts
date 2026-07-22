@@ -11,6 +11,7 @@ const ChatView = () => import('@/views/ChatView.vue')
 const AdminOpsView = () => import('@/views/AdminOpsView.vue')
 const PreviewView = () => import('@/views/PreviewView.vue')
 const OnlyOfficeEditorView = () => import('@/views/OnlyOfficeEditorView.vue')
+const OAuthConsentView = () => import('@/views/OAuthConsentView.vue')
 const ProfileView = () => import('@/views/ProfileView.vue')
 const TenantAdminView = () => import('@/views/TenantAdminView.vue')
 const McpIntegrationsView = () => import('@/views/McpIntegrationsView.vue')
@@ -26,6 +27,9 @@ const routes = [
   { path: '/chat', name: 'Chat', component: ChatView, meta: { requiresAuth: true } },
   { path: '/preview/:uid', name: 'Preview', component: PreviewView, meta: { requiresAuth: true } },
   { path: '/edit/:uid', name: 'Edit', component: OnlyOfficeEditorView, meta: { requiresAuth: true } },
+  // OAuth authorization/consent — an external client redirects the browser here; the
+  // auth guard bounces to /login (and back) if not signed in, then consent is shown.
+  { path: '/oauth/authorize', name: 'OAuthConsent', component: OAuthConsentView, meta: { requiresAuth: true } },
   {
     path: '/admin/ops',
     name: 'AdminOps',
