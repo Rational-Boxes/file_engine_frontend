@@ -2,7 +2,7 @@
   <div class="profile">
     <AppNav />
     <main class="content">
-      <h1>My profile</h1>
+      <h1>My profile <HelpIcon topic="account-security" label="Signing in &amp; account security" /></h1>
       <p v-if="error" class="err">{{ error }}</p>
 
       <section v-if="profile" class="card">
@@ -68,6 +68,7 @@ import AppNav from '@/components/AppNav.vue'
 import PasswordRequirements from '@/components/PasswordRequirements.vue'
 import TwoFactorSettings from '@/components/TwoFactorSettings.vue'
 import WebDavCredentials from '@/components/WebDavCredentials.vue'
+import HelpIcon from '@/components/HelpIcon.vue'
 import { ldapAdminService, type Profile } from '@/services/ldapAdminService'
 import { errorMessage } from '@/services/apiClient'
 

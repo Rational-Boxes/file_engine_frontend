@@ -1,7 +1,7 @@
 <template>
   <section class="card">
     <div class="head">
-      <h2>WebDAV &amp; MCP credentials</h2>
+      <h2>WebDAV &amp; MCP credentials <HelpIcon topic="webdav" label="Connect FileEngine to your computer" /></h2>
     </div>
     <p class="muted">
       Connect a WebDAV client (Finder, Explorer, davfs) or an MCP agent with a
@@ -94,6 +94,7 @@ import {
   type ServiceCredentialMeta,
   type ServiceCredentialSecret,
 } from '@/services/ldapAdminService'
+import HelpIcon from '@/components/HelpIcon.vue'
 import { errorMessage } from '@/services/apiClient'
 
 const creds = ref<ServiceCredentialMeta[]>([])

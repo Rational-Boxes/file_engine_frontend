@@ -6,6 +6,7 @@
         <button class="link" @click="back">← Back</button>
         <span class="oo-title">{{ title }}</span>
         <span v-if="status" class="oo-status">{{ status }}</span>
+        <HelpIcon topic="editing" label="Editing documents in your browser" />
       </header>
       <p v-if="error" class="oo-err">{{ error }}</p>
       <!-- ONLYOFFICE renders its editor into this element. -->
@@ -18,6 +19,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
+import HelpIcon from '@/components/HelpIcon.vue'
 import { onlyofficeService, errorMessage } from '@/services/onlyofficeService'
 
 const route = useRoute()

@@ -105,6 +105,7 @@
 
     <!-- Versions -->
     <section v-show="tab === 'Versions'" class="pane">
+      <p class="muted">Version history <HelpIcon topic="versions" label="About version history" /></p>
       <FileVersions
         v-if="item && !item.isDirectory"
         :uid="item.uid"
@@ -127,7 +128,7 @@
       </div>
 
       <div v-if="item" class="acl">
-        <p class="muted">Access control list</p>
+        <p class="muted">Access control list <HelpIcon topic="sharing" label="Sharing files &amp; setting permissions" /></p>
         <AclEditor :uid="item.uid" :can-manage="!!effective['m']" :is-directory="item.isDirectory" @changed="loadAll(item.uid)" />
       </div>
     </section>
@@ -147,6 +148,7 @@ import { PERMS, canDo } from '@/utils/permissions'
 import AclEditor from '@/components/AclEditor.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import FileVersions from '@/components/FileVersions.vue'
+import HelpIcon from '@/components/HelpIcon.vue'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'

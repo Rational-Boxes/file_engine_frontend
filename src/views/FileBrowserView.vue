@@ -21,6 +21,7 @@
         >
           ↻ Reload
         </button>
+        <HelpIcon topic="files" label="Uploading &amp; organizing files" />
         <button
           v-if="files.canListDeleted"
           class="btn"
@@ -226,6 +227,7 @@ import ConfirmModal from '@/components/ConfirmModal.vue'
 import UploadTray from '@/components/UploadTray.vue'
 import AppNav from '@/components/AppNav.vue'
 import FileThumbnail from '@/components/FileThumbnail.vue'
+import HelpIcon from '@/components/HelpIcon.vue'
 import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
