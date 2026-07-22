@@ -11,8 +11,9 @@ describe('fileExtension', () => {
 })
 
 describe('isEditableOffice', () => {
-  it('is true for word/cell/slide formats', () => {
-    for (const n of ['report.docx', 'notes.odt', 'budget.xlsx', 'data.csv', 'deck.pptx', 'x.odp'])
+  it('is true for word/cell/slide formats (incl. HTML)', () => {
+    for (const n of ['report.docx', 'notes.odt', 'budget.xlsx', 'data.csv', 'deck.pptx', 'x.odp',
+                     'summary.html', 'PAGE.HTM'])
       expect(isEditableOffice(n)).toBe(true)
   })
   it('is false for non-office files', () => {
@@ -24,6 +25,7 @@ describe('isEditableOffice', () => {
 describe('officeDocumentType', () => {
   it('maps to the ONLYOFFICE editor family', () => {
     expect(officeDocumentType('a.docx')).toBe('word')
+    expect(officeDocumentType('a.html')).toBe('word') // HTML edits in the word editor
     expect(officeDocumentType('a.xlsx')).toBe('cell')
     expect(officeDocumentType('a.pptx')).toBe('slide')
     expect(officeDocumentType('a.png')).toBe('')
