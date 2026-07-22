@@ -68,12 +68,27 @@
             <option value="none">None</option>
             <option value="bearer">Bearer token</option>
             <option value="header">Custom header</option>
+            <option value="oauth">OAuth 2.0 (client credentials)</option>
           </select>
         </label>
         <label v-if="form.auth_type === 'header'" class="fld"><span>Header name</span>
           <input v-model.trim="form.auth_header" placeholder="Authorization" />
         </label>
-        <label v-if="form.auth_type !== 'none'" class="fld"><span>Secret {{ form.id ? '(leave blank to keep)' : '' }}</span>
+        <!-- OAuth client-credentials: token endpoint + client id + scope; the client
+             secret is the "Secret" field below. -->
+        <template v-if="form.auth_type === 'oauth'">
+          <label class="fld"><span>Token URL (https)</span>
+            <input v-model.trim="form.token_url" placeholder="https://auth.example.com/oauth/token" />
+          </label>
+          <label class="fld"><span>Client ID</span>
+            <input v-model.trim="form.oauth_client_id" placeholder="client id" />
+          </label>
+          <label class="fld"><span>Scope <span class="muted">(optional)</span></span>
+            <input v-model.trim="form.oauth_scope" placeholder="mcp.read mcp.write" />
+          </label>
+        </template>
+        <label v-if="form.auth_type !== 'none'" class="fld">
+          <span>{{ form.auth_type === 'oauth' ? 'Client secret' : 'Secret' }} {{ form.id ? '(leave blank to keep)' : '' }}</span>
           <input v-model="form.secret" type="password" autocomplete="new-password"
                  :placeholder="form.id && hasSecret ? '•••••••• (stored)' : 'token / key'" />
         </label>
@@ -151,6 +166,9 @@ function blank(): McpIntegrationWrite & { id?: string } {
     auth_type: 'none',
     auth_header: '',
     secret: '',
+    token_url: '',
+    oauth_client_id: '',
+    oauth_scope: '',
     forward_identity: false,
     enabled: false,
   }
@@ -203,6 +221,9 @@ function startEdit(i: McpIntegration) {
     auth_type: i.auth_type,
     auth_header: i.auth_header,
     secret: '', // write-only; blank keeps the stored one
+    token_url: i.token_url,
+    oauth_client_id: i.oauth_client_id,
+    oauth_scope: i.oauth_scope,
     forward_identity: i.forward_identity,
     enabled: i.enabled,
   })
@@ -230,6 +251,11 @@ function payload(): McpIntegrationWrite {
     forward_identity: form.forward_identity,
     enabled: form.enabled,
     allowed_tools: allowed.value.length ? allowed.value : null,
+  }
+  if (form.auth_type === 'oauth') {
+    p.token_url = form.token_url
+    p.oauth_client_id = form.oauth_client_id
+    p.oauth_scope = form.oauth_scope
   }
   if (form.secret) p.secret = form.secret
   return p

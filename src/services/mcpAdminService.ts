@@ -6,7 +6,7 @@ import csaiClient, { errorMessage } from '@/services/csaiClient'
 // and NEVER returned (responses carry only `has_secret`).
 
 export type McpTransport = 'streamable-http' | 'sse'
-export type McpAuthType = 'none' | 'bearer' | 'header'
+export type McpAuthType = 'none' | 'bearer' | 'header' | 'oauth'
 
 export interface McpIntegration {
   id: string
@@ -22,6 +22,9 @@ export interface McpIntegration {
   enabled: boolean
   allowed_tools: string[] | null // null = expose all discovered tools
   forward_identity: boolean
+  token_url: string // oauth: token endpoint (client-credentials)
+  oauth_client_id: string // oauth: client id
+  oauth_scope: string // oauth: requested scope(s)
   created_by: string
   created_at: string
   updated_at: string
@@ -41,6 +44,9 @@ export interface McpIntegrationWrite {
   allowed_tools?: string[] | null
   enabled?: boolean
   forward_identity?: boolean
+  token_url?: string
+  oauth_client_id?: string
+  oauth_scope?: string
 }
 
 export interface McpToolInfo {
