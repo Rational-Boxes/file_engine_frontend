@@ -26,6 +26,13 @@
             <span v-if="i.forward_identity" class="tag warn" title="Forwards a minimal user identity to this server">
               forwards identity
             </span>
+            <span
+              v-if="i.allowed_roles && i.allowed_roles.length"
+              class="tag"
+              :title="`Only these roles may use it: ${i.allowed_roles.join(', ')}`"
+            >
+              🔒 {{ i.allowed_roles.join(', ') }}
+            </span>
             <span v-if="i.allowed_tools" class="muted">· {{ i.allowed_tools.length }} tool(s) allowed</span>
           </div>
           <div class="actions">
@@ -93,13 +100,31 @@
                  :placeholder="form.id && hasSecret ? '•••••••• (stored)' : 'token / key'" />
         </label>
 
-        <label class="chk">
+        <fieldset class="roles">
+          <legend>Restrict to roles</legend>
+          <p class="role-note">
+            <strong>No roles selected = all users can use this integration.</strong>
+            Otherwise, only chat users holding one of the checked roles may invoke its tools.
+          </p>
+          <div v-if="roleOptions.length" class="roles-grid">
+            <label v-for="r in roleOptions" :key="r" class="chk"><input
+              type="checkbox" :value="r" v-model="selectedRoles" /> {{ r }}</label>
+          </div>
+          <p v-else class="muted">No roles found for this tenant.</p>
+        </fieldset>
+
+        <label
+          class="chk"
+          title="Separate from Authentication: OAuth/bearer credentials identify the integration (which app is calling), while this conveys the end-user (who it's acting for). Useful even with OAuth, so the server can authorize/attribute per-user."
+        >
           <input type="checkbox" v-model="form.forward_identity" />
           Forward the signed-in user's identity to this server
         </label>
         <p v-if="form.forward_identity" class="warn-note">
           A minimal claim (user id + tenant) will be sent to this external server so it
-          can authorize per-user. No roles, tokens, or file permissions are shared.
+          can authorize per-user. No roles, tokens, or file permissions are shared. This
+          is separate from <strong>Authentication</strong> above: OAuth/bearer credentials
+          identify the <em>integration</em>; this identifies the <em>end-user</em>.
         </p>
 
         <div class="test-row">
@@ -142,6 +167,7 @@ import {
   type McpIntegrationWrite,
   type McpToolInfo,
 } from '@/services/mcpAdminService'
+import { ldapAdminService } from '@/services/ldapAdminService'
 
 const integrations = ref<McpIntegration[]>([])
 const editing = ref(false)
@@ -152,8 +178,18 @@ const hasSecret = ref(false)
 
 const discovered = ref<McpToolInfo[]>([])
 const allowed = ref<string[]>([])
+const selectedRoles = ref<string[]>([]) // empty = all users allowed
+const tenantRoles = ref<string[]>([]) // the tenant's roles (checkbox options)
 const testState = ref<'' | 'ok' | 'fail'>('')
 const testError = ref('')
+
+// Checkbox options: the tenant's roles, plus any currently-restricted role that no
+// longer exists as a tenant role (so an existing restriction is never silently lost).
+const roleOptions = computed(() => {
+  const set = new Set(tenantRoles.value)
+  for (const r of selectedRoles.value) set.add(r)
+  return [...set].sort((a, b) => a.localeCompare(b))
+})
 
 const form = reactive<McpIntegrationWrite & { id?: string }>(blank())
 
@@ -206,6 +242,7 @@ function resetTest() {
 function startCreate() {
   Object.assign(form, blank())
   hasSecret.value = false
+  selectedRoles.value = []
   resetTest()
   editing.value = true
   notice.value = ''
@@ -230,6 +267,7 @@ function startEdit(i: McpIntegration) {
   hasSecret.value = i.has_secret
   resetTest()
   allowed.value = i.allowed_tools ? [...i.allowed_tools] : []
+  selectedRoles.value = i.allowed_roles ? [...i.allowed_roles] : []
   editing.value = true
   notice.value = ''
 }
@@ -251,6 +289,7 @@ function payload(): McpIntegrationWrite {
     forward_identity: form.forward_identity,
     enabled: form.enabled,
     allowed_tools: allowed.value.length ? allowed.value : null,
+    allowed_roles: selectedRoles.value.length ? [...selectedRoles.value] : null,
   }
   if (form.auth_type === 'oauth') {
     p.token_url = form.token_url
@@ -343,7 +382,20 @@ async function remove(i: McpIntegration) {
   }
 }
 
-onMounted(load)
+// The tenant's roles populate the restriction checkboxes (best-effort — a failure
+// just leaves the grid empty, and any existing restriction still shows via roleOptions).
+async function loadRoles() {
+  try {
+    tenantRoles.value = (await ldapAdminService.listRoles()).map((r) => r.name)
+  } catch {
+    tenantRoles.value = []
+  }
+}
+
+onMounted(() => {
+  load()
+  loadRoles()
+})
 </script>
 
 <style scoped>
@@ -502,6 +554,32 @@ onMounted(load)
 .tools legend {
   font-size: 0.8rem;
   color: var(--fg);
+}
+.roles {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.roles legend {
+  font-size: 0.8rem;
+  color: var(--fg);
+}
+.role-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.role-note strong {
+  color: var(--fg);
+}
+.roles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 4px 12px;
 }
 .form-actions {
   display: flex;
