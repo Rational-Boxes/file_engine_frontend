@@ -5,6 +5,7 @@
       <button class="link back" @click="back">← Back</button>
       <div class="pv-titlebar">
         <h1 class="title">{{ name || uid }}</h1>
+        <router-link v-if="canEdit" class="pv-edit" :to="`/edit/${uid}`">✎ Edit</router-link>
         <div id="pv-titlebar" class="pv-slot"></div>
       </div>
       <p v-if="error" class="err">{{ error }}</p>
@@ -23,6 +24,7 @@ import DocumentPreview from '@/components/DocumentPreview.vue'
 import { fileService } from '@/services/fileService'
 import { useModel3dStore } from '@/stores/model3d'
 import { is3DModel } from '@/utils/modelFormat'
+import { isEditableOffice } from '@/utils/office'
 
 const route = useRoute()
 const router = useRouter()
@@ -32,6 +34,9 @@ const uid = computed(() => String(route.params.uid || ''))
 const name = ref('')
 const error = ref('')
 const is3d = computed(() => is3DModel(name.value))
+// Offer in-browser editing for office documents. If editing is disabled on the
+// deployment the editor page surfaces that; the button just routes there.
+const canEdit = computed(() => isEditableOffice(name.value))
 
 watch(uid, load, { immediate: true })
 
@@ -87,6 +92,20 @@ function back() {
 }
 .pv-slot {
   flex: 0 0 auto;
+}
+.pv-edit {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  color: var(--primary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.pv-edit:hover {
+  background: var(--primary);
+  color: #fff;
 }
 
 .err {
