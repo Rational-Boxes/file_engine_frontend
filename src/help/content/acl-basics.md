@@ -4,7 +4,7 @@ title: How permissions (ACLs) work
 category: Permissions
 keywords: [acl, permission, access, allow, deny, role, everyone, read, write]
 order: 1
-related: [acl-inheritance]
+related: [acl-inheritance, sharing]
 ---
 
 Every file and folder carries an **Access Control List** (ACL) — an ordered set of
@@ -25,14 +25,22 @@ Each ACL rule has three parts:
 
 ## The permissions
 
+These are the permissions you can grant or deny — the same checkboxes you'll see in
+the [sharing editor](#sharing):
+
 | Permission | Lets the principal… |
 |---|---|
 | **Read** | See the item and its contents |
 | **Write** | Change the item / upload new versions |
-| **Delete** | Remove the item |
+| **Delete** | Remove the item (a soft delete that can be undone) |
+| **List deleted** / **Undelete** | See soft-deleted items and restore them |
+| **View / Retrieve / Restore versions** | See earlier versions, download them, and roll a file back |
 | **Manage ACL** | Change the item's permissions |
-| **View / restore versions** | See and roll back to earlier versions |
-| **Cull versions** | Permanently remove old versions (a deliberately separate, high-trust permission) |
+| **Inherit** | Mark this rule to be passed down to *new* items — see [inheritance](#acl-inheritance) |
+| **Cull versions** | Permanently remove old versions (a deliberately separate, high-trust permission that destroys data) |
+
+Most of the time you'll think in terms of **Read**, **Write**, and **Manage ACL**;
+the finer-grained bits are there when you need them.
 
 ## How rules are evaluated
 
@@ -64,4 +72,5 @@ in **editors** can read and write.
 
 Only principals with **Manage ACL** on an item (and its owner, who always has full
 control) can add or remove rules. If you can see the permissions editor's add/remove
-controls, you have that permission on this item.
+controls, you have that permission on this item. For a step-by-step walkthrough of
+that editor, see [sharing files & setting permissions](#sharing).

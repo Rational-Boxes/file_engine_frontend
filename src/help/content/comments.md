@@ -31,6 +31,19 @@ history stays honest.
 Use **⚑ Review** to request that someone review the document. This signals the
 reviewer that their input is wanted and tracks the request alongside the discussion.
 
+### The Reviews inbox
+
+Review requests are collected in a **Reviews** inbox so nothing gets lost, split into
+**Awaiting your review** (requests assigned to you) and **Requested by you** (ones you
+opened, with their current status and outcome). From a request awaiting you, you can:
+
+- **Acknowledge** it, to signal you've picked it up;
+- **Approve** it; or
+- **Request changes**.
+
+Each entry links straight to the file — opening it on the relevant discussion thread —
+so you can review in context and reply where the conversation already is.
+
 ## Working together in real time
 
 The discussion panel has a small, focused set of live features that make

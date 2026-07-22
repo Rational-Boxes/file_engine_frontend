@@ -4,7 +4,7 @@ title: Searching your files
 category: Getting Started
 keywords: [search, find, query, metadata, cad, bim, ifc, engineering, full-text, filename]
 order: 2
-related: [getting-started, cad-bim, ai-research]
+related: [getting-started, files, cad-bim, ai-research]
 ---
 
 The **Search** tab finds files across everything you have access to — by their name

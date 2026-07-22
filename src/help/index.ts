@@ -22,10 +22,12 @@ export interface HelpTopic {
 // Category display order. Anything not listed sorts last, alphabetically.
 const CATEGORY_ORDER = [
   'Getting Started',
+  'Working with files',
   'Permissions',
   'Collaboration',
   '3D & CAD/BIM',
   'AI Research',
+  'Your account',
 ]
 
 // The landing topic opened when help is launched from the global link with no

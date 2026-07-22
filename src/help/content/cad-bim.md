@@ -4,7 +4,7 @@ title: Viewing CAD & BIM models
 category: 3D & CAD/BIM
 keywords: [cad, bim, 3d, model, ifc, gltf, step, point cloud, mesh, viewer]
 order: 1
-related: [comments, search]
+related: [comments, search, files]
 ---
 
 FileEngine includes an interactive **3D viewer** for engineering and building
@@ -28,12 +28,12 @@ details.
 ## Navigating a model
 
 - **Orbit, pan, and zoom** to move around the model.
-- The **Nav step** control sets how far each zoom/pan step moves — lower it for
-  fine control on small CAD parts, raise it for large scenes. There's a reset if you
+- The **Nav step** slider sets how far each zoom/pan step moves — lower it for fine
+  control on small CAD parts, raise it for large scenes; **⟲** resets it if you
   overshoot.
-- **Reset camera** returns to the default view.
-- Use **Download original** to get the source file, or **Open file location** to
-  jump to it in the browser.
+- **⟳ Reset camera** returns to the default view.
+- **⬇ Download original** gets the source file. **📂 Open file location** closes the
+  viewer and jumps to the file's folder in the [Files browser](#files).
 
 ## The object tree
 
