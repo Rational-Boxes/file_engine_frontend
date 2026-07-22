@@ -77,6 +77,15 @@
                 >
                   {{ webLabel(c) }}
                 </a>
+                <!-- MCP tool invocation: a bibliographic note, not a link (there's
+                     no document/URL to open) — a non-interactive chip. -->
+                <span
+                  v-else-if="c.kind === 'mcp'"
+                  class="cite cite-mcp"
+                  :title="`External tool: ${c.integration} · ${c.tool}`"
+                >
+                  {{ mcpLabel(c) }}
+                </span>
                 <button
                   v-else
                   type="button"
@@ -184,6 +193,13 @@ const { names, resolve: resolveNames } = useFileNames()
 function citeLabel(c: Citation): string {
   const name = c.fileUid ? names.value[c.fileUid] : ''
   return name ? `[${c.marker}] ${name}` : `[${c.marker}]`
+}
+
+// MCP citation label: the [n] marker plus "integration · tool" (a 🔌 marks it as
+// an external tool invocation, distinct from document/web sources).
+function mcpLabel(c: Citation): string {
+  const parts = [c.integration, c.tool].filter(Boolean).join(' · ')
+  return `[${c.marker}] 🔌 ${parts}`
 }
 
 // Web citation label: the [n] marker plus the result's host (or title).
@@ -719,6 +735,26 @@ function assistantHtml(m: Msg): string {
 
 .cite-web:hover {
   color: #92400e;
+}
+
+/* MCP citations record an external tool invocation — a distinct tint, and no
+   pointer/hover affordance since there's nothing to open. */
+.cite-mcp {
+  background: #eef2ff;
+  color: #4338ca;
+  cursor: default;
+}
+.cite-mcp:hover {
+  color: #4338ca;
+}
+@media (prefers-color-scheme: dark) {
+  .cite-mcp {
+    background: #1e1b4b;
+    color: #c7d2fe;
+  }
+  .cite-mcp:hover {
+    color: #c7d2fe;
+  }
 }
 
 /* Working indication: a blinking caret while the answer streams in. The

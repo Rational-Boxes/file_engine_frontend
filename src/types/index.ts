@@ -69,10 +69,12 @@ export interface SearchHit {
 // the web_search tool. Both share the [n] marker numbering used in the answer.
 export interface Citation {
   marker?: number // 1-based [n] reference used in the answer
-  kind?: 'doc' | 'web'
+  kind?: 'doc' | 'web' | 'mcp'
   fileUid?: string // doc citations
   url?: string // web citations
   title?: string // web citations
+  integration?: string // mcp citations — the integration's display name
+  tool?: string // mcp citations — the tool that was invoked
 }
 
 // Discriminated union of the server's streamed chat events.

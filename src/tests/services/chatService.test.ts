@@ -39,6 +39,24 @@ describe('parseChatEvent', () => {
     })
   })
 
+  it('parses an MCP citation (external tool invocation)', () => {
+    expect(
+      parseChatEvent({
+        type: 'citations',
+        citations: [
+          { file_uid: 'f1', marker: 1 },
+          { kind: 'mcp', integration: 'Hugging Face', tool: 'hf_whoami', marker: 2 },
+        ],
+      }),
+    ).toEqual({
+      type: 'citations',
+      citations: [
+        { kind: 'doc', fileUid: 'f1', marker: 1 },
+        { kind: 'mcp', integration: 'Hugging Face', tool: 'hf_whoami', marker: 2 },
+      ],
+    })
+  })
+
   it('parses the report_saved event', () => {
     expect(parseChatEvent({ type: 'report_saved', uid: 'u1', name: 'r.html', path: '/Reports/r.html' })).toEqual({
       type: 'report_saved',

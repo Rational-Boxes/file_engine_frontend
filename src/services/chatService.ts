@@ -55,6 +55,15 @@ export interface ChatSendOptions {
 function parseCitation(c: unknown): Citation {
   const o = (c ?? {}) as Record<string, unknown>
   const marker = typeof o.marker === 'number' ? o.marker : undefined
+  // MCP citations record an external tool invocation (integration + tool name).
+  if (o.kind === 'mcp') {
+    return {
+      kind: 'mcp',
+      marker,
+      integration: String(o.integration ?? ''),
+      tool: String(o.tool ?? ''),
+    }
+  }
   // Web citations carry a url (and the server tags kind:"web"); everything else
   // is a document citation keyed by file_uid.
   if (o.kind === 'web' || o.url) {
