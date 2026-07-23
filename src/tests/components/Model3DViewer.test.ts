@@ -1,50 +1,121 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 const XKT = new Uint8Array([1, 2, 3]).buffer
 
-const h = vi.hoisted(() => ({
-  loadSpy: vi.fn(),
-  destroySpy: vi.fn(),
-  resizeSpy: vi.fn(),
-  navCube: vi.fn(),
-  renditionArrayBuffer: vi.fn(),
-  // The CameraControl whose dolly rates the slider tweaks; fresh per test.
-  cameraControl: {} as Record<string, number>,
-  // The Camera whose pan() the viewer wraps to scale panning; fresh per test.
-  panSpy: vi.fn(),
-  camera: null as any,
-}))
+const h = vi.hoisted(() => {
+  // A fake SectionPlanesPlugin that actually tracks planes so syncSectionPlanes
+  // (which reads `.sectionPlanes`) mirrors a realistic id set into the store.
+  const sectionPlanes = {
+    sectionPlanes: {} as Record<string, unknown>,
+    createSectionPlane: vi.fn(),
+    clear: vi.fn(),
+  }
+  sectionPlanes.createSectionPlane.mockImplementation((cfg: Record<string, unknown> = {}) => {
+    const id = 'sp' + (Object.keys(sectionPlanes.sectionPlanes).length + 1)
+    sectionPlanes.sectionPlanes[id] = { id, ...cfg }
+    return { id }
+  })
+  sectionPlanes.clear.mockImplementation(() => {
+    sectionPlanes.sectionPlanes = {}
+  })
+  const VIEWPOINT = { perspective_camera: {}, clipping_planes: [] }
+  return {
+    loadSpy: vi.fn(),
+    destroySpy: vi.fn(),
+    resizeSpy: vi.fn(),
+    navCube: vi.fn(),
+    renditionArrayBuffer: vi.fn(),
+    // The CameraControl whose dolly rates + navMode the API/slider tweak.
+    cameraControl: {} as Record<string, unknown>,
+    // The Camera whose pan() the viewer wraps to scale panning; fresh per test.
+    panSpy: vi.fn(),
+    camera: null as any,
+    // Plugin-host doubles.
+    setHighlighted: vi.fn(),
+    getSnapshot: vi.fn(() => 'data:image/png;base64,AAAA'),
+    sectionPlanes,
+    distance: { control: { activate: vi.fn(), deactivate: vi.fn() } },
+    angle: { control: { activate: vi.fn(), deactivate: vi.fn() } },
+    bcf: { getViewpoint: vi.fn(() => VIEWPOINT), setViewpoint: vi.fn() },
+    VIEWPOINT,
+  }
+})
 
 vi.mock('@/services/renditions', () => ({ renditionArrayBuffer: h.renditionArrayBuffer }))
 vi.mock('@/services/fileService', () => ({ fileService: { downloadFile: vi.fn() } }))
 
 vi.mock('@xeokit/xeokit-sdk', () => ({
   Viewer: vi.fn().mockImplementation(() => ({
-    scene: { canvas: { resize: h.resizeSpy } },
+    scene: {
+      canvas: { resize: h.resizeSpy },
+      setObjectsHighlighted: h.setHighlighted,
+      highlightedObjectIds: [] as string[],
+    },
     cameraFlight: { flyTo: vi.fn() },
     cameraControl: h.cameraControl,
     camera: h.camera,
+    getSnapshot: h.getSnapshot,
     destroy: h.destroySpy,
   })),
   XKTLoaderPlugin: vi.fn().mockImplementation(() => ({ load: h.loadSpy })),
   NavCubePlugin: h.navCube.mockImplementation(() => ({})),
   TreeViewPlugin: vi.fn().mockImplementation(() => ({ destroy: vi.fn() })),
+  SectionPlanesPlugin: vi.fn().mockImplementation(() => h.sectionPlanes),
+  DistanceMeasurementsPlugin: vi.fn().mockImplementation(() => h.distance),
+  AngleMeasurementsPlugin: vi.fn().mockImplementation(() => h.angle),
+  AnnotationsPlugin: vi.fn().mockImplementation(() => ({})),
+  BCFViewpointsPlugin: vi.fn().mockImplementation(() => h.bcf),
 }))
 
 import Model3DViewer from '@/components/Model3DViewer.vue'
-import { Viewer, XKTLoaderPlugin } from '@xeokit/xeokit-sdk'
+import {
+  Viewer,
+  XKTLoaderPlugin,
+  SectionPlanesPlugin,
+  DistanceMeasurementsPlugin,
+  AngleMeasurementsPlugin,
+  AnnotationsPlugin,
+  BCFViewpointsPlugin,
+} from '@xeokit/xeokit-sdk'
+import { useModel3dStore } from '@/stores/model3d'
+
+let pinia: ReturnType<typeof createPinia>
+
+// Mount with pinia installed; the component's plugin host mirrors state into the
+// model3d store.
+function mountViewer(props: { xktUid: string; treeContainerId?: string; navStep?: number }) {
+  return mount(Model3DViewer, { props, global: { plugins: [pinia] } })
+}
+
+// The exposed imperative API (defineExpose).
+type ViewerApi = {
+  resize: () => void
+  resetCamera: () => void
+  getViewpoint: () => unknown
+  setViewpoint: (v: unknown) => void
+  captureSnapshot: () => string | null
+  addSectionPlane: (cfg?: unknown) => string | null
+  clearSectionPlanes: () => void
+  startMeasurement: (k: 'none' | 'distance' | 'angle') => void
+  setNavMode: (m: 'orbit' | 'firstPerson' | 'planView') => void
+  highlightObjects: (ids: string[]) => void
+}
 
 describe('Model3DViewer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    pinia = createPinia()
+    setActivePinia(pinia)
     h.cameraControl = {}
     h.camera = { pan: h.panSpy }
+    h.sectionPlanes.sectionPlanes = {}
     h.renditionArrayBuffer.mockResolvedValue(XKT)
   })
 
   it('lazily loads xeokit, creates a viewer, and loads the fetched XKT buffer', async () => {
-    mount(Model3DViewer, { props: { xktUid: 'r1' } })
+    mountViewer({ xktUid: 'r1' })
     await flushPromises()
 
     expect(h.renditionArrayBuffer).toHaveBeenCalledWith('r1')
@@ -55,22 +126,96 @@ describe('Model3DViewer', () => {
     expect(h.loadSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 'model', xkt: XKT }))
   })
 
-  it('destroys the viewer on unmount (no leaked WebGL context)', async () => {
-    const w = mount(Model3DViewer, { props: { xktUid: 'r1' } })
+  it('constructs the markup / BCF plugin suite on load (the plugin host)', async () => {
+    mountViewer({ xktUid: 'r1' })
     await flushPromises()
+    expect(SectionPlanesPlugin).toHaveBeenCalledTimes(1)
+    expect(DistanceMeasurementsPlugin).toHaveBeenCalledTimes(1)
+    expect(AngleMeasurementsPlugin).toHaveBeenCalledTimes(1)
+    expect(AnnotationsPlugin).toHaveBeenCalledTimes(1)
+    expect(BCFViewpointsPlugin).toHaveBeenCalledTimes(1)
+    // Load publishes the default live state to the store.
+    const store = useModel3dStore()
+    expect(store.ready).toBe(true)
+    expect(store.navMode).toBe('orbit')
+  })
+
+  it('getViewpoint()/setViewpoint() delegate to BCFViewpointsPlugin', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const vm = w.vm as unknown as ViewerApi
+    expect(vm.getViewpoint()).toBe(h.VIEWPOINT)
+    expect(h.bcf.getViewpoint).toHaveBeenCalled()
+    vm.setViewpoint(h.VIEWPOINT)
+    expect(h.bcf.setViewpoint).toHaveBeenCalledWith(h.VIEWPOINT, undefined)
+  })
+
+  it('captureSnapshot() returns the viewer PNG snapshot', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const vm = w.vm as unknown as ViewerApi
+    expect(vm.captureSnapshot()).toBe('data:image/png;base64,AAAA')
+    expect(h.getSnapshot).toHaveBeenCalledWith(expect.objectContaining({ format: 'png' }))
+  })
+
+  it('setNavMode() sets CameraControl.navMode and mirrors it to the store', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    ;(w.vm as unknown as ViewerApi).setNavMode('planView')
+    expect(h.cameraControl.navMode).toBe('planView')
+    expect(useModel3dStore().navMode).toBe('planView')
+  })
+
+  it('addSectionPlane() creates a plane and mirrors the id set into the store', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const vm = w.vm as unknown as ViewerApi
+    const id = vm.addSectionPlane({ pos: [0, 0, 0], dir: [1, 0, 0] })
+    expect(h.sectionPlanes.createSectionPlane).toHaveBeenCalled()
+    expect(id).toBeTruthy()
+    const store = useModel3dStore()
+    expect(store.sectionPlaneIds).toHaveLength(1)
+    expect(store.hasSection).toBe(true)
+    vm.clearSectionPlanes()
+    expect(h.sectionPlanes.clear).toHaveBeenCalled()
+    expect(store.sectionPlaneIds).toHaveLength(0)
+  })
+
+  it('startMeasurement() activates one control and records the active tool', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    ;(w.vm as unknown as ViewerApi).startMeasurement('distance')
+    expect(h.distance.control.activate).toHaveBeenCalled()
+    expect(h.angle.control.deactivate).toHaveBeenCalled() // only one tool at a time
+    expect(useModel3dStore().activeTool).toBe('distance')
+  })
+
+  it('highlightObjects() highlights the set and records the selection', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    ;(w.vm as unknown as ViewerApi).highlightObjects(['a', 'b'])
+    expect(h.setHighlighted).toHaveBeenCalledWith(['a', 'b'], true)
+    expect(useModel3dStore().selection).toEqual(['a', 'b'])
+  })
+
+  it('destroys the viewer on unmount and clears the live store state', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    expect(useModel3dStore().ready).toBe(true)
     w.unmount()
     expect(h.destroySpy).toHaveBeenCalled()
+    expect(useModel3dStore().ready).toBe(false) // resetViewerState ran
   })
 
   it('exposes resize() which resizes the xeokit canvas', async () => {
-    const w = mount(Model3DViewer, { props: { xktUid: 'r1' } })
+    const w = mountViewer({ xktUid: 'r1' })
     await flushPromises()
-    ;(w.vm as unknown as { resize: () => void }).resize()
+    ;(w.vm as unknown as ViewerApi).resize()
     expect(h.resizeSpy).toHaveBeenCalled()
   })
 
   it('scales the zoom (dolly) rates by the navStep prop (finer steps for CAD)', async () => {
-    mount(Model3DViewer, { props: { xktUid: 'r1', navStep: 30 } })
+    mountViewer({ xktUid: 'r1', navStep: 30 })
     await flushPromises()
     // navStep 30 → scale 0.3 applied to every xeokit default dolly rate.
     expect(h.cameraControl.mouseWheelDollyRate).toBe(30) // 100 * 0.3
@@ -79,7 +224,7 @@ describe('Model3DViewer', () => {
   })
 
   it('scales panning by wrapping camera.pan (governs mouse pan, which has no rate)', async () => {
-    mount(Model3DViewer, { props: { xktUid: 'r1', navStep: 50 } })
+    mountViewer({ xktUid: 'r1', navStep: 50 })
     await flushPromises()
     // Every pan mode funnels through camera.pan; the wrapper scales the vector by 0.5.
     h.camera.pan([10, 2, -4])
@@ -87,7 +232,7 @@ describe('Model3DViewer', () => {
   })
 
   it('live-updates zoom and pan scale when navStep changes (no reload)', async () => {
-    const w = mount(Model3DViewer, { props: { xktUid: 'r1', navStep: 100 } })
+    const w = mountViewer({ xktUid: 'r1', navStep: 100 })
     await flushPromises()
     expect(h.cameraControl.mouseWheelDollyRate).toBe(100)
     h.camera.pan([10, 4, -6])
@@ -102,7 +247,7 @@ describe('Model3DViewer', () => {
 
   it('shows an error (and does not throw) when loading fails', async () => {
     h.renditionArrayBuffer.mockRejectedValueOnce(new Error('boom'))
-    const w = mount(Model3DViewer, { props: { xktUid: 'r1' } })
+    const w = mountViewer({ xktUid: 'r1' })
     await flushPromises()
     expect(w.find('.m3d-err').exists()).toBe(true)
   })

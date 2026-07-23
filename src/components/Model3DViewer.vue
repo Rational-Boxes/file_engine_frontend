@@ -16,9 +16,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, defineExpose } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { renditionArrayBuffer } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
+import { useModel3dStore, type NavMode, type MeasureTool } from '@/stores/model3d'
 
 // `xktUid` is the rendition child's uid (the .xkt bytes). `treeContainerId`
 // (optional) is the id of the sidebar element the object tree mounts into.
@@ -37,6 +38,8 @@ const props = withDefaults(
 // materialEmissive") in 2.6.104–2.6.112. Keep the integration but off until fixed.
 const NAVCUBE_ENABLED = false
 
+const store = useModel3dStore()
+
 const rootEl = ref<HTMLElement | null>(null)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const navCubeEl = ref<HTMLCanvasElement | null>(null)
@@ -44,8 +47,16 @@ const loading = ref(false)
 const error = ref('')
 
 // xeokit handles (kept untyped — the SDK is loaded lazily). Disposed on unmount.
+// This component is the plugin HOST: it owns the Viewer plus the markup/BCF plugin
+// suite and exposes a typed imperative API (see defineExpose) that the markup
+// toolbar and the annotation layer drive; live state is mirrored into the store.
 let viewer: any = null
 let treeView: any = null
+let sectionPlanes: any = null // SectionPlanesPlugin — cut-away (Workstream B / §7)
+let distanceMeasurements: any = null // DistanceMeasurementsPlugin (Workstream C / §8)
+let angleMeasurements: any = null // AngleMeasurementsPlugin (Workstream C / §8)
+let annotations: any = null // AnnotationsPlugin — markers (Workstream D / §9)
+let bcfViewpoints: any = null // BCFViewpointsPlugin — viewpoint get/set (§4)
 
 async function load() {
   destroy()
@@ -81,6 +92,11 @@ async function load() {
       console.warn('[Model3DViewer] object tree unavailable (model may have no metadata)', e)
     }
 
+    // Instantiate the markup / BCF plugin suite. Each is the backing capability
+    // for one imperative method below; a plugin that fails to construct must
+    // never break the preview, so each is isolated (same discipline as the tree).
+    makePlugins(xeokit)
+
     const loader = new xeokit.XKTLoaderPlugin(viewer)
     const xkt = await renditionArrayBuffer(props.xktUid)
     const model = loader.load({ id: 'model', xkt })
@@ -88,6 +104,9 @@ async function load() {
     // that the overlay's "Reset camera" button returns to.
     if (model && typeof model.on === 'function') model.on('loaded', resetCamera)
     else resetCamera()
+    // The viewer is live: publish its default state so the toolbar can reflect it.
+    setNavMode('orbit')
+    store.setReady(true)
     loading.value = false
   } catch (e) {
     // Surface the real cause (do not swallow it) so failures are diagnosable.
@@ -98,6 +117,26 @@ async function load() {
   }
 }
 
+// Build the markup/BCF plugin suite over the live viewer. Guarded on export
+// presence (a version bump could drop one — see the plugin smoke test) and
+// wrapped so a constructor failure only warns.
+function makePlugins(xeokit: any) {
+  const mk = (label: string, Ctor: any): any => {
+    if (typeof Ctor !== 'function') return null
+    try {
+      return new Ctor(viewer)
+    } catch (e) {
+      console.warn(`[Model3DViewer] ${label} plugin unavailable`, e)
+      return null
+    }
+  }
+  sectionPlanes = mk('section planes', xeokit.SectionPlanesPlugin)
+  distanceMeasurements = mk('distance measurement', xeokit.DistanceMeasurementsPlugin)
+  angleMeasurements = mk('angle measurement', xeokit.AngleMeasurementsPlugin)
+  annotations = mk('annotations', xeokit.AnnotationsPlugin)
+  bcfViewpoints = mk('BCF viewpoints', xeokit.BCFViewpointsPlugin)
+}
+
 function destroy() {
   try {
     treeView?.destroy?.()
@@ -105,12 +144,129 @@ function destroy() {
     /* ignore */
   }
   treeView = null
+  // Tear the plugin suite down before the viewer (documented clean order), then
+  // drop our handles so nothing dangles onto a dead viewer. Each destroy is
+  // guarded — a plugin may be absent or already gone.
+  for (const plugin of [sectionPlanes, distanceMeasurements, angleMeasurements, annotations, bcfViewpoints]) {
+    try {
+      plugin?.destroy?.()
+    } catch {
+      /* ignore */
+    }
+  }
+  sectionPlanes = distanceMeasurements = angleMeasurements = annotations = bcfViewpoints = null
   try {
     viewer?.destroy?.()
   } catch {
     /* ignore */
   }
   viewer = null
+  // The live viewer is gone — clear the mirrored state so the toolbar doesn't
+  // reflect a viewer that no longer exists.
+  store.resetViewerState()
+}
+
+// ---------------------------------------------------------------------------
+// Imperative API (the plugin host's surface). Every method is defensive — the
+// SDK is untyped and a plugin may be absent — and mirrors any state the markup
+// toolbar / annotation layer needs into the model3d store.
+// ---------------------------------------------------------------------------
+
+// Capture the current view as a BCF-2.1 viewpoint (camera + visibility +
+// selection + clipping planes + optional snapshot). This is the `anchor.viewpoint`
+// the annotation/BCF layers persist and round-trip (§4).
+function getViewpoint(options?: unknown): unknown {
+  try {
+    return bcfViewpoints?.getViewpoint?.(options) ?? null
+  } catch {
+    return null
+  }
+}
+
+// Restore a previously captured viewpoint — the deep-link "take me to exactly
+// what the author framed, cut-planes and all" primitive (§9).
+function setViewpoint(viewpoint: unknown, options?: unknown) {
+  try {
+    bcfViewpoints?.setViewpoint?.(viewpoint, options)
+  } catch {
+    /* best-effort */
+  }
+}
+
+// PNG data-URL of the current canvas — the annotation / BCF snapshot.
+function captureSnapshot(opts?: { width?: number; height?: number }): string | null {
+  try {
+    return viewer?.getSnapshot?.({ format: 'png', ...(opts || {}) }) ?? null
+  } catch {
+    return null
+  }
+}
+
+function syncSectionPlanes() {
+  const planes = sectionPlanes?.sectionPlanes || {}
+  store.setSectionPlanes(Object.keys(planes))
+}
+
+// Add a cut-away plane (Workstream B). Returns its id; mirrors the live plane set
+// into the store so viewpoints capture them and annotations restore them.
+function addSectionPlane(cfg?: { pos?: number[]; dir?: number[] }): string | null {
+  try {
+    const plane = sectionPlanes?.createSectionPlane?.(cfg || {})
+    if (plane?.id != null) {
+      syncSectionPlanes()
+      return String(plane.id)
+    }
+  } catch {
+    /* best-effort */
+  }
+  return null
+}
+
+function clearSectionPlanes() {
+  try {
+    sectionPlanes?.clear?.()
+  } catch {
+    /* ignore */
+  }
+  syncSectionPlanes()
+}
+
+// Activate a transient measurement tool (or 'none' to stop). Only one at a time.
+function startMeasurement(kind: MeasureTool) {
+  try {
+    distanceMeasurements?.control?.deactivate?.()
+    angleMeasurements?.control?.deactivate?.()
+    if (kind === 'distance') distanceMeasurements?.control?.activate?.()
+    else if (kind === 'angle') angleMeasurements?.control?.activate?.()
+  } catch {
+    /* best-effort */
+  }
+  store.setActiveTool(kind)
+}
+
+// Set the camera navigation mode (orbit / first-person / plan) — Workstream A.
+function setNavMode(mode: NavMode) {
+  try {
+    if (viewer?.cameraControl) viewer.cameraControl.navMode = mode
+  } catch {
+    /* best-effort */
+  }
+  store.setNavMode(mode)
+}
+
+// Highlight a set of objects by id (clearing any prior highlight) and record the
+// selection. Centering-on-object within a restored view is annotation deep-link
+// work (§9); this is the primitive it builds on.
+function highlightObjects(ids: string[]) {
+  const scene = viewer?.scene
+  try {
+    const prev: string[] = scene?.highlightedObjectIds || []
+    if (prev.length) scene?.setObjectsHighlighted?.(prev, false)
+    if (ids?.length) scene?.setObjectsHighlighted?.(ids, true)
+  } catch {
+    /* best-effort */
+  }
+  store.setSelection(ids || [])
 }
 
 // Called by the overlay when the sidebar collapses/expands so xeokit recomputes
@@ -183,7 +339,20 @@ watch(() => props.xktUid, load)
 // Live-apply slider changes to the already-running viewer (no reload needed).
 watch(() => props.navStep, applyNavStep)
 onBeforeUnmount(destroy)
-defineExpose({ resize, resetCamera })
+defineExpose({
+  // camera / canvas (existing)
+  resize,
+  resetCamera,
+  // markup / BCF imperative API (§5.3) — the plugin host's surface
+  getViewpoint,
+  setViewpoint,
+  captureSnapshot,
+  addSectionPlane,
+  clearSectionPlanes,
+  startMeasurement,
+  setNavMode,
+  highlightObjects,
+})
 
 async function downloadOriginal() {
   try {
