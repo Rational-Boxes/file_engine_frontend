@@ -64,6 +64,22 @@
           </button>
         </div>
 
+        <!-- Measurement (§8): distance / angle (transient), clear, and a units switch. -->
+        <div class="mv-group" role="group" aria-label="Measurement">
+          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.activeTool === 'distance' }"
+                  title="Measure distance" :disabled="!model3d.ready" @click="measure('distance')">📏</button>
+          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.activeTool === 'angle' }"
+                  title="Measure angle" :disabled="!model3d.ready" @click="measure('angle')">📐</button>
+          <button v-if="model3d.isMeasuring" class="mv-act mv-icon" title="Stop measuring" @click="measure('none')">■</button>
+          <button class="mv-act mv-icon" title="Clear measurements" :disabled="!model3d.ready" @click="clearMeasure">✕ Meas</button>
+          <select class="mv-units" :value="model3d.measureUnits" title="Measurement units"
+                  aria-label="Measurement units" @change="setUnits(($event.target as HTMLSelectElement).value)">
+            <option value="mm">mm</option>
+            <option value="m">m</option>
+            <option value="ft">ft</option>
+          </select>
+        </div>
+
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
 
@@ -163,7 +179,7 @@ import { useRouter } from 'vue-router'
 import Model3DViewer from '@/components/Model3DViewer.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
-import { useModel3dStore, type NavMode } from '@/stores/model3d'
+import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
 import { useAuthStore } from '@/stores/auth'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
@@ -352,6 +368,18 @@ function sectionBox() {
 }
 function clearSections() {
   viewerRef.value?.clearSectionPlanes()
+}
+
+// Measurement controls (§8): activate distance/angle (or 'none' to stop), clear
+// all measurements, and switch display units.
+function measure(kind: MeasureTool) {
+  viewerRef.value?.startMeasurement(kind)
+}
+function clearMeasure() {
+  viewerRef.value?.clearMeasurements()
+}
+function setUnits(units: string) {
+  viewerRef.value?.setMeasurementUnits(units as MeasureUnits)
 }
 
 async function toggleSidebar() {
@@ -652,6 +680,17 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.2rem;
   flex: 0 0 auto;
+}
+.mv-units {
+  background: transparent;
+  border: 1px solid #3a3d42;
+  color: #e8e8ea;
+  border-radius: 6px;
+  padding: 0.2rem 0.3rem;
+  cursor: pointer;
+}
+.mv-units option {
+  color: #000;
 }
 .mv-icon {
   padding: 0.25rem 0.45rem;

@@ -44,8 +44,9 @@ const h = vi.hoisted(() => {
     highlightedIds: [] as string[],
     aabb: [0, 0, 0, 10, 10, 10], // centre (5,5,5), diagonal ~17.3
     sectionPlanes,
-    distance: { control: { activate: vi.fn(), deactivate: vi.fn() } },
-    angle: { control: { activate: vi.fn(), deactivate: vi.fn() } },
+    distance: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn() },
+    angle: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn() },
+    metrics: { units: 'meters' },
     bcf: { getViewpoint: vi.fn(() => VIEWPOINT), setViewpoint: vi.fn() },
     VIEWPOINT,
   }
@@ -64,6 +65,7 @@ vi.mock('@xeokit/xeokit-sdk', () => ({
       },
       aabb: h.aabb,
       getAABB: h.getAABB,
+      metrics: h.metrics,
     },
     cameraFlight: { flyTo: h.flyTo },
     cameraControl: h.cameraControl,
@@ -116,6 +118,8 @@ type ViewerApi = {
   editSectionPlane: (id: string) => void
   clearSectionPlanes: () => void
   startMeasurement: (k: 'none' | 'distance' | 'angle') => void
+  clearMeasurements: () => void
+  setMeasurementUnits: (u: 'mm' | 'm' | 'ft') => void
   setNavMode: (m: 'orbit' | 'firstPerson' | 'planView') => void
   standardView: (k: 'top' | 'front' | 'iso' | 'fit') => void
   fitToSelection: () => void
@@ -131,6 +135,9 @@ describe('Model3DViewer', () => {
     h.camera = { pan: h.panSpy }
     h.sectionPlanes.sectionPlanes = {}
     h.highlightedIds = []
+    h.distance.control.snapping = false
+    h.angle.control.snapping = false
+    h.metrics.units = 'meters'
     h.renditionArrayBuffer.mockResolvedValue(XKT)
   })
 
@@ -245,13 +252,30 @@ describe('Model3DViewer', () => {
     expect(useModel3dStore().sectionPlaneIds).toHaveLength(0)
   })
 
-  it('startMeasurement() activates one control and records the active tool', async () => {
+  it('startMeasurement() activates one control (with snapping) and records the tool', async () => {
     const w = mountViewer({ xktUid: 'r1' })
     await flushPromises()
     ;(w.vm as unknown as ViewerApi).startMeasurement('distance')
     expect(h.distance.control.activate).toHaveBeenCalled()
+    expect(h.distance.control.snapping).toBe(true) // snap to vertices/edges (§8)
     expect(h.angle.control.deactivate).toHaveBeenCalled() // only one tool at a time
     expect(useModel3dStore().activeTool).toBe('distance')
+  })
+
+  it('clearMeasurements() clears both measurement plugins', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    ;(w.vm as unknown as ViewerApi).clearMeasurements()
+    expect(h.distance.clear).toHaveBeenCalled()
+    expect(h.angle.clear).toHaveBeenCalled()
+  })
+
+  it('setMeasurementUnits() maps to xeokit metrics units and records the choice', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    ;(w.vm as unknown as ViewerApi).setMeasurementUnits('mm')
+    expect(h.metrics.units).toBe('millimeters')
+    expect(useModel3dStore().measureUnits).toBe('mm')
   })
 
   it('highlightObjects() highlights the set and records the selection', async () => {

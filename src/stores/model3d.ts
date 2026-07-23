@@ -4,6 +4,9 @@ import { defineStore } from 'pinia'
 export type NavMode = 'orbit' | 'firstPerson' | 'planView'
 // The active transient measurement tool (Workstream C / §8). 'none' = no tool.
 export type MeasureTool = 'none' | 'distance' | 'angle'
+// Measurement display units (Workstream C / §8). Model units until §5.2 metadata
+// lands; the user can switch. (BCF export is always metres — §17.)
+export type MeasureUnits = 'mm' | 'm' | 'ft'
 
 // Drives the global 3D model viewer overlay (ModelViewerOverlay.vue, mounted in
 // App.vue). Like the document preview, opening the 3D viewer is an overlay — NOT
@@ -22,6 +25,7 @@ interface Model3dState {
   ready: boolean // a Model3DViewer is mounted with a loaded model
   navMode: NavMode // current CameraControl nav mode
   activeTool: MeasureTool // active measurement tool (transient)
+  measureUnits: MeasureUnits // measurement display units
   sectionPlaneIds: string[] // ids of the live SectionPlanesPlugin planes
   selection: string[] // currently highlighted/selected object ids
 }
@@ -33,6 +37,7 @@ function freshViewerState() {
     ready: false,
     navMode: 'orbit' as NavMode,
     activeTool: 'none' as MeasureTool,
+    measureUnits: 'm' as MeasureUnits,
     sectionPlaneIds: [] as string[],
     selection: [] as string[],
   }
@@ -65,6 +70,9 @@ export const useModel3dStore = defineStore('model3d', {
     },
     setActiveTool(tool: MeasureTool) {
       this.activeTool = tool
+    },
+    setMeasureUnits(units: MeasureUnits) {
+      this.measureUnits = units
     },
     setSectionPlanes(ids: string[]) {
       this.sectionPlaneIds = ids

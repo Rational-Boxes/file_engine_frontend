@@ -19,7 +19,7 @@
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { renditionArrayBuffer } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
-import { useModel3dStore, type NavMode, type MeasureTool } from '@/stores/model3d'
+import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
 
 // `xktUid` is the rendition child's uid (the .xkt bytes). `treeContainerId`
 // (optional) is the id of the sidebar element the object tree mounts into.
@@ -107,6 +107,7 @@ async function load() {
     else resetCamera()
     // The viewer is live: publish its default state so the toolbar can reflect it.
     setNavMode('orbit')
+    setMeasurementUnits(store.measureUnits)
     store.setReady(true)
     loading.value = false
   } catch (e) {
@@ -308,16 +309,54 @@ function editSectionPlane(id: string) {
 }
 
 // Activate a transient measurement tool (or 'none' to stop). Only one at a time.
+// Snapping to vertices/edges is enabled so picks land on real geometry (§8).
 function startMeasurement(kind: MeasureTool) {
   try {
     distanceMeasurements?.control?.deactivate?.()
     angleMeasurements?.control?.deactivate?.()
-    if (kind === 'distance') distanceMeasurements?.control?.activate?.()
-    else if (kind === 'angle') angleMeasurements?.control?.activate?.()
+    if (kind === 'distance' && distanceMeasurements?.control) {
+      distanceMeasurements.control.snapping = true
+      distanceMeasurements.control.activate?.()
+    } else if (kind === 'angle' && angleMeasurements?.control) {
+      angleMeasurements.control.snapping = true
+      angleMeasurements.control.activate?.()
+    }
   } catch {
     /* best-effort */
   }
   store.setActiveTool(kind)
+}
+
+// Remove all measurements (they are transient viewer aids by default; a
+// measurement is only persisted when promoted into an annotation — §9).
+function clearMeasurements() {
+  try {
+    distanceMeasurements?.clear?.()
+  } catch {
+    /* ignore */
+  }
+  try {
+    angleMeasurements?.clear?.()
+  } catch {
+    /* ignore */
+  }
+}
+
+// Measurement display units (§8). xeokit's Metrics drives what the measurement
+// labels show; BCF export is always metres regardless (§17).
+const XEOKIT_UNITS: Record<MeasureUnits, string> = {
+  mm: 'millimeters',
+  m: 'meters',
+  ft: 'feet',
+}
+function setMeasurementUnits(units: MeasureUnits) {
+  try {
+    const metrics = viewer?.scene?.metrics
+    if (metrics) metrics.units = XEOKIT_UNITS[units]
+  } catch {
+    /* best-effort */
+  }
+  store.setMeasureUnits(units)
 }
 
 // Set the camera navigation mode (orbit / first-person / plan) — Workstream A.
@@ -499,6 +538,8 @@ defineExpose({
   editSectionPlane,
   clearSectionPlanes,
   startMeasurement,
+  clearMeasurements,
+  setMeasurementUnits,
   setNavMode,
   standardView,
   fitToSelection,
