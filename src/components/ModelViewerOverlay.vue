@@ -53,6 +53,17 @@
           <button class="mv-act mv-icon" title="Frame the current selection" @click="fitSel">Fit sel</button>
         </div>
 
+        <!-- Section planes (§7): axis quick-cuts, a section box, and clear-all. -->
+        <div class="mv-group" role="group" aria-label="Section planes">
+          <button class="mv-act mv-icon" title="Cut along X" :disabled="!model3d.ready" @click="section('x')">✂X</button>
+          <button class="mv-act mv-icon" title="Cut along Y" :disabled="!model3d.ready" @click="section('y')">✂Y</button>
+          <button class="mv-act mv-icon" title="Cut along Z" :disabled="!model3d.ready" @click="section('z')">✂Z</button>
+          <button class="mv-act mv-icon" title="Section box (isolate a region)" :disabled="!model3d.ready" @click="sectionBox">▣ Box</button>
+          <button class="mv-act mv-icon" title="Clear all section planes" :disabled="!model3d.hasSection" @click="clearSections">
+            ✕ Cuts<span v-if="model3d.sectionPlaneIds.length"> ({{ model3d.sectionPlaneIds.length }})</span>
+          </button>
+        </div>
+
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
 
@@ -330,6 +341,17 @@ function view(kind: 'top' | 'front' | 'iso' | 'fit') {
 }
 function fitSel() {
   viewerRef.value?.fitToSelection()
+}
+
+// Section-plane controls (§7): axis quick-cuts, a section box, and clear-all.
+function section(axis: 'x' | 'y' | 'z') {
+  viewerRef.value?.addAxisSection(axis)
+}
+function sectionBox() {
+  viewerRef.value?.addSectionBox()
+}
+function clearSections() {
+  viewerRef.value?.clearSectionPlanes()
 }
 
 async function toggleSidebar() {

@@ -225,11 +225,86 @@ function addSectionPlane(cfg?: { pos?: number[]; dir?: number[] }): string | nul
 
 function clearSectionPlanes() {
   try {
+    sectionPlanes?.hideControl?.()
+  } catch {
+    /* ignore */
+  }
+  try {
     sectionPlanes?.clear?.()
   } catch {
     /* ignore */
   }
   syncSectionPlanes()
+}
+
+// Centre of the model's bounding box — the anchor for axis quick-cuts / the box.
+function sceneCenter(): number[] | null {
+  const aabb = viewer?.scene?.aabb
+  if (!aabb || aabb.length < 6) return null
+  return [(aabb[0] + aabb[3]) / 2, (aabb[1] + aabb[4]) / 2, (aabb[2] + aabb[5]) / 2]
+}
+
+// Axis-aligned quick-cut through the model centre (§7). Shows the drag control on
+// the new plane so it can be slid/rotated immediately. Returns the plane id.
+function addAxisSection(axis: 'x' | 'y' | 'z'): string | null {
+  const c = sceneCenter()
+  if (!c) return null
+  const dir = axis === 'x' ? [1, 0, 0] : axis === 'y' ? [0, 1, 0] : [0, 0, 1]
+  const id = addSectionPlane({ pos: c, dir })
+  if (id) editSectionPlane(id)
+  return id
+}
+
+// A 6-plane "section box" at the bounding-box faces (§7) — drag the faces inward
+// to isolate a region. Each plane's normal points into the box. Returns the ids.
+function addSectionBox(): string[] {
+  const aabb = viewer?.scene?.aabb
+  if (!aabb || aabb.length < 6) return []
+  const cx = (aabb[0] + aabb[3]) / 2
+  const cy = (aabb[1] + aabb[4]) / 2
+  const cz = (aabb[2] + aabb[5]) / 2
+  const faces = [
+    { pos: [aabb[0], cy, cz], dir: [1, 0, 0] },
+    { pos: [aabb[3], cy, cz], dir: [-1, 0, 0] },
+    { pos: [cx, aabb[1], cz], dir: [0, 1, 0] },
+    { pos: [cx, aabb[4], cz], dir: [0, -1, 0] },
+    { pos: [cx, cy, aabb[2]], dir: [0, 0, 1] },
+    { pos: [cx, cy, aabb[5]], dir: [0, 0, -1] },
+  ]
+  const ids: string[] = []
+  for (const f of faces) {
+    const id = addSectionPlane(f)
+    if (id) ids.push(id)
+  }
+  return ids
+}
+
+// Flip a plane's cut direction (show the other half) — §7.
+function flipSectionPlane(id: string) {
+  try {
+    sectionPlanes?.sectionPlanes?.[id]?.flipDir?.()
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Per-plane visibility: enable/disable a plane without removing it (§7).
+function setSectionPlaneActive(id: string, active: boolean) {
+  try {
+    const plane = sectionPlanes?.sectionPlanes?.[id]
+    if (plane) plane.active = active
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Show the interactive drag/rotate control on a plane (click a plane to edit) — §7.
+function editSectionPlane(id: string) {
+  try {
+    sectionPlanes?.showControl?.(id)
+  } catch {
+    /* best-effort */
+  }
 }
 
 // Activate a transient measurement tool (or 'none' to stop). Only one at a time.
@@ -417,6 +492,11 @@ defineExpose({
   setViewpoint,
   captureSnapshot,
   addSectionPlane,
+  addAxisSection,
+  addSectionBox,
+  flipSectionPlane,
+  setSectionPlaneActive,
+  editSectionPlane,
   clearSectionPlanes,
   startMeasurement,
   setNavMode,

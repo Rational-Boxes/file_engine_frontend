@@ -8,14 +8,17 @@ const h = vi.hoisted(() => {
   // A fake SectionPlanesPlugin that actually tracks planes so syncSectionPlanes
   // (which reads `.sectionPlanes`) mirrors a realistic id set into the store.
   const sectionPlanes = {
-    sectionPlanes: {} as Record<string, unknown>,
+    sectionPlanes: {} as Record<string, any>,
     createSectionPlane: vi.fn(),
     clear: vi.fn(),
+    showControl: vi.fn(),
+    hideControl: vi.fn(),
   }
   sectionPlanes.createSectionPlane.mockImplementation((cfg: Record<string, unknown> = {}) => {
     const id = 'sp' + (Object.keys(sectionPlanes.sectionPlanes).length + 1)
-    sectionPlanes.sectionPlanes[id] = { id, ...cfg }
-    return { id }
+    const plane = { id, ...cfg, active: true, flipDir: vi.fn() }
+    sectionPlanes.sectionPlanes[id] = plane
+    return plane
   })
   sectionPlanes.clear.mockImplementation(() => {
     sectionPlanes.sectionPlanes = {}
@@ -106,6 +109,11 @@ type ViewerApi = {
   setViewpoint: (v: unknown) => void
   captureSnapshot: () => string | null
   addSectionPlane: (cfg?: unknown) => string | null
+  addAxisSection: (axis: 'x' | 'y' | 'z') => string | null
+  addSectionBox: () => string[]
+  flipSectionPlane: (id: string) => void
+  setSectionPlaneActive: (id: string, active: boolean) => void
+  editSectionPlane: (id: string) => void
   clearSectionPlanes: () => void
   startMeasurement: (k: 'none' | 'distance' | 'angle') => void
   setNavMode: (m: 'orbit' | 'firstPerson' | 'planView') => void
@@ -191,6 +199,50 @@ describe('Model3DViewer', () => {
     vm.clearSectionPlanes()
     expect(h.sectionPlanes.clear).toHaveBeenCalled()
     expect(store.sectionPlaneIds).toHaveLength(0)
+  })
+
+  it('addAxisSection("x") cuts through the model centre and shows the drag control', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const id = (w.vm as unknown as ViewerApi).addAxisSection('x')
+    expect(h.sectionPlanes.createSectionPlane).toHaveBeenCalledWith({ pos: [5, 5, 5], dir: [1, 0, 0] })
+    expect(id).toBeTruthy()
+    expect(useModel3dStore().sectionPlaneIds).toHaveLength(1)
+    expect(h.sectionPlanes.showControl).toHaveBeenCalledWith(id) // immediately editable
+  })
+
+  it('addSectionBox() creates six bounding-box planes', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const ids = (w.vm as unknown as ViewerApi).addSectionBox()
+    expect(h.sectionPlanes.createSectionPlane).toHaveBeenCalledTimes(6)
+    expect(ids).toHaveLength(6)
+    expect(useModel3dStore().sectionPlaneIds).toHaveLength(6)
+  })
+
+  it('flip / visibility / edit act on the named plane', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const vm = w.vm as unknown as ViewerApi
+    const id = vm.addSectionPlane({ pos: [0, 0, 0], dir: [1, 0, 0] }) as string
+    const plane = h.sectionPlanes.sectionPlanes[id]
+    vm.flipSectionPlane(id)
+    expect(plane.flipDir).toHaveBeenCalled()
+    vm.setSectionPlaneActive(id, false)
+    expect(plane.active).toBe(false)
+    vm.editSectionPlane(id)
+    expect(h.sectionPlanes.showControl).toHaveBeenCalledWith(id)
+  })
+
+  it('clearSectionPlanes hides the control and empties the store set', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const vm = w.vm as unknown as ViewerApi
+    vm.addAxisSection('x')
+    vm.clearSectionPlanes()
+    expect(h.sectionPlanes.hideControl).toHaveBeenCalled()
+    expect(h.sectionPlanes.clear).toHaveBeenCalled()
+    expect(useModel3dStore().sectionPlaneIds).toHaveLength(0)
   })
 
   it('startMeasurement() activates one control and records the active tool', async () => {
