@@ -250,6 +250,28 @@ The crux. An annotation is a comment thread whose `anchor.kind = "model-viewpoin
    "model-viewpoint", viewpoint, marker, ifc_guids, snapshot_rendition_uid }`, reusing
    `discussionService.openThread` (extended in §5.4). The snapshot is saved as a
    hidden-child rendition of the file. The first comment is the annotation body.
+4. **The comment area updates immediately.** Creating an annotation is creating a
+   comment, so the `ThreadPanel` refreshes to show it — driven by the discussion **live
+   layer** (§5.4 adds `anchor` to the live payload), so an annotation raised in the
+   viewer surfaces in the open comment panel (and every teammate's) in real time, no
+   manual reload. The viewer signals the panel through the same store/live path the
+   comment UI already listens on.
+
+**Annotation-generated comments deep-link back to the model object.** Every
+annotation comment carries a **deep link to the specific model element(s)** it's about
+(the anchor's `ifc_guids` / saved viewpoint). Clicking it:
+- opens the model in the 3D viewer (if not already open) for the comment's `file_uid`, and
+- **centers the camera on and highlights the referenced object** — `cameraFlight.flyTo`
+  the element's AABB + select/highlight it via its IFC GlobalId (`highlightIfcGuids([...])`
+  on the viewer API, §5.3).
+
+This is the lighter "take me to *this thing*" motion, distinct from clicking the
+annotation's **marker**, which restores the *full saved viewpoint* (exact camera +
+visibility + section planes). The deep link reuses the existing discussion deep-link
+routing (`/preview/{uid}?thread=…`), extended with the target object/viewpoint (e.g.
+`&object={ifcGuid}` or `&view={anchorThreadId}`) so the link is shareable and survives
+reload — the same "open the file and take me to the relevant spot" pattern the SPA
+already uses for threads, now pointing at a place *inside* the model.
 
 **Rendering annotations** (in the viewer):
 - Threads with a `model-viewpoint` anchor render as **markers** (via `AnnotationsPlugin`
@@ -286,7 +308,7 @@ the 3D state. Target **2.1** for interop, keep **3.0** reachable.
 
 | BCF entity | FileEngine representation |
 |---|---|
-| **Project** | a scope over a model/folder (a `bcf_project` mapping row → a folder/model uid) + an **extensions** vocabulary (types/statuses/priorities/labels/stages) |
+| **Project** | a **FileEngine folder** — all models in the folder *are* the project's models (`bcf_project` maps `project_id` → the folder uid) + an **extensions** vocabulary (types/statuses/priorities/labels/stages). A topic's Header/Files can reference any model in the folder. |
 | **Topic** (issue) | a discussion **thread** + a **BCF issue facet** (`bcf_topic`: `topic_type`, `topic_status`, `priority`, `assigned_to`, `labels[]`, `due_date`, `stage`, `bcf_guid`, `server_assigned_id`) keyed by `thread_id` |
 | **Comment** | a discussion **comment** (BCF is a flat list → **flatten** nested replies on export, §17) |
 | **Viewpoint** | the thread `anchor.viewpoint` (+ a `bcf_viewpoint` table for a topic's *additional* viewpoints); `comments.viewpoint_ref` pins a comment to one |
@@ -331,14 +353,25 @@ store + core file store; it is *not* a second issue database.
 - It matches the platform's "many doors, one core" shape (like `webdav_bridge`,
   `http_bridge`, the MCP doors): one more door over the same governed data.
 
-**Data ownership (the clean seam):**
-- **Discussion service** owns the substrate: `threads` (+ `anchor`), `comments`
-  (+ `viewpoint_ref`). Single writer of comments/threads — no dual-writer races.
-- **`bcf_service`** owns the BCF projection in the **same per-tenant schema**: `bcf_project`
-  (project↔folder + extensions vocab), `bcf_topic` (the issue facet, keyed by `thread_id`),
-  `bcf_viewpoint` (a topic's extra viewpoints + snapshot refs), and a `bcf_guid ↔ thread_id`
-  identity map. It **reads/writes threads and comments through the discussion service's
-  API** (or a shared internal library), adding the BCF metadata alongside.
+**Data ownership (the clean seam) — a shared storage interface, not cross-service REST.**
+The comment/thread storage is factored into a **shared Python library** (a
+`comment_store` interface package) that *both* the discussion service and `bcf_service`
+import — so BCF topic/comment writes go through the **same storage interface** the
+discussion service uses, not over an HTTP hop between the two services. One code path owns
+the invariants (ACL checks, `body_text`/FTS, mention extraction, event emission), used by
+both doors.
+- **Discussion service** owns the substrate tables and remains the reference consumer of
+  the shared interface: `threads` (+ `anchor`), `comments` (+ `viewpoint_ref`).
+- **`bcf_service`** imports the same interface to read/write threads + comments, and owns
+  the BCF projection tables in the **same per-tenant schema**: `bcf_project` (project↔folder
+  + extensions vocab), `bcf_topic` (the issue facet, keyed by `thread_id`), `bcf_viewpoint`
+  (a topic's extra viewpoints + snapshot refs), and a `bcf_guid ↔ thread_id` identity map.
+- **One writer of the invariants, two doors.** Because both services call the shared
+  interface (which emits the same discussion events), a BCF-API write lands as a normal
+  comment/thread — so it **fans out over the live layer to the SPA comment panels and 3D
+  markers just like an in-app annotation** (this is what lets an issue synced from Solibri
+  appear live in a teammate's viewer). No dual-writer races: the interface is the single
+  guardian of the write rules; the tables have one owning schema.
 
 **Endpoints — foundational set first** (the minimum a BCF Manager needs to log in and sync):
 - `GET /bcf/versions`; `GET /bcf/{v}/auth` → advertise the **Phase 1.7** `oauth2_auth_url` /
@@ -375,9 +408,11 @@ can layer on the Foundation API later; keep `bcf_topic` fields 3.0-capable
 | `discussion` `threads` | **`anchor JSONB` (nullable)** | the pre-designed V2 column; wire through store/mapper/events/live |
 | `discussion` `comments` | `viewpoint_ref` (nullable) | pin a comment to a viewpoint (BCF) |
 | `discussion` service/API | thread create/read carries `anchor`; live payload gains an `anchor` slot | additive; null = today's behavior |
+| **shared `comment_store` lib** | extract the comment/thread storage interface both `discussion` and `bcf_service` import | one guarded write path; §12 |
 | `bcf_service` | `bcf_project`, `bcf_topic` (issue facet), `bcf_viewpoint`, `bcf_guid↔thread_id` map | new per-tenant tables; BCF-only |
 | renditions | `snapshot` (PNG) as a hidden child of the model file | client-captured; reused as BCF snapshot |
 | `model3d` store (SPA) | live viewer state (tool, section planes, selection, viewpoint) | drives toolbar + annotation layer |
+| SPA routing | extend the discussion deep-link with a model-element target (`?thread=…&object={ifcGuid}`) | opens viewer, centers + highlights the element; §9 |
 | XKT pipeline (backend) | preserve IFC GlobalId as entity id / emit metamodel JSON | §5.2 prerequisite, cross-repo |
 
 Every discussion change is **additive and nullable** — no migration of existing threads.
@@ -455,21 +490,26 @@ the higher-compatibility, lower-effort proof, API second for live tool connectio
 
 ---
 
-## 17. Open decisions
+## 17. Resolved decisions
 
-1. **Subservice language/stack.** Match the Python FastAPI services (`convert_search_ai`,
-   `discussion`, `ldap_manager`, `audit`) for reuse of the OAuth/JWKS + per-tenant-schema
-   plumbing — recommended — or a separate stack? (Recommend: Python/FastAPI, mirroring
-   `discussion`.)
-2. **Data seam.** `bcf_service` calls the discussion REST API (clean boundary, one writer)
-   vs. a shared internal library against the same schema (fewer hops). (Recommend: REST for
-   writes, direct read of the shared per-tenant schema for list/query performance.)
-3. **"Project" definition.** Is a BCF Project a folder, a tagged model set, or a
-   tenant-level construct? Drives the `bcf_project` mapping and the extensions scope.
-4. **BCF version priority.** Confirm 2.1-first (recommended) vs. investing in 3.0/Foundation
-   API up front for a specific partner tool.
-5. **Next-gen xeokit SDK.** Schedule the evaluation of the scoped `@xeokit/*` SDK as a later
-   track, or commit now? (Recommend: later; monolithic SDK is sufficient and lower-risk.)
+1. **Subservice stack → Python + FastAPI**, mirroring `discussion` / `convert_search_ai` /
+   `ldap_manager` / `audit`. Reuses the OAuth/JWKS verification and per-tenant-schema
+   plumbing directly — no new stack.
+2. **Data seam → a shared storage interface**, not cross-service REST (§12): a
+   `comment_store` library that both the discussion service and `bcf_service` import, so
+   both doors write through one guarded code path. Annotation-generated comments **signal
+   the comment area to update live** (via the discussion live layer), and each carries a
+   **deep link to the model object** that opens the viewer and **centers the camera on +
+   highlights** the referenced IFC element (§9).
+3. **"Project" → a FileEngine folder.** All related models in a folder map onto one BCF
+   project; `bcf_project` maps `project_id` → the folder uid (§10).
+4. **BCF version → 2.1 primary**, to minimize bleeding-edge complications and maximize
+   desktop-tool round-trip. Keep the internal model 3.0-capable behind the serializer, but
+   don't invest in 3.0 / the OpenCDE Foundation API up front.
+5. **xeokit → stay on the monolithic `@xeokit/xeokit-sdk`** as long as it covers the
+   required plugins (it does — section/measure/annotate/BCF/navcube all ship there). **Plan
+   the migration to the scoped `@xeokit/*` SDK for when upstream stabilizes** — track it as
+   a future workstream, triggered by upstream maturity, and don't couple this work to it.
 
 ---
 
