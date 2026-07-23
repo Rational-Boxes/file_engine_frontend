@@ -30,12 +30,22 @@ of "this clash / this RFI, at *this* element, seen from *this* view," and the in
 already has a lingua franca for it: **BCF**. Supporting BCF turns FileEngine from "a
 place models live" into a node in the openBIM issue workflow every AEC tool speaks.
 
-**In scope:** the xeokit upgrade; navigation, section, measurement, and annotation UX
-in the SPA; the anchored-annotation ↔ comment integration; BCF-XML import/export; and a
-new BCF-API subservice. **Out of scope (dependencies, tracked elsewhere):** the
-server-side XKT/IFC conversion pipeline (`convert_search_ai`), except one prerequisite
-it must satisfy (§6.2); the PDF.js markup surface (roadmap 7.1 — it writes into the
-*same* anchor model designed here, but its own UX is separate).
+This is not a BIM-only effort. Mechanical CAD/CAM shares the same collaboration need
+(review a part, mark up a clash, pin an issue to a feature or a tolerance), and the
+emerging BIM collaboration standards generalize to it: a *viewpoint* (camera, section,
+snapshot) round-trips for **any** 3D model; only BCF's IFC-component references are
+BIM-native. So the scope is **all disciplines the platform ingests** — BIM (IFC), CAD/CAM
+(STEP/IGES/BREP), plus glTF, meshes, point clouds, and CityJSON.
+
+**In scope:** the xeokit upgrade; navigation, section, measurement, and annotation UX in
+the SPA; the anchored-annotation ↔ comment integration; BCF-XML import/export; a new
+BCF-API subservice; and — the load-bearing foundation (§5.2) — **preserving as much
+internal metadata / object / region data as possible for every 3D format, BIM and CAD/CAM
+alike**, so investigation, review, and annotation can reference real model objects. That
+last item lives in the `convert_search_ai` conversion pipeline (cross-repo), tracked here
+as a first-class foundation rather than an external prerequisite. **Out of scope:** the
+PDF.js markup surface (roadmap 7.1 — it writes into the *same* anchor model designed here,
+but its own UX is separate).
 
 ---
 
@@ -58,9 +68,16 @@ From a source review of the three subsystems:
 - The model loads from a pre-converted **`.xkt` `model` rendition** (a hidden child of
   the source file) fetched as an `ArrayBuffer`; **only the raw `.xkt` bytes** are passed
   to `XKTLoaderPlugin.load()` — *no* `metaModelData`/`metaModelSrc`.
-- **No client-side IFC metadata**: IFC GlobalIds, property sets, and header data are
-  extracted and indexed **server-side only**. The object tree populates only from
-  whatever metadata is embedded *inside* the XKT.
+- **No client-side object metadata — for *any* format.** `XEOKIT3D_PLUGIN.md` designs a
+  metamodel-bearing pipeline, but it was **never built**: `convert2xkt` runs with no `-m`,
+  so every delivered `.xkt` is **geometry-only**. All extracted metadata (IFC property
+  text, STEP/IGES header strings, glTF names, CityJSON attributes, LAS header) feeds a
+  **search-only** track (FTS/pgvector) and never reaches the viewer. The object tree thus
+  populates only from whatever the converter happens to embed, and the viewer has **no
+  stable per-object id for any format**. CAD is worse: the OCCT path reads STEP into an XDE
+  document but `XGetOneShape` flattens the assembly and the default recenter discards the
+  labels — part names, colors, layers, and **PMI/GD&T are dropped entirely**. Closing this
+  is §5.2, the foundation the rest of the plan stands on.
 - `model3d` store tracks just `{ uid, name }` — no viewer, selection, or rendition state.
 
 **The comment / discussion system** (`src/services/discussionService.ts`; backend
@@ -107,6 +124,19 @@ discovery endpoint must point at.
    paths, OData filters, XML zip, extensions vocab, round-trip GUID identity) is isolated
    in a **dedicated subservice** so the discussion service stays a clean, viewer-agnostic
    comment store. "Many doors, one core," now with a BCF door.
+7. **Preserve everything the source knows.** The conversion pipeline extracts the model's
+   objects, hierarchy, properties, and — for CAD/CAM — assembly structure and PMI/GD&T, and
+   *delivers* them to the client as a metamodel (§5.2), not just to the search index. The
+   metamodel is the shared substrate for the object tree, property inspection, review,
+   measurement-by-part, search, AI reasoning, **and** annotation anchoring; build it once
+   per format and everything downstream inherits it. Metadata is expensive to recover and
+   cheap to keep — never discard it in conversion.
+8. **Collaboration is discipline-neutral.** The viewpoint/annotation/issue model is not
+   BIM-specific. A saved view + markup + thread works for a mechanical assembly, a point
+   cloud, or a city model as readily as a building. BCF is the *interop wire format* (and
+   its component refs are IFC-native), but the internal model references objects by each
+   format's own identity (§4 `object_refs`, §5.2), so CAD/CAM is a first-class citizen, not
+   a bolt-on.
 
 ---
 
@@ -123,7 +153,11 @@ frontend viewer for that kind renders/restores it; the core stays unaware.
   "schema": "fileengine.anchor.v1",
   "viewpoint": { /* BCF-2.1 viewpoint JSON — see below */ },
   "marker": { "x": 0, "y": 0, "z": 0 },   // optional world-space pin for the 3D badge
-  "ifc_guids": ["3xY...22char"],           // denormalized element refs (query/BCF/AI)
+  "object_refs": [                         // source-tagged element refs (query/BCF/AI), §5.2
+    { "source": "ifc", "id": "3xY...22char", "ifc_guid": "3xY...22char" }
+    // | {"source":"step","id":"<ocaf-label>"} | {"source":"gltf","id":"<node>"}
+    // | {"source":"pointcloud","id":"<class/segment>"} | …
+  ],
   "snapshot_rendition_uid": "…"            // hidden-child PNG (the view thumbnail)
 }
 ```
@@ -133,9 +167,13 @@ emits** (BCF-API JSON form): `perspective_camera` **or** `orthogonal_camera`
 (`camera_view_point`, `camera_direction`, `camera_up_vector`, `field_of_view` /
 `view_to_world_scale`), `selection[]`, `visibility` (`default_visibility` + `exceptions[]`),
 `clipping_planes[]` (`location`+`direction`, from `SectionPlanesPlugin`), optional
-`lines[]`/`bitmaps[]`, and `snapshot` (`snapshot_type` + base64). Each component carries
-`ifc_guid` + `originating_system`. Because xeokit entity ids **are** IFC GlobalIds
-(§6.2), `setViewpoint()` restores the exact element visibility/selection with no mapping.
+`lines[]`/`bitmaps[]`, and `snapshot` (`snapshot_type` + base64). Because the xeokit entity
+ids **are the metamodel's per-object ids** (§5.2 — IFC GlobalId for BIM; the OCAF label /
+glTF node / point-cloud segment id for other disciplines), `setViewpoint()` restores the
+exact object visibility/selection with no mapping. `object_refs` is the format-neutral
+denormalization; the IFC case additionally fills `ifc_guid` so it round-trips as a native
+**BCF component** (§10), while CAD/mesh/point-cloud refs anchor annotations and drive review
+fully and degrade BCF-component round-trip gracefully.
 
 This makes the annotation↔BCF conversion **near-identity**: the anchor's `viewpoint`
 serializes straight to a BCF `.bcfv` / BCF-API viewpoint, and vice-versa. It also gives
@@ -164,22 +202,73 @@ These gate the four workstreams and are done first.
   still passes." Pin an exact version (drop the `^`) and add a smoke test that
   instantiates each plugin.
 
-### 5.2 IFC GlobalId preserved as the xeokit entity id (backend dependency)
-BCF components, xeokit `setViewpoint()`, and annotation element-refs all key on the **IFC
-GlobalId** (native 22-char compressed form). Today the XKT is loaded with no metamodel and
-GlobalIds aren't guaranteed to be the entity ids. **Prerequisite:** the XKT conversion
-(`convert_search_ai`, `XEOKIT3D_PLUGIN.md`) must preserve IFC GlobalId as the xeokit
-entity id **and/or** emit a companion **metamodel JSON rendition** the viewer loads via
-`XKTLoaderPlugin.load({ metaModelData })`. Without this, viewpoints can restore camera +
-section planes but **cannot** restore per-element visibility/selection or round-trip BCF
-components. Track as a cross-repo dependency; the viewer work can start against
-camera/section-only viewpoints and light up element refs when the metamodel lands.
+### 5.2 Metadata & object preservation across **all** 3D formats — the conversion foundation (cross-repo, `convert_search_ai`)
+This is the load-bearing foundation, and it is bigger than "IFC GlobalId." Every
+investigation, review, and annotation feature in this plan needs the viewer to see the
+model's **objects** — not just its triangles.
+
+**Current reality (from a pipeline review).** `XEOKIT3D_PLUGIN.md` *designs* a
+metadata-rich pipeline (a xeokit **metamodel** passed to `convert2xkt -m`), but **none of
+it is built.** The shipped `xeokit3d.py` calls `convert2xkt -s <in> -o <out>` with no `-m`
+for every format, so **every delivered `.xkt` is geometry-only.** All the metadata that is
+extracted is on a *separate search track* (text → FTS/pgvector) that never reaches the
+client, and the viewer today loads only raw `.xkt` bytes with **no `metaModelData`**. Net:
+the viewer has **no stable per-object identifier for any format** — the identity exists
+upstream and is dropped before the client. CAD is worse than IFC: the OCCT path reads a STEP
+into an XDE document but then `XGetOneShape` **flattens the assembly** and the default
+recenter re-wraps it in a fresh doc, **discarding part names, colors, layers, and PMI/GD&T
+entirely.**
+
+**Goal.** Deliver, alongside each model, a **xeokit metamodel** — MetaObjects carrying a
+stable `id`, `type`, `name`, `parent` (hierarchy), and `propertySets` — for **BIM and
+CAD/CAM and the rest**, so the viewer (and search, and the AI) can name, tree, inspect,
+select, measure-by-part, and **anchor annotations to** real objects. This is a discipline-
+neutral capability: BIM gets IFC semantics; mechanical CAD gets assembly structure + PMI;
+every format contributes what it knows.
+
+**Delivery mechanism (one seam).** Generate a `metamodel.json` and either pass it via
+`convert2xkt -m` (the single call site `_convert2xkt_at`) **or** ship it as a new sidecar
+**`metamodel` rendition** (a hidden child) that the viewer loads via
+`XKTLoaderPlugin.load({ xkt, metaModelData })`. Add `metamodel` to the frontend rendition
+vocabulary (`renditions.ts`) and wire `Model3DViewer` to fetch + pass it. Prefer the sidecar
+so the metamodel can be re-generated/enriched without re-tessellating geometry.
+
+**What to preserve, per format** (source of the object id in **bold**):
+
+| Format | Preserve into the metamodel | Object identity | Tool |
+|---|---|---|---|
+| **IFC (BIM)** | **GlobalId**, IfcType, Name/Description, property & quantity sets, spatial tree (Site→Building→Storey→Space), materials, classification | **IFC GlobalId** (22-char) | `ifcopenshell` — *already opened* for the search track (`_ifc_text_ifcopenshell`); emit the metamodel in the same pass |
+| **STEP / IGES (CAD/CAM)** | assembly/product tree, part & product names, colors, layers, and **PMI / GD&T** (tolerances, datums, annotations — STEP **AP242**) | **persistent OCAF label** (XDE) | OCCT **XDE** — `XCAFDoc_ShapeTool` (assembly), `ColorTool`, `LayerTool`, `DimTolTool`/AP242 semantic PMI. **New export code required**; stop `XGetOneShape` flattening + label-discarding recenter |
+| **glTF / GLB** | node/mesh names, `extras`, KHR extension metadata, scene graph | **node index / name** | parse glTF JSON (the `extract_gltf_text` parser already reads these) |
+| **CityJSON** | CityObject id, type, attributes, semantic surfaces, LoD | **CityObject id** | parse CityJSON (parser already present) |
+| **Point clouds (LAS/LAZ)** | classification codes → **segments/regions**, intensity, RGB, header/CRS | **class/segment id** | LAS reader; a segment is the point-cloud analogue of an "object" |
+| **Meshes (OBJ/PLY/STL/WRL)** | group/object names, materials | **group/`o` name** (OBJ); often absent (bare STL) | mesh parsers (already harvest these as text) |
+
+**Generalized object identity → the anchor.** Because identity is now per-format, the
+annotation anchor references objects with a **source-tagged ref**, not IFC-only (see §4's
+`object_refs`). IFC GlobalId is the one that also round-trips as a **BCF component**; the
+others anchor annotations and drive investigation/review fully, and degrade BCF component
+round-trip gracefully (the viewpoint camera/section/snapshot still round-trips for any model
+— §10, §16).
+
+**Why it's the foundation (the investigation & review payoff).** The metamodel is what powers
+the object **tree**, property **inspection**, **PMI/GD&T** display for mechanical review,
+**assembly navigation**, measurements labeled by part, cross-format **search** and **AI**
+reasoning ("which parts exceed tolerance," "show every wall of type X"), *and* annotation
+anchoring. Without it the viewer is a picture; with it, it's a queryable model.
+
+**Sequencing within this foundation** (cheapest, highest-value first): **IFC** metamodel
+(ifcopenshell is already loaded — low effort, immediate) → **glTF / CityJSON** (straight JSON
+parse) → **CAD via OCCT XDE** including PMI/GD&T (the biggest lift; new XCAF-walking export
+code) → **point-cloud segmentation** (opportunistic). The viewer/annotation work can begin
+against camera/section-only viewpoints and light up element-level fidelity per format as each
+metamodel lands.
 
 ### 5.3 Viewer refactor — a plugin host with an imperative API
 `Model3DViewer.vue` becomes a **plugin host** that owns the `Viewer` + all plugins and
 exposes a typed imperative API via `defineExpose`, e.g. `getViewpoint()`, `setViewpoint(v)`,
 `captureSnapshot()`, `addSectionPlane()`, `startMeasurement(kind)`, `setNavMode(mode)`,
-`highlightIfcGuids([...])`. The `model3d` store grows to hold **live viewer state**
+`highlightObjects([...])`. The `model3d` store grows to hold **live viewer state**
 (active tool, section planes, current selection) so the overlay toolbar and the annotation
 layer can drive and reflect it. Keep the lazy-import + overlay-resize discipline intact.
 
@@ -247,7 +336,7 @@ The crux. An annotation is a comment thread whose `anchor.kind = "model-viewpoin
 2. The viewer calls `getViewpoint()` (camera + visibility + selection + clipping + optional
    lines) and `captureSnapshot()` (canvas PNG).
 3. The SPA **opens a thread** on the model's `file_uid` with `anchor = { kind:
-   "model-viewpoint", viewpoint, marker, ifc_guids, snapshot_rendition_uid }`, reusing
+   "model-viewpoint", viewpoint, marker, object_refs, snapshot_rendition_uid }`, reusing
    `discussionService.openThread` (extended in §5.4). The snapshot is saved as a
    hidden-child rendition of the file. The first comment is the annotation body.
 4. **The comment area updates immediately.** Creating an annotation is creating a
@@ -259,10 +348,10 @@ The crux. An annotation is a comment thread whose `anchor.kind = "model-viewpoin
 
 **Annotation-generated comments deep-link back to the model object.** Every
 annotation comment carries a **deep link to the specific model element(s)** it's about
-(the anchor's `ifc_guids` / saved viewpoint). Clicking it:
+(the anchor's `object_refs` / saved viewpoint). Clicking it:
 - opens the model in the 3D viewer (if not already open) for the comment's `file_uid`, and
 - **centers the camera on and highlights the referenced object** — `cameraFlight.flyTo`
-  the element's AABB + select/highlight it via its IFC GlobalId (`highlightIfcGuids([...])`
+  the object's AABB + select/highlight it via its metamodel id (`highlightObjects([...])`
   on the viewer API, §5.3).
 
 This is the lighter "take me to *this thing*" motion, distinct from clicking the
@@ -280,7 +369,7 @@ already uses for threads, now pointing at a place *inside* the model.
   the discussion panel already docks beside the viewer today, so this is wiring, not new
   chrome. A "restore view" affordance re-applies the viewpoint without opening the panel.
 - The **object tree / selection** cross-highlights: selecting an element filters to
-  annotations whose `ifc_guids` include it.
+  annotations whose `object_refs` include it.
 
 **Lifecycle & versioning:**
 - Annotations inherit the thread's `(file_uid, version)` binding, `anchor_stale` on model
@@ -313,7 +402,7 @@ the 3D state. Target **2.1** for interop, keep **3.0** reachable.
 | **Comment** | a discussion **comment** (BCF is a flat list → **flatten** nested replies on export, §17) |
 | **Viewpoint** | the thread `anchor.viewpoint` (+ a `bcf_viewpoint` table for a topic's *additional* viewpoints); `comments.viewpoint_ref` pins a comment to one |
 | **Snapshot** | the `snapshot_rendition_uid` PNG (client-captured by `getViewpoint`) |
-| **Component.IfcGuid** | xeokit entity id = **IFC GlobalId** (needs §5.2); denormalized to `anchor.ifc_guids` |
+| **Component.IfcGuid** | for IFC: xeokit entity id = **IFC GlobalId** (needs §5.2), from `anchor.object_refs`. For CAD/mesh/point-cloud: no IFC GlobalId exists, so component-level BCF is **best-effort** (map to the format's object id where a strict tool tolerates it, else omit) — the **camera + section + snapshot always round-trip**, which is most of a viewpoint's value cross-discipline |
 | **ClippingPlane** | a `SectionPlanesPlugin` plane (`location`+`direction`) — identity map |
 | **Header/Files** | the thread's `file_uid` → the IFC source file (+ its IFC project GUID) |
 | **Auth** | **Phase 1.7 OAuth** (`ldap_manager`) — `/auth` discovery points here |
@@ -424,22 +513,33 @@ Every discussion change is **additive and nullable** — no migration of existin
 Dependency-ordered. Each phase is independently shippable.
 
 1. **Phase 0 — Foundations (§5).** xeokit bump + plugin smoke test; viewer plugin-host
-   refactor + imperative API; `anchor JSONB` in discussion; kick off the §5.2 XKT-GlobalId
-   backend dependency in parallel (it gates *element-level* fidelity, not camera/section).
-2. **Phase A — Navigation (§6).** Pure viewer; ship first for immediate feel win.
-3. **Phase B — Section planes (§7).** Precedes annotation & BCF (clipping ∈ viewpoint).
-4. **Phase C — Measurement (§8).** Parallel to B; independent.
-5. **Phase D — Annotation ↔ comments (§9).** Needs Phase 0 (anchor) + B (clipping in the
-   viewpoint). The headline feature; delivers standalone value before any BCF.
-6. **Phase E — BCF-XML round-trip (§11).** Needs D (viewpoints exist). Async interop win;
-   validates the mapping against real desktop tools (import a Solibri/BIMcollab `.bcfzip`).
-7. **Phase F — BCF-API subservice (§12).** Needs E (serialization) + Phase 1.7 OAuth. The
+   refactor + imperative API; `anchor JSONB` in discussion.
+2. **Phase M — Metadata foundation (§5.2), runs in parallel as a track of its own** (it's
+   the biggest backend lift and gates *object-level* fidelity, not camera/section, so it
+   need not block the viewer phases). Internal order, cheapest-first: **M1 IFC metamodel**
+   (ifcopenshell already loaded) → **M2 glTF + CityJSON** (JSON parse) → **M3 CAD via OCCT
+   XDE** incl. assembly + colors/layers + **PMI/GD&T** (new XCAF-export code — the big one)
+   → **M4 point-cloud segmentation** (opportunistic). Ship the `metamodel` rendition +
+   viewer `metaModelData` wiring with M1 so each later format lights up as it lands.
+3. **Phase A — Navigation (§6).** Pure viewer; ship first for immediate feel win.
+4. **Phase B — Section planes (§7).** Precedes annotation & BCF (clipping ∈ viewpoint).
+5. **Phase C — Measurement (§8).** Parallel to B; **richer once M-track lands** (label
+   measurements by part; snap to metamodel objects).
+6. **Phase D — Annotation ↔ comments (§9).** Needs Phase 0 (anchor) + B (clipping). Works
+   with camera/section-only viewpoints immediately; **object_refs fidelity per format
+   follows the M-track**. The headline feature; standalone value before any BCF.
+7. **Phase E — BCF-XML round-trip (§11).** Needs D (viewpoints) + M1 (IFC ids for
+   components). Async interop win; validate against a real Solibri/BIMcollab `.bcfzip`.
+8. **Phase F — BCF-API subservice (§12).** Needs E (serialization) + Phase 1.7 OAuth. The
    live-collaboration door; roadmap Phase 8.1's openBIM issue hub.
 
-Rationale: viewer features (A–C) are low-risk crowd-pleasers and *produce* the viewpoint
-primitive; annotation (D) turns that primitive into governed issues via the existing comment
-substrate; BCF file (E) then API (F) project those issues outward — file first because it's
-the higher-compatibility, lower-effort proof, API second for live tool connection.
+Rationale: the **metadata foundation (M)** is the long pole and runs alongside everything —
+viewer features (A–C) are low-risk crowd-pleasers that *produce* the viewpoint primitive and
+don't wait on it; annotation (D) turns that primitive into governed issues via the existing
+comment substrate (camera/section first, object-level as each metamodel lands); BCF file (E)
+then API (F) project those issues outward — file first because it's the higher-compatibility,
+lower-effort proof, API second for live tool connection. CAD/CAM object fidelity (M3) is the
+one deep item and is deliberately not on the critical path to first value.
 
 ---
 
@@ -467,6 +567,22 @@ the higher-compatibility, lower-effort proof, API second for live tool connectio
   decodes it *wrong*); Topic/Comment/Viewpoint `Guid`s are ordinary 128-bit UUIDs. Keep the
   two namespaces distinct; if the store expands GlobalIds internally, convert with an
   IfcOpenShell-style codec. Gates §5.2.
+- **CAD metadata is the deep item (M3).** Preserving STEP/IGES assembly + names + colors +
+  layers + **PMI/GD&T** means walking the OCCT **XDE/XCAF** document (`XCAFDoc_ShapeTool` /
+  `ColorTool` / `LayerTool` / `DimTolTool`) and *stopping* the current `XGetOneShape`
+  flatten + label-discarding recenter — new export code, not a flag flip. PMI has two forms
+  (graphical presentation vs **AP242 semantic** GD&T); semantic is the queryable prize but
+  harder to extract, and non-AP242 STEP may carry none. Budget this as its own sub-project.
+- **Stable object ids across re-conversion.** Annotations reference `object_refs`; those ids
+  must survive re-processing the same source. IFC GlobalId is stable by construction; for
+  CAD, key to **persistent OCAF label paths** (deterministic across runs), not array
+  indices, or a re-convert silently orphans every CAD annotation. Verify determinism.
+- **Non-IFC BCF components are lossy.** Only IFC yields BCF-native `IfcGuid` components; CAD/
+  mesh/point-cloud viewpoints round-trip **camera + section + snapshot** but not element
+  selection into strict IFC-only BCF tools. Document this as expected (§10), not a bug.
+- **Point clouds have no native object identity.** A "segment/region" is derived
+  (classification code or a segmentation pass), not intrinsic; treat point-cloud object
+  refs as best-effort and don't promise element-level BCF for them.
 - **Coordinates & units.** BCF is fixed to **meters + degrees**, no unit field. Scale
   camera / clipping-plane / line / bitmap coords into meters on export and back on import,
   and account for survey/base-point geo-referencing offsets or cameras land in the wrong
