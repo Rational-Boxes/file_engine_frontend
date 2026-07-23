@@ -35,6 +35,11 @@ const h = vi.hoisted(() => {
     // Plugin-host doubles.
     setHighlighted: vi.fn(),
     getSnapshot: vi.fn(() => 'data:image/png;base64,AAAA'),
+    // Navigation doubles (§6): camera flight + scene AABB/selection.
+    flyTo: vi.fn(),
+    getAABB: vi.fn(() => [0, 0, 0, 2, 2, 2]),
+    highlightedIds: [] as string[],
+    aabb: [0, 0, 0, 10, 10, 10], // centre (5,5,5), diagonal ~17.3
     sectionPlanes,
     distance: { control: { activate: vi.fn(), deactivate: vi.fn() } },
     angle: { control: { activate: vi.fn(), deactivate: vi.fn() } },
@@ -51,9 +56,13 @@ vi.mock('@xeokit/xeokit-sdk', () => ({
     scene: {
       canvas: { resize: h.resizeSpy },
       setObjectsHighlighted: h.setHighlighted,
-      highlightedObjectIds: [] as string[],
+      get highlightedObjectIds() {
+        return h.highlightedIds
+      },
+      aabb: h.aabb,
+      getAABB: h.getAABB,
     },
-    cameraFlight: { flyTo: vi.fn() },
+    cameraFlight: { flyTo: h.flyTo },
     cameraControl: h.cameraControl,
     camera: h.camera,
     getSnapshot: h.getSnapshot,
@@ -100,6 +109,8 @@ type ViewerApi = {
   clearSectionPlanes: () => void
   startMeasurement: (k: 'none' | 'distance' | 'angle') => void
   setNavMode: (m: 'orbit' | 'firstPerson' | 'planView') => void
+  standardView: (k: 'top' | 'front' | 'iso' | 'fit') => void
+  fitToSelection: () => void
   highlightObjects: (ids: string[]) => void
 }
 
@@ -111,6 +122,7 @@ describe('Model3DViewer', () => {
     h.cameraControl = {}
     h.camera = { pan: h.panSpy }
     h.sectionPlanes.sectionPlanes = {}
+    h.highlightedIds = []
     h.renditionArrayBuffer.mockResolvedValue(XKT)
   })
 
@@ -196,6 +208,51 @@ describe('Model3DViewer', () => {
     ;(w.vm as unknown as ViewerApi).highlightObjects(['a', 'b'])
     expect(h.setHighlighted).toHaveBeenCalledWith(['a', 'b'], true)
     expect(useModel3dStore().selection).toEqual(['a', 'b'])
+  })
+
+  it('applies followPointer + smartPivot on load (Workstream A feel)', async () => {
+    mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    expect(h.cameraControl.followPointer).toBe(true)
+    expect(h.cameraControl.smartPivot).toBe(true)
+  })
+
+  it("standardView('top') flies to a top-down eye/look/up", async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    h.flyTo.mockClear() // ignore the load-time resetCamera framing
+    ;(w.vm as unknown as ViewerApi).standardView('top')
+    expect(h.flyTo).toHaveBeenCalledWith(
+      expect.objectContaining({ look: [5, 5, 5], up: [0, 0, -1] }),
+    )
+  })
+
+  it("standardView('fit') refits the whole model", async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    h.flyTo.mockClear()
+    ;(w.vm as unknown as ViewerApi).standardView('fit')
+    expect(h.flyTo).toHaveBeenCalledTimes(1) // resetCamera → flyTo(scene)
+  })
+
+  it('fitToSelection() flies to the AABB of the highlighted objects', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    h.highlightedIds = ['a', 'b']
+    h.flyTo.mockClear()
+    ;(w.vm as unknown as ViewerApi).fitToSelection()
+    expect(h.getAABB).toHaveBeenCalledWith(['a', 'b'])
+    expect(h.flyTo).toHaveBeenCalledWith(expect.objectContaining({ aabb: [0, 0, 0, 2, 2, 2] }))
+  })
+
+  it('fitToSelection() with no selection refits the whole model', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    h.highlightedIds = []
+    h.flyTo.mockClear()
+    ;(w.vm as unknown as ViewerApi).fitToSelection()
+    expect(h.getAABB).not.toHaveBeenCalled()
+    expect(h.flyTo).toHaveBeenCalledTimes(1) // fell back to resetCamera
   })
 
   it('destroys the viewer on unmount and clears the live store state', async () => {

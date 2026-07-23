@@ -69,6 +69,7 @@ async function load() {
     viewer = new xeokit.Viewer({ canvasElement: canvasEl.value, transparent: true })
     applyNavStep()
     patchCameraPan()
+    applyCameraControlDefaults()
 
     // The core requirement is rendering the model. The nav-cube, object tree and
     // camera fit are *enhancements* — a failure in any of them (e.g. a model with
@@ -254,6 +255,74 @@ function setNavMode(mode: NavMode) {
   store.setNavMode(mode)
 }
 
+// Feel defaults (§6): pivot orbiting about the point under the cursor — the single
+// biggest navigation-feel win — with smart pivoting when the cursor is on empty
+// space. Applied once per viewer, right after construction.
+function applyCameraControlDefaults() {
+  const cc = viewer?.cameraControl
+  if (!cc) return
+  try {
+    cc.followPointer = true
+    cc.smartPivot = true
+  } catch {
+    /* best-effort — never let a control tweak break the preview */
+  }
+}
+
+// Standard orientation shortcuts (§6): top / front / iso, plus 'fit' to frame the
+// whole model. They double as the seeds of saved viewpoints. Best-effort — falls
+// back to the default framing when the scene AABB isn't available.
+function standardView(kind: 'top' | 'front' | 'iso' | 'fit') {
+  const scene = viewer?.scene
+  if (!scene) return
+  const aabb = kind === 'fit' ? null : scene.aabb
+  if (kind === 'fit' || !aabb || aabb.length < 6) {
+    resetCamera()
+    return
+  }
+  const cx = (aabb[0] + aabb[3]) / 2
+  const cy = (aabb[1] + aabb[4]) / 2
+  const cz = (aabb[2] + aabb[5]) / 2
+  const dx = aabb[3] - aabb[0]
+  const dy = aabb[4] - aabb[1]
+  const dz = aabb[5] - aabb[2]
+  const dist = (Math.sqrt(dx * dx + dy * dy + dz * dz) || 1) * 1.3
+  let eye: number[]
+  let up: number[]
+  if (kind === 'top') {
+    eye = [cx, cy + dist, cz]
+    up = [0, 0, -1]
+  } else if (kind === 'front') {
+    eye = [cx, cy, cz + dist]
+    up = [0, 1, 0]
+  } else {
+    const k = dist / Math.sqrt(3) // iso — equal offset on each axis
+    eye = [cx + k, cy + k, cz + k]
+    up = [0, 1, 0]
+  }
+  try {
+    viewer.cameraFlight.flyTo({ eye, look: [cx, cy, cz], up })
+  } catch {
+    resetCamera()
+  }
+}
+
+// Frame the current selection (§6): fly to the AABB of the highlighted objects,
+// or the whole model when nothing is selected.
+function fitToSelection() {
+  const scene = viewer?.scene
+  try {
+    const ids: string[] = scene?.highlightedObjectIds || []
+    if (ids.length && typeof scene.getAABB === 'function') {
+      viewer.cameraFlight.flyTo({ aabb: scene.getAABB(ids) })
+      return
+    }
+  } catch {
+    /* best-effort */
+  }
+  resetCamera()
+}
+
 // Highlight a set of objects by id (clearing any prior highlight) and record the
 // selection. Centering-on-object within a restored view is annotation deep-link
 // work (§9); this is the primitive it builds on.
@@ -351,6 +420,8 @@ defineExpose({
   clearSectionPlanes,
   startMeasurement,
   setNavMode,
+  standardView,
+  fitToSelection,
   highlightObjects,
 })
 

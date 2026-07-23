@@ -33,6 +33,26 @@
           </button>
         </label>
         <button class="mv-act" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset camera</button>
+
+        <!-- Navigation mode (§6): orbit / walk (first-person) / plan. Active state
+             reflects the live viewer via the store. -->
+        <div class="mv-group" role="group" aria-label="Navigation mode">
+          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.navMode === 'orbit' }"
+                  title="Orbit" aria-label="Orbit navigation" @click="setNav('orbit')">⟲</button>
+          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.navMode === 'firstPerson' }"
+                  title="First-person / walk" aria-label="First-person navigation" @click="setNav('firstPerson')">🚶</button>
+          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.navMode === 'planView' }"
+                  title="Plan (top-down) view" aria-label="Plan navigation" @click="setNav('planView')">▦</button>
+        </div>
+
+        <!-- Standard views (§6): quick orientations + fit-to-selection. -->
+        <div class="mv-group" role="group" aria-label="Standard views">
+          <button class="mv-act mv-icon" title="Top view" @click="view('top')">Top</button>
+          <button class="mv-act mv-icon" title="Front view" @click="view('front')">Front</button>
+          <button class="mv-act mv-icon" title="Isometric view" @click="view('iso')">Iso</button>
+          <button class="mv-act mv-icon" title="Frame the current selection" @click="fitSel">Fit sel</button>
+        </div>
+
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
 
@@ -132,7 +152,7 @@ import { useRouter } from 'vue-router'
 import Model3DViewer from '@/components/Model3DViewer.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
-import { useModel3dStore } from '@/stores/model3d'
+import { useModel3dStore, type NavMode } from '@/stores/model3d'
 import { useAuthStore } from '@/stores/auth'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
@@ -298,6 +318,18 @@ function startSideResize(e: PointerEvent) {
 // Return the 3D camera to its default framing of the whole model.
 function resetCamera() {
   viewerRef.value?.resetCamera()
+}
+
+// Navigation-mode toggle + standard-view shortcuts (§6) — drive the live viewer
+// through its imperative API; the active nav mode is reflected from the store.
+function setNav(mode: NavMode) {
+  viewerRef.value?.setNavMode(mode)
+}
+function view(kind: 'top' | 'front' | 'iso' | 'fit') {
+  viewerRef.value?.standardView(kind)
+}
+function fitSel() {
+  viewerRef.value?.fitToSelection()
 }
 
 async function toggleSidebar() {
@@ -590,6 +622,13 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.3rem;
+  flex: 0 0 auto;
+}
+/* Navigation-mode + standard-view button clusters. */
+.mv-group {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
   flex: 0 0 auto;
 }
 .mv-icon {
