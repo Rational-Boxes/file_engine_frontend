@@ -346,21 +346,29 @@ The crux. An annotation is a comment thread whose `anchor.kind = "model-viewpoin
    manual reload. The viewer signals the panel through the same store/live path the
    comment UI already listens on.
 
-**Annotation-generated comments deep-link back to the model object.** Every
-annotation comment carries a **deep link to the specific model element(s)** it's about
-(the anchor's `object_refs` / saved viewpoint). Clicking it:
-- opens the model in the 3D viewer (if not already open) for the comment's `file_uid`, and
-- **centers the camera on and highlights the referenced object** — `cameraFlight.flyTo`
-  the object's AABB + select/highlight it via its metamodel id (`highlightObjects([...])`
-  on the viewer API, §5.3).
+**Annotation-generated comments deep-link back to the model — as a fully restorable
+view, not just a jump.** Every annotation comment carries a **deep link into the model**
+that restores the annotation's **complete saved navigation state** — camera pose,
+**section / slice planes**, per-object visibility, and selection — by replaying the
+anchor's `viewpoint` through `setViewpoint()`, *and* centers/highlights the referenced
+object(s) (`highlightObjects`, §5.3). Clicking it:
+- opens the model in the 3D viewer (if not already open) for the comment's `file_uid`;
+- **restores the full viewpoint** — the exact camera *and every cut-plane the author had
+  active* *and* the visibility/selection state — so you see the model the way the author
+  framed it, slices and all; and
+- **centers on and highlights** the specific referenced object within that restored view.
 
-This is the lighter "take me to *this thing*" motion, distinct from clicking the
-annotation's **marker**, which restores the *full saved viewpoint* (exact camera +
-visibility + section planes). The deep link reuses the existing discussion deep-link
-routing (`/preview/{uid}?thread=…`), extended with the target object/viewpoint (e.g.
-`&object={ifcGuid}` or `&view={anchorThreadId}`) so the link is shareable and survives
-reload — the same "open the file and take me to the relevant spot" pattern the SPA
-already uses for threads, now pointing at a place *inside* the model.
+That restore of the *whole* view state — cut-planes included — is the point of pinning an
+issue to a viewpoint: a reviewer opens the comment and is looking at exactly what the
+author was looking at. The on-model **marker** and the in-panel comment link **resolve to
+the same restore** (`setViewpoint()`); the marker is the in-viewport affordance, the
+comment link the in-panel one. The link reuses the discussion deep-link routing
+(`/preview/{uid}?thread=…`), extended with **`&view={anchorThreadId}`** (restore the full
+viewpoint) and optional **`&object={id}`** (which element to center/highlight within it),
+so it's shareable and survives reload — the same "open the file and take me to the relevant
+spot" pattern the SPA uses for threads, now restoring a **full navigation state** *inside*
+the model. (This is exactly the state BCF viewpoints carry, so it round-trips as BCF and
+back — §10, §11.)
 
 **Rendering annotations** (in the viewer):
 - Threads with a `model-viewpoint` anchor render as **markers** (via `AnnotationsPlugin`
@@ -501,7 +509,7 @@ can layer on the Foundation API later; keep `bcf_topic` fields 3.0-capable
 | `bcf_service` | `bcf_project`, `bcf_topic` (issue facet), `bcf_viewpoint`, `bcf_guid↔thread_id` map | new per-tenant tables; BCF-only |
 | renditions | `snapshot` (PNG) as a hidden child of the model file | client-captured; reused as BCF snapshot |
 | `model3d` store (SPA) | live viewer state (tool, section planes, selection, viewpoint) | drives toolbar + annotation layer |
-| SPA routing | extend the discussion deep-link with a model-element target (`?thread=…&object={ifcGuid}`) | opens viewer, centers + highlights the element; §9 |
+| SPA routing | extend the discussion deep-link to restore a model view (`?thread=…&view={anchorThreadId}&object={id}`) | opens viewer, **restores the full viewpoint (camera + slice planes + visibility)**, then centers/highlights the element; §9 |
 | XKT pipeline (backend) | preserve IFC GlobalId as entity id / emit metamodel JSON | §5.2 prerequisite, cross-repo |
 
 Every discussion change is **additive and nullable** — no migration of existing threads.
@@ -615,8 +623,11 @@ one deep item and is deliberately not on the critical path to first value.
    `comment_store` library that both the discussion service and `bcf_service` import, so
    both doors write through one guarded code path. Annotation-generated comments **signal
    the comment area to update live** (via the discussion live layer), and each carries a
-   **deep link to the model object** that opens the viewer and **centers the camera on +
-   highlights** the referenced IFC element (§9).
+   **deep link into the model** that restores the annotation's **full navigation state —
+   camera + section/slice planes + visibility + selection** (`setViewpoint()`) — and then
+   centers/highlights the referenced object (§9). The comment link and the on-model marker
+   resolve to the same restore; this is the same state BCF viewpoints carry, so it
+   round-trips as BCF (§10).
 3. **"Project" → a FileEngine folder.** All related models in a folder map onto one BCF
    project; `bcf_project` maps `project_id` → the folder uid (§10).
 4. **BCF version → 2.1 primary**, to minimize bleeding-edge complications and maximize
