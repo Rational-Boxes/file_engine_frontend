@@ -80,6 +80,10 @@
           </select>
         </div>
 
+        <!-- Comment on the current 3D view (§9): captures a viewpoint and hands it
+             to the discussion composer as an anchored annotation. -->
+        <button class="mv-act" title="Comment on the current 3D view" :disabled="!model3d.ready" @click="commentHere">💬 Comment here</button>
+
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
 
@@ -157,6 +161,7 @@
           <section v-show="!discMin" class="mv-discussion" :style="discStyle">
             <ThreadPanel
               v-if="model3d.uid"
+              ref="threadPanelRef"
               :file-uid="model3d.uid"
               embedded
               hide-dock
@@ -239,6 +244,7 @@ function openLocation() {
 const xktUid = ref('')
 const resolveError = ref('')
 const viewerRef = ref<InstanceType<typeof Model3DViewer> | null>(null)
+const threadPanelRef = ref<InstanceType<typeof ThreadPanel> | null>(null)
 
 // Drag-resizable object-tree sidebar width (px), clamped and persisted.
 const SIDE_KEY = 'fe.model3d.sidebarWidth'
@@ -380,6 +386,16 @@ function clearMeasure() {
 }
 function setUnits(units: string) {
   viewerRef.value?.setMeasurementUnits(units as MeasureUnits)
+}
+
+// "Comment here" (§9): capture the current view as an annotation anchor and hand
+// it to the discussion composer, which attaches it to the next new thread. The
+// created annotation surfaces in the panel (live) like any comment.
+function commentHere() {
+  const anchor = viewerRef.value?.captureViewpointAnchor()
+  if (!anchor) return
+  discMin.value = false // make sure the comment panel is visible
+  threadPanelRef.value?.startAnnotation(anchor)
 }
 
 async function toggleSidebar() {

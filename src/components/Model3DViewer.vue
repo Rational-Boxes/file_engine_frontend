@@ -20,6 +20,7 @@ import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { renditionArrayBuffer } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
 import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
+import type { ModelViewpointAnchor } from '@/services/discussionService'
 
 // `xktUid` is the rendition child's uid (the .xkt bytes). `treeContainerId`
 // (optional) is the id of the sidebar element the object tree mounts into.
@@ -192,6 +193,23 @@ function setViewpoint(viewpoint: unknown, options?: unknown) {
     bcfViewpoints?.setViewpoint?.(viewpoint, options)
   } catch {
     /* best-effort */
+  }
+}
+
+// Capture the current view as a model-viewpoint annotation anchor (§9): the BCF
+// viewpoint (camera + visibility + selection + clipping + snapshot) plus an
+// optional world-space marker. object_refs stay empty until the §5.2 metamodel
+// lands — camera/section-only anchors work now. Returns null if there is no
+// viewpoint (e.g. the BCF plugin is unavailable).
+function captureViewpointAnchor(marker?: { x: number; y: number; z: number }): ModelViewpointAnchor | null {
+  const viewpoint = getViewpoint()
+  if (!viewpoint) return null
+  return {
+    kind: 'model-viewpoint',
+    schema: 'fileengine.anchor.v1',
+    viewpoint,
+    ...(marker ? { marker } : {}),
+    object_refs: [],
   }
 }
 
@@ -529,6 +547,7 @@ defineExpose({
   // markup / BCF imperative API (§5.3) — the plugin host's surface
   getViewpoint,
   setViewpoint,
+  captureViewpointAnchor,
   captureSnapshot,
   addSectionPlane,
   addAxisSection,

@@ -28,6 +28,20 @@ export interface MentionUser {
   email: string
 }
 
+// A 3D annotation anchor (§4/§9): the current view captured as a BCF-2.1
+// viewpoint, plus an optional world-space marker and source-tagged object refs.
+// null anchor = a plain file-level comment (unchanged behaviour). The `viewpoint`
+// is what xeokit's BCFViewpointsPlugin.getViewpoint() emits — camera, visibility,
+// selection, clipping planes, snapshot — so it restores exactly via setViewpoint().
+export interface ModelViewpointAnchor {
+  kind: 'model-viewpoint'
+  schema: string
+  viewpoint: unknown
+  marker?: { x: number; y: number; z: number }
+  object_refs?: unknown[]
+  snapshot_rendition_uid?: string
+}
+
 export interface Thread {
   id: string
   fileUid: string
@@ -40,6 +54,7 @@ export interface Thread {
   resolvedBy: string | null
   resolvedVersion: string | null
   anchorStale: boolean
+  anchor: ModelViewpointAnchor | null
   comments?: Comment[]
 }
 
@@ -130,6 +145,7 @@ function toThread(t: Record<string, unknown>): Thread {
     resolvedBy: (t.resolved_by as string) ?? null,
     resolvedVersion: (t.resolved_version as string) ?? null,
     anchorStale: !!t.anchor_stale,
+    anchor: (t.anchor as ModelViewpointAnchor) ?? null,
     comments: Array.isArray(t.comments) ? (t.comments as Record<string, unknown>[]).map(toComment) : undefined,
   }
 }
@@ -177,7 +193,13 @@ export const discussionService = {
 
   async openThread(
     fileUid: string,
-    payload: { title?: string; body: string; version?: string; mentions?: string[] },
+    payload: {
+      title?: string
+      body: string
+      version?: string
+      mentions?: string[]
+      anchor?: ModelViewpointAnchor | null
+    },
   ): Promise<Thread> {
     const { data } = await discussionClient.post(`/files/${fileUid}/threads`, payload)
     return toThread(data)

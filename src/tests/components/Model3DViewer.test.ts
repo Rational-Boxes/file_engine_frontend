@@ -109,6 +109,7 @@ type ViewerApi = {
   resetCamera: () => void
   getViewpoint: () => unknown
   setViewpoint: (v: unknown) => void
+  captureViewpointAnchor: (marker?: { x: number; y: number; z: number }) => unknown
   captureSnapshot: () => string | null
   addSectionPlane: (cfg?: unknown) => string | null
   addAxisSection: (axis: 'x' | 'y' | 'z') => string | null
@@ -175,6 +176,22 @@ describe('Model3DViewer', () => {
     expect(h.bcf.getViewpoint).toHaveBeenCalled()
     vm.setViewpoint(h.VIEWPOINT)
     expect(h.bcf.setViewpoint).toHaveBeenCalledWith(h.VIEWPOINT, undefined)
+  })
+
+  it('captureViewpointAnchor() builds a model-viewpoint anchor from the current view', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const anchor = (w.vm as unknown as ViewerApi).captureViewpointAnchor({ x: 1, y: 2, z: 3 }) as Record<
+      string,
+      unknown
+    >
+    expect(anchor).toMatchObject({
+      kind: 'model-viewpoint',
+      schema: 'fileengine.anchor.v1',
+      viewpoint: h.VIEWPOINT,
+      marker: { x: 1, y: 2, z: 3 },
+      object_refs: [],
+    })
   })
 
   it('captureSnapshot() returns the viewer PNG snapshot', async () => {
