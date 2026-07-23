@@ -10,6 +10,15 @@ const hh = vi.hoisted(() => ({
   resetCameraSpy: vi.fn(),
   downloadFile: vi.fn(),
   push: vi.fn(),
+  // Deep-link (§9): a mutable fake route the overlay reads via useRoute().
+  route: { query: {} as Record<string, unknown> },
+  // Viewer imperative API spies (the overlay drives these).
+  setViewpoint: vi.fn(),
+  highlightObjects: vi.fn(),
+  renderAnnotations: vi.fn(),
+  // ThreadPanel exposed methods.
+  focusThread: vi.fn(),
+  startAnnotation: vi.fn(),
 }))
 
 vi.mock('@/services/renditions', () => ({
@@ -17,16 +26,40 @@ vi.mock('@/services/renditions', () => ({
   modelRendition: hh.modelRendition,
 }))
 vi.mock('@/services/fileService', () => ({ fileService: { downloadFile: hh.downloadFile } }))
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: hh.push }) }))
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: hh.push }),
+  useRoute: () => hh.route,
+}))
 
 // Stub the heavy viewer (xeokit) — assert the overlay wires it, not WebGL.
 vi.mock('@/components/Model3DViewer.vue', () => ({
   default: defineComponent({
     name: 'Model3DViewer',
     props: ['xktUid', 'treeContainerId', 'navStep'],
+    emits: ['annotation-activate'],
     setup(_, { expose }) {
-      expose({ resize: hh.resizeSpy, resetCamera: hh.resetCameraSpy })
+      expose({
+        resize: hh.resizeSpy,
+        resetCamera: hh.resetCameraSpy,
+        setViewpoint: hh.setViewpoint,
+        highlightObjects: hh.highlightObjects,
+        renderAnnotations: hh.renderAnnotations,
+      })
       return () => createEl('div', { class: 'm3d-stub' })
+    },
+  }),
+}))
+
+// Stub ThreadPanel (its live/discussion machinery is out of scope here) — expose
+// the methods the overlay calls and let tests emit its events.
+vi.mock('@/components/ThreadPanel.vue', () => ({
+  default: defineComponent({
+    name: 'ThreadPanel',
+    props: ['fileUid', 'embedded', 'hideDock', 'pos'],
+    emits: ['threads', 'restore-view', 'count', 'layout', 'update:pos'],
+    setup(_, { expose }) {
+      expose({ focusThread: hh.focusThread, startAnnotation: hh.startAnnotation })
+      return () => createEl('div', { class: 'tp-stub' })
     },
   }),
 }))
@@ -40,6 +73,7 @@ describe('ModelViewerOverlay', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    hh.route.query = {}
     localStorage.clear()
     document.body.style.overflow = ''
     hh.loadRenditionSet.mockResolvedValue({ model: { uid: 'xkt1' } })
@@ -167,5 +201,60 @@ describe('ModelViewerOverlay', () => {
     expect(hh.push).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'FileBrowser', query: expect.objectContaining({ file: 'file1' }) }),
     )
+  })
+
+  // ---- annotation markers + deep-link (§9, Phase D part 2/3) ----------------
+  const anchoredThread = (id: string, viewpoint: unknown) => ({
+    id,
+    anchor: { kind: 'model-viewpoint', viewpoint },
+  })
+
+  it('renders a marker per anchored thread the panel surfaces', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    w.findComponent({ name: 'ThreadPanel' }).vm.$emit('threads', [
+      anchoredThread('t1', { vp: 1 }),
+      { id: 't2', anchor: null }, // plain comment — no marker
+    ])
+    await flushPromises()
+    expect(hh.renderAnnotations).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 't1', threadId: 't1', viewpoint: { vp: 1 } }),
+    ])
+  })
+
+  it('consumes a ?view&object deep-link: restores the viewpoint once threads load', async () => {
+    hh.route.query = { view: 't1', object: 'wall-9' }
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    useModel3dStore().setReady(true) // the viewer signals it is live
+    w.findComponent({ name: 'ThreadPanel' }).vm.$emit('threads', [anchoredThread('t1', { vp: 7 })])
+    await flushPromises()
+    expect(hh.setViewpoint).toHaveBeenCalledWith({ vp: 7 })
+    expect(hh.highlightObjects).toHaveBeenCalledWith(['wall-9'])
+    expect(hh.focusThread).toHaveBeenCalledWith('t1')
+  })
+
+  it('restore-view from the panel replays that thread’s viewpoint', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    useModel3dStore().setReady(true)
+    const tp = w.findComponent({ name: 'ThreadPanel' })
+    tp.vm.$emit('threads', [anchoredThread('t2', { vp: 2 })])
+    tp.vm.$emit('restore-view', 't2')
+    await flushPromises()
+    expect(hh.setViewpoint).toHaveBeenCalledWith({ vp: 2 })
+    expect(hh.focusThread).toHaveBeenCalledWith('t2')
+  })
+
+  it('a marker activation focuses the thread in the panel', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    w.findComponent({ name: 'Model3DViewer' }).vm.$emit('annotation-activate', 't3')
+    await flushPromises()
+    expect(hh.focusThread).toHaveBeenCalledWith('t3')
   })
 })

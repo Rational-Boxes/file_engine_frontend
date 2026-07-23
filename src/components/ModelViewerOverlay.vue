@@ -172,6 +172,7 @@
               @update:pos="setPos"
               @count="discCount = $event"
               @threads="onThreads"
+              @restore-view="onRestoreView"
             />
           </section>
         </div>
@@ -182,7 +183,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Model3DViewer from '@/components/Model3DViewer.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
@@ -196,6 +197,7 @@ import type { Thread } from '@/services/discussionService'
 const model3d = useModel3dStore()
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
 // Docked discussion — same behaviour as the document preview. Available whenever a
 // file is open (comments are per-file, independent of the 3D rendition).
@@ -401,14 +403,53 @@ function commentHere() {
   threadPanelRef.value?.startAnnotation(anchor)
 }
 
+// Latest thread set from the panel; also the lookup for deep-link / restore-view.
+let threadsCache: Thread[] = []
+// A ?view deep-link is consumed once per open (guarded so it doesn't re-fire as
+// the viewer/threads settle).
+let deepLinkRestored = false
+
 // The panel surfaces its thread set; render a marker in the viewer for each
 // model-viewpoint annotation (§9). Fires on load and whenever threads change,
 // so a newly-created (or teammate's live) annotation gets a marker.
 function onThreads(ts: Thread[]) {
+  threadsCache = ts
   const markers = ts
     .filter((t) => t.anchor?.kind === 'model-viewpoint')
     .map((t) => ({ id: t.id, threadId: t.id, marker: t.anchor?.marker, viewpoint: t.anchor?.viewpoint }))
   viewerRef.value?.renderAnnotations(markers)
+  maybeRestoreDeepLink()
+}
+
+// Restore a thread's saved view (§9): replay the full viewpoint (camera + section
+// planes + visibility + selection) and, if given, centre/highlight an element.
+function restoreThreadView(threadId: string, objectId?: string) {
+  const anchor = threadsCache.find((t) => t.id === threadId)?.anchor
+  if (anchor?.kind !== 'model-viewpoint') return
+  viewerRef.value?.setViewpoint(anchor.viewpoint)
+  if (objectId) viewerRef.value?.highlightObjects([objectId])
+  discMin.value = false
+  threadPanelRef.value?.focusThread(threadId)
+}
+
+function _q(v: unknown): string | undefined {
+  return Array.isArray(v) ? (v[0] ?? undefined) : (v as string) || undefined
+}
+
+// Consume a shareable deep-link: /preview/{uid}?view={threadId}&object={id} restores
+// the annotation's full view once the model is open and its threads have loaded.
+function maybeRestoreDeepLink() {
+  if (deepLinkRestored || !model3d.ready) return
+  const threadId = _q(route.query.view)
+  if (!threadId) return
+  if (!threadsCache.some((t) => t.id === threadId && t.anchor?.kind === 'model-viewpoint')) return
+  restoreThreadView(threadId, _q(route.query.object))
+  deepLinkRestored = true
+}
+
+// The panel's "restore view" affordance for an annotation thread.
+function onRestoreView(threadId: string) {
+  restoreThreadView(threadId)
 }
 
 // A marker was clicked: the viewer already restored the viewpoint; focus the thread.
@@ -416,6 +457,26 @@ function onAnnotationActivate(threadId: string) {
   discMin.value = false
   threadPanelRef.value?.focusThread(threadId)
 }
+
+// Retry the deep-link when the viewer becomes ready or the target changes; reset
+// the once-guard each time the overlay (re)opens.
+watch(() => model3d.ready, () => maybeRestoreDeepLink())
+watch(
+  () => route.query.view,
+  () => {
+    deepLinkRestored = false
+    maybeRestoreDeepLink()
+  },
+)
+watch(
+  () => model3d.isOpen,
+  (open) => {
+    if (!open) {
+      deepLinkRestored = false
+      threadsCache = []
+    }
+  },
+)
 
 async function toggleSidebar() {
   collapsed.value = !collapsed.value

@@ -100,6 +100,14 @@
         <div v-if="t.anchorStale || t.status === 'resolved' || t.status === 'open'" class="thread-head">
           <span v-if="t.anchorStale" class="stale" title="Commented on an earlier revision">stale</span>
           <span v-if="t.status === 'resolved'" class="badge-res">resolved</span>
+          <!-- Annotation thread: restore the author's captured 3D view (§9). -->
+          <button
+            v-if="t.anchor?.kind === 'model-viewpoint'"
+            type="button"
+            class="tp-viewbtn"
+            title="Restore this 3D view"
+            @click="emit('restore-view', t.id)"
+          >🎯 View</button>
           <span class="thread-spacer"></span>
           <button
             v-if="t.status === 'open'"
@@ -224,6 +232,8 @@ const emit = defineEmits<{
   (e: 'count', n: number): void
   // The current thread list, so a host (e.g. the 3D viewer) can render markers (§9).
   (e: 'threads', threads: Thread[]): void
+  // Restore an annotation thread's saved 3D view (host wires this to the viewer).
+  (e: 'restore-view', threadId: string): void
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
@@ -974,6 +984,18 @@ onBeforeUnmount(() => session?.close())
   padding: 2px 10px;
   cursor: pointer;
   font-size: 0.8rem;
+}
+.tp-viewbtn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+.tp-viewbtn:hover {
+  border-color: var(--accent, #6ea8fe);
 }
 .tp-composer {
   margin-top: 14px;
