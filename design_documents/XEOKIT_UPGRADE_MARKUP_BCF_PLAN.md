@@ -640,7 +640,73 @@ one deep item and is deliberately not on the critical path to first value.
 
 ---
 
-## 18. References
+## 18. Future roadmap proposal — conversational & agentic access to the model
+
+> **Status: proposal, not committed scope.** This is a forward-looking extension, *not*
+> part of the build defined above. It's included because the metadata foundation (§5.2) and
+> the annotation substrate (§9) are exactly its hard prerequisites — naming it keeps their
+> justification honest: the metamodel isn't only for the object tree and BCF; it's the
+> structured substrate an AI reasons over and acts on. Sequence it on the roadmap **after**
+> those land; do not let it expand the current scope.
+
+Once each model delivers a **metamodel** (§5.2) and annotations are **governed comments**
+(§9), a conversational — and, gated, *agentic* — interface to the model falls out of pieces
+the platform already ships: the RAG research chat, the MCP server/client, pgvector search,
+and the viewer's imperative API (§5.3). Little of it is net-new; the value is wiring existing
+capabilities to the model's newly-structured objects.
+
+**Two levels, sharply distinguished by who acts.**
+
+### Read — ask the model (ungated)
+Object-level Q&A grounded in the metamodel: *"list every duct over 400 mm on level 3,"*
+*"which parts carry a flatness GD&T callout,"* *"what changed between this version and the
+last."* Today's pipeline already indexes model metadata as **text** for RAG (so keyword-level
+"chat with your model" works now); the metamodel upgrades this to **structured, object-level**
+answers that cite specific elements. Every answer deep-links to the object/viewpoint (§9), so a
+citation *opens the model framed on the thing it's about*. Read is **permission-scoped but
+ungated** — it only ever surfaces what the asker may already see.
+
+### Act — the assistant proposes; a human commits (gated)
+The agentic half exposes the model + annotation substrate as **MCP tools** the assistant can
+call: *query objects*, *highlight / isolate*, *open a viewpoint*, and — the state-changing
+ones — *create an annotation*, *raise a BCF topic*, *set a topic's status / assignee*. Because
+annotations are comments, a chat-raised issue lands in the **same governed substrate** and
+**round-trips as BCF** (§10–12) — so *"walk the model and open a coordination issue on every
+clash between the ducts and the structure"* produces real, permissioned, tool-visible BCF
+topics, not throwaway chat text.
+
+**Human-in-the-loop gating is the rule, not a feature.** It reuses the exact model already
+shipped for the chat's MCP client: **read is free; every state-changing action is _proposed_,
+not executed, and requires explicit user confirmation** (the per-call Approve/Deny consent the
+chat already has), under **admin-held gates** (default-deny, admin-provisioned tools, per-role
+scope, read-only-vs-write designation), executed under the **user's own identity**
+(impersonation), and **fully audited**. The assistant drafts *"I'll open 4 issues: … Approve?"*
+and nothing writes until the human says yes. State-changing model actions are exactly the class
+the platform already treats as confirmation-required (see `FILEENGINE_ROADMAP.md` Phase 9.1's
+MCP-client governance — this inherits it wholesale).
+
+**What would actually need building** (small, mostly glue): a metamodel-backed **query/tool
+layer** (structured queries + embeddings over object-property text); a handful of **MCP tools**
+(`query_objects`, `highlight`, `open_viewpoint`, `create_annotation`, `raise_bcf_topic`,
+`set_topic_status`) mapped onto the viewer API (§5.3) and the shared `comment_store` (§12); and
+a viewer that can be **driven** by those tools (already true after §5.3). No new auth, no new
+issue store, no new consent mechanism — all reused.
+
+**Why it's worth naming.** A differentiator no proprietary incumbent offers self-hosted:
+permission-scoped, audited, conversational **and agentic** access to BIM *and* CAD/CAM, where
+the assistant can not only answer about a model but *act* on it — every action a governed,
+human-approved, BCF-round-trippable annotation. It also compounds "many doors, one core": the
+same annotation substrate is reachable by a **human** in the viewer, an **AEC tool** over BCF,
+and an **AI agent** over MCP — one governed truth, three doors.
+
+**Dependencies & sequencing.** Gated on §5.2 (metamodel) + §9 (annotation substrate) + §12
+(`comment_store` + BCF). Slots onto the roadmap alongside the existing MCP/AI phases; the
+admin-held-gates + HITL model in `FILEENGINE_ROADMAP.md` Phase 9.1 already specifies the
+governance this inherits. **Not on the critical path of this plan.**
+
+---
+
+## 19. References
 
 - `design_documents/3D_MODEL_VIEWER_PLAN.md` — the baseline viewer this extends.
 - `convert_search_ai/design_documents/XEOKIT3D_PLUGIN.md` — the XKT conversion pipeline
