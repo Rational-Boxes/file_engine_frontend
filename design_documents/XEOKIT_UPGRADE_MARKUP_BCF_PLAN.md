@@ -706,7 +706,70 @@ governance this inherits. **Not on the critical path of this plan.**
 
 ---
 
-## 19. References
+## 19. Future roadmap proposal — inter-version model diff
+
+> **Status: proposal, not committed scope** (as §18). A strong review/QA capability that the
+> metadata foundation (§5.2) + FileEngine's immutable versioning make natural — but not part
+> of the build defined above. Sequence after §5.2; do not expand current scope.
+
+FileEngine keeps every version of every model, so *"**what changed between revision C and
+D**"* — the core design-coordination / QA-QC / change-review question in both AEC and
+mechanical CAD — should be answerable *in the viewer*. Nothing in the stack answers it today.
+
+**What xeokit gives us (and doesn't).** xeokit ships **no** diff / compare / revision plugin.
+A 2019 request (xeokit-sdk issue **#92, "Model comparison"**) was resolved not by building a
+diff tool but by shipping the **primitives**: load-time per-model transforms and
+**`globalizeObjectIds`** (so two revisions that share IFC GlobalIds load into one scene
+without id clashes). So a version diff is a **build-on**, and the established division of
+labor is: **compute the delta upstream, render it in xeokit.**
+
+**Compute the delta (server-side).** The §5.2 metamodel is exactly what makes this possible —
+both versions' objects are addressable by a **stable id** (IFC GlobalId for BIM; OCAF label /
+property key for CAD). Set-diff the id sets → **Added** (only in new) / **Removed** (only in
+old); for the intersection, flag **Changed** by comparing property sets, type, and a geometry
+hash / AABB. For IFC this is nearly free: the pipeline **already opens the model with
+IfcOpenShell** (§5.2), whose **`IfcDiff`** produces precisely Added/Removed/Changed keyed on
+GlobalId. Compute once and cache as a **diff rendition** — a hidden child keyed to
+`(versionA, versionB)` — so the SPA stays a pure renderer (compute is server-side, like
+conversion).
+
+**Render the delta (in the viewer).** Load both versions into one Viewer with
+`globalizeObjectIds`, map each object to its delta class, and drive the per-object appearance
+API (§5.3 — `colorize` / `xrayed` / `visible`):
+- **Overlay** — ghost/X-ray the unchanged baseline; colorize **added** (green), **removed**
+  (red, from a retained ghost of the old version), **changed** (amber); toggle each set.
+- **Side-by-side** — two camera-synced Viewers (the pattern the maintainer recommended for
+  #92), old and new, delta colorized in each.
+- **Changed-only** — isolate the delta; the object tree filters to changed objects with a
+  before/after property panel.
+
+**Why it compounds the rest of the plan:**
+- **Feeds the issue substrate.** Any added / removed / changed object can seed an
+  **annotation / BCF topic** ("review this change") in one click — the diff becomes governed,
+  assignable, BCF-round-trippable coordination issues (§9–12), not a throwaway view.
+- **The agentic read+act path (§18).** *"What changed between this version and the last, and
+  open an issue on every new slab penetration"* = the agent runs the diff (read) and
+  **proposes** the issues (human-gated write). The diff is the structured input the
+  conversational interface reasons over.
+- **CAD/CAM, not just BIM.** A changed **tolerance / GD&T callout** or a swapped part is a
+  diff result — high value for manufacturing QA and CAM review. This is where "preserve as
+  much internal metadata as possible" (§5.2, principle 7) pays off well beyond buildings.
+
+**Gotcha — id stability across versions.** Semantic diff hinges on the object id being the
+*same element* across revisions. Within FileEngine's own version lineage (same source, same
+authoring tool) GlobalIds / OCAF labels are typically stable; where an authoring tool
+**regenerates** ids between exports, semantic diff degrades and must fall back to
+**geometry / property hashing** (IfcOpenShell documents a hashing approach). Detect and
+surface the low-confidence case rather than silently mis-pairing objects.
+
+**Dependencies & sequencing.** Gated on §5.2 (the metamodel that supplies the object keys) +
+FileEngine's existing versioning; reuses IfcOpenShell (already in the pipeline) for the IFC
+case. Discipline-neutral (principle 8). Off this plan's critical path — a strong follow-on
+once the metadata foundation lands.
+
+---
+
+## 20. References
 
 - `design_documents/3D_MODEL_VIEWER_PLAN.md` — the baseline viewer this extends.
 - `convert_search_ai/design_documents/XEOKIT3D_PLUGIN.md` — the XKT conversion pipeline
@@ -721,3 +784,9 @@ governance this inherits. **Not on the critical path of this plan.**
 - xeokit **BCFViewpointsPlugin** — Saving/Loading BCF Viewpoints (getViewpoint/setViewpoint;
   BCF 2.1 conformant; matches by IFC globalId).
 - IFC GlobalId — buildingSMART Technical, IFC-GUID guidance (compressed 22-char form).
+- xeokit-sdk issue **#92 "Model comparison"** — https://github.com/xeokit/xeokit-sdk/issues/92
+  (no diff plugin; resolved by shipping `globalizeObjectIds` + per-model transforms — §19).
+- xeokit `XKTLoaderPlugin#globalizeObjectIds`, `Scene`/`Entity` colorize/xray/visible,
+  `MetaScene`/`MetaModel`/`MetaObject` — the primitives a diff renders on (§19).
+- IfcOpenShell **`IfcDiff`** — https://docs.ifcopenshell.org/ifcdiff.html (Added/Removed/
+  Changed keyed on GlobalId; geometry-hash fallback) — the upstream delta computation (§19).
