@@ -17,7 +17,7 @@
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@xeokit/xeokit-sdk": "^2.6.112",
+    "@xeokit/xeokit-sdk": "2.6.112",
     "axios": "^1.6.7",
     "dompurify": "^3.4.11",
     "marked": "^18.0.5",
