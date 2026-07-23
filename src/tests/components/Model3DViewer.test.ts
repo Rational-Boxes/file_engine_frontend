@@ -24,7 +24,16 @@ const h = vi.hoisted(() => {
     sectionPlanes.sectionPlanes = {}
   })
   const VIEWPOINT = { perspective_camera: {}, clipping_planes: [] }
+  // AnnotationsPlugin double: createAnnotation/clear + an `on` that captures the
+  // markerClicked handler so a test can fire it.
+  const annotations = { createAnnotation: vi.fn(), clear: vi.fn(), on: vi.fn() }
+  const annHandlers: Record<string, (a: { id?: string }) => void> = {}
+  annotations.on.mockImplementation((evt: string, cb: (a: { id?: string }) => void) => {
+    annHandlers[evt] = cb
+  })
   return {
+    annotations,
+    annHandlers,
     loadSpy: vi.fn(),
     destroySpy: vi.fn(),
     resizeSpy: vi.fn(),
@@ -79,7 +88,7 @@ vi.mock('@xeokit/xeokit-sdk', () => ({
   SectionPlanesPlugin: vi.fn().mockImplementation(() => h.sectionPlanes),
   DistanceMeasurementsPlugin: vi.fn().mockImplementation(() => h.distance),
   AngleMeasurementsPlugin: vi.fn().mockImplementation(() => h.angle),
-  AnnotationsPlugin: vi.fn().mockImplementation(() => ({})),
+  AnnotationsPlugin: vi.fn().mockImplementation(() => h.annotations),
   BCFViewpointsPlugin: vi.fn().mockImplementation(() => h.bcf),
 }))
 
@@ -110,6 +119,9 @@ type ViewerApi = {
   getViewpoint: () => unknown
   setViewpoint: (v: unknown) => void
   captureViewpointAnchor: (marker?: { x: number; y: number; z: number }) => unknown
+  renderAnnotations: (
+    items: Array<{ id: string; threadId: string; marker?: { x: number; y: number; z: number }; viewpoint: unknown }>,
+  ) => void
   captureSnapshot: () => string | null
   addSectionPlane: (cfg?: unknown) => string | null
   addAxisSection: (axis: 'x' | 'y' | 'z') => string | null
@@ -192,6 +204,32 @@ describe('Model3DViewer', () => {
       marker: { x: 1, y: 2, z: 3 },
       object_refs: [],
     })
+  })
+
+  it('renderAnnotations() creates a marker per anchored thread (skipping camera-only)', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    ;(w.vm as unknown as ViewerApi).renderAnnotations([
+      { id: 't1', threadId: 't1', marker: { x: 1, y: 2, z: 3 }, viewpoint: h.VIEWPOINT },
+      { id: 't2', threadId: 't2', viewpoint: h.VIEWPOINT }, // no marker → no in-scene badge
+    ])
+    expect(h.annotations.clear).toHaveBeenCalled() // rebuilt from scratch
+    expect(h.annotations.createAnnotation).toHaveBeenCalledTimes(1)
+    expect(h.annotations.createAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ann-t1', worldPos: [1, 2, 3] }),
+    )
+  })
+
+  it('clicking a marker restores its viewpoint and emits annotation-activate', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    ;(w.vm as unknown as ViewerApi).renderAnnotations([
+      { id: 't1', threadId: 't1', marker: { x: 0, y: 0, z: 0 }, viewpoint: h.VIEWPOINT },
+    ])
+    // Fire the AnnotationsPlugin markerClicked event captured by the mock.
+    h.annHandlers.markerClicked({ id: 'ann-t1' })
+    expect(h.bcf.setViewpoint).toHaveBeenCalledWith(h.VIEWPOINT, undefined)
+    expect(w.emitted('annotation-activate')?.[0]).toEqual(['t1'])
   })
 
   it('captureSnapshot() returns the viewer PNG snapshot', async () => {

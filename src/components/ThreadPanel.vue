@@ -92,6 +92,7 @@
 
       <article
         v-for="t in threads"
+        :id="`thread-${t.id}`"
         :key="t.id"
         class="thread"
         :class="{ resolved: t.status === 'resolved' }"
@@ -221,6 +222,8 @@ const emit = defineEmits<{
   (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void
   (e: 'update:pos', p: 'side' | 'bottom'): void
   (e: 'count', n: number): void
+  // The current thread list, so a host (e.g. the 3D viewer) can render markers (§9).
+  (e: 'threads', threads: Thread[]): void
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
@@ -280,6 +283,9 @@ const totalComments = computed(() =>
 )
 // Surface the count so a parent-owned header control (e.g. the 3D viewer) can show it.
 watch(totalComments, (n) => emit('count', n), { immediate: true })
+// Surface the thread set to the host (the 3D viewer renders a marker per anchored
+// thread). Fires on load and whenever a thread is added/removed.
+watch(() => threads.value.length, () => emit('threads', threads.value), { immediate: true })
 const flagText = computed(() => {
   if (!flag.value) return ''
   const parts: string[] = []
@@ -430,7 +436,16 @@ function startAnnotation(anchor: ModelViewpointAnchor) {
 function clearPendingAnchor() {
   pendingAnchor.value = null
 }
-defineExpose({ startAnnotation })
+
+// Scroll a thread into view (and open the panel if collapsed) — used when an
+// in-scene 3D annotation marker is clicked (§9).
+function focusThread(threadId: string) {
+  if (layout.value === 'collapsed') layout.value = props.pos === 'bottom' ? 'bottom' : 'right'
+  requestAnimationFrame(() => {
+    document.getElementById(`thread-${threadId}`)?.scrollIntoView({ block: 'center' })
+  })
+}
+defineExpose({ startAnnotation, focusThread })
 
 async function open() {
   const body = newBody.value.trim()

@@ -145,6 +145,7 @@
               :xkt-uid="xktUid"
               :nav-step="navStep"
               tree-container-id="mv-object-tree"
+              @annotation-activate="onAnnotationActivate"
             />
             <p v-else class="mv-muted">Loading…</p>
           </section>
@@ -170,6 +171,7 @@
               @layout="discLayout = $event"
               @update:pos="setPos"
               @count="discCount = $event"
+              @threads="onThreads"
             />
           </section>
         </div>
@@ -189,6 +191,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
+import type { Thread } from '@/services/discussionService'
 
 const model3d = useModel3dStore()
 const auth = useAuthStore()
@@ -396,6 +399,22 @@ function commentHere() {
   if (!anchor) return
   discMin.value = false // make sure the comment panel is visible
   threadPanelRef.value?.startAnnotation(anchor)
+}
+
+// The panel surfaces its thread set; render a marker in the viewer for each
+// model-viewpoint annotation (§9). Fires on load and whenever threads change,
+// so a newly-created (or teammate's live) annotation gets a marker.
+function onThreads(ts: Thread[]) {
+  const markers = ts
+    .filter((t) => t.anchor?.kind === 'model-viewpoint')
+    .map((t) => ({ id: t.id, threadId: t.id, marker: t.anchor?.marker, viewpoint: t.anchor?.viewpoint }))
+  viewerRef.value?.renderAnnotations(markers)
+}
+
+// A marker was clicked: the viewer already restored the viewpoint; focus the thread.
+function onAnnotationActivate(threadId: string) {
+  discMin.value = false
+  threadPanelRef.value?.focusThread(threadId)
 }
 
 async function toggleSidebar() {

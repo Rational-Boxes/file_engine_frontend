@@ -35,11 +35,19 @@ const props = withDefaults(
   { navStep: 100 },
 )
 
+// Emitted when an in-scene annotation marker is clicked: the viewer restores the
+// annotation's viewpoint itself, and the host focuses the matching comment thread.
+const emit = defineEmits<{ (e: 'annotation-activate', threadId: string): void }>()
+
 // xeokit-sdk #2016: the NavCubePlugin shader crashes ("Missing input
 // materialEmissive") in 2.6.104–2.6.112. Keep the integration but off until fixed.
 const NAVCUBE_ENABLED = false
 
 const store = useModel3dStore()
+
+// Marker id → its thread + viewpoint, so a marker click restores the right view
+// and focuses the right thread. Rebuilt on every renderAnnotations().
+let annotationMeta: Record<string, { threadId: string; viewpoint: unknown }> = {}
 
 const rootEl = ref<HTMLElement | null>(null)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
@@ -138,6 +146,7 @@ function makePlugins(xeokit: any) {
   angleMeasurements = mk('angle measurement', xeokit.AngleMeasurementsPlugin)
   annotations = mk('annotations', xeokit.AnnotationsPlugin)
   bcfViewpoints = mk('BCF viewpoints', xeokit.BCFViewpointsPlugin)
+  wireAnnotationClicks()
 }
 
 function destroy() {
@@ -210,6 +219,55 @@ function captureViewpointAnchor(marker?: { x: number; y: number; z: number }): M
     viewpoint,
     ...(marker ? { marker } : {}),
     object_refs: [],
+  }
+}
+
+// One model-viewpoint annotation to render as an in-scene marker.
+interface AnnotationMarker {
+  id: string
+  threadId: string
+  marker?: { x: number; y: number; z: number }
+  viewpoint: unknown
+}
+
+// Render the given annotations as in-scene markers (§9). Each needs a world-space
+// marker point; camera-only annotations have no badge but still exist as comments.
+// Clicking a marker restores its viewpoint and activates its thread (see
+// wireAnnotationClicks). Rebuilds the marker set each call.
+function renderAnnotations(items: AnnotationMarker[]) {
+  if (!annotations) return
+  try {
+    annotations.clear?.()
+    annotationMeta = {}
+    for (const it of items || []) {
+      if (!it.marker) continue
+      const aid = 'ann-' + it.id
+      annotations.createAnnotation?.({
+        id: aid,
+        worldPos: [it.marker.x, it.marker.y, it.marker.z],
+        occludable: true,
+        markerShown: true,
+        labelShown: false,
+      })
+      annotationMeta[aid] = { threadId: it.threadId, viewpoint: it.viewpoint }
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
+// One-time wiring: clicking any annotation marker restores its saved viewpoint and
+// asks the host to focus the matching thread.
+function wireAnnotationClicks() {
+  try {
+    annotations?.on?.('markerClicked', (annotation: { id?: string }) => {
+      const meta = annotationMeta[annotation?.id ?? '']
+      if (!meta) return
+      if (meta.viewpoint) setViewpoint(meta.viewpoint)
+      emit('annotation-activate', meta.threadId)
+    })
+  } catch {
+    /* best-effort */
   }
 }
 
@@ -548,6 +606,7 @@ defineExpose({
   getViewpoint,
   setViewpoint,
   captureViewpointAnchor,
+  renderAnnotations,
   captureSnapshot,
   addSectionPlane,
   addAxisSection,
