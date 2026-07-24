@@ -4,86 +4,11 @@
          possible so navigation is never cramped. Not a drawer/centered modal. -->
     <div v-if="model3d.isOpen" class="mv-root theme-dark" role="dialog" aria-modal="true" aria-label="3D model viewer">
       <header class="mv-head">
-        <button class="mv-toggle" :aria-pressed="!collapsed" title="Toggle object tree" @click="toggleSidebar">
-          ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} tree</span>
+        <button class="mv-toggle" :aria-pressed="!collapsed" title="Toggle the objects / tools panel" @click="toggleSidebar">
+          ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} panel</span>
         </button>
         <h1 class="mv-title" :title="title">{{ title }}</h1>
         <HelpIcon topic="cad-bim" label="About CAD &amp; BIM model viewing" />
-        <label class="mv-zoom" title="How far each zoom and pan step moves — lower it for fine control on small CAD models">
-          <span class="mv-zoom-lbl">Nav step</span>
-          <input
-            class="mv-zoom-slider"
-            type="range"
-            :min="NAV_MIN"
-            :max="NAV_MAX"
-            step="1"
-            :value="navStep"
-            aria-label="Viewer navigation step"
-            @input="onNavInput"
-          />
-          <button
-            class="mv-zoom-reset"
-            type="button"
-            title="Reset navigation step to the default"
-            aria-label="Reset navigation step to default"
-            :disabled="navStep === NAV_DEFAULT"
-            @click="resetNav"
-          >
-            ⟲
-          </button>
-        </label>
-        <button class="mv-act" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset camera</button>
-
-        <!-- Navigation mode (§6): orbit / walk (first-person) / plan. Active state
-             reflects the live viewer via the store. -->
-        <div class="mv-group" role="group" aria-label="Navigation mode">
-          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.navMode === 'orbit' }"
-                  title="Orbit" aria-label="Orbit navigation" @click="setNav('orbit')">⟲</button>
-          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.navMode === 'firstPerson' }"
-                  title="First-person / walk" aria-label="First-person navigation" @click="setNav('firstPerson')">🚶</button>
-          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.navMode === 'planView' }"
-                  title="Plan (top-down) view" aria-label="Plan navigation" @click="setNav('planView')">▦</button>
-        </div>
-
-        <!-- Standard views (§6): quick orientations + fit-to-selection. -->
-        <div class="mv-group" role="group" aria-label="Standard views">
-          <button class="mv-act mv-icon" title="Top view" @click="view('top')">Top</button>
-          <button class="mv-act mv-icon" title="Front view" @click="view('front')">Front</button>
-          <button class="mv-act mv-icon" title="Isometric view" @click="view('iso')">Iso</button>
-          <button class="mv-act mv-icon" title="Frame the current selection" @click="fitSel">Fit sel</button>
-        </div>
-
-        <!-- Section planes (§7): axis quick-cuts, a section box, and clear-all. -->
-        <div class="mv-group" role="group" aria-label="Section planes">
-          <button class="mv-act mv-icon" title="Cut along X" :disabled="!model3d.ready" @click="section('x')">✂X</button>
-          <button class="mv-act mv-icon" title="Cut along Y" :disabled="!model3d.ready" @click="section('y')">✂Y</button>
-          <button class="mv-act mv-icon" title="Cut along Z" :disabled="!model3d.ready" @click="section('z')">✂Z</button>
-          <button class="mv-act mv-icon" title="Section box (isolate a region)" :disabled="!model3d.ready" @click="sectionBox">▣ Box</button>
-          <button class="mv-act mv-icon" title="Clear all section planes" :disabled="!model3d.hasSection" @click="clearSections">
-            ✕ Cuts<span v-if="model3d.sectionPlaneIds.length"> ({{ model3d.sectionPlaneIds.length }})</span>
-          </button>
-        </div>
-
-        <!-- Measurement (§8): distance / angle (transient), clear, and a units switch. -->
-        <div class="mv-group" role="group" aria-label="Measurement">
-          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.activeTool === 'distance' }"
-                  title="Measure distance" :disabled="!model3d.ready" @click="measure('distance')">📏</button>
-          <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.activeTool === 'angle' }"
-                  title="Measure angle" :disabled="!model3d.ready" @click="measure('angle')">📐</button>
-          <button v-if="model3d.isMeasuring" class="mv-act mv-icon" title="Stop measuring" @click="measure('none')">■</button>
-          <button class="mv-act mv-icon" title="Clear measurements" :disabled="!model3d.ready" @click="clearMeasure">✕ Meas</button>
-          <select class="mv-units" :value="model3d.measureUnits" title="Measurement units"
-                  aria-label="Measurement units" @change="setUnits(($event.target as HTMLSelectElement).value)">
-            <option value="mm">mm</option>
-            <option value="m">m</option>
-            <option value="ft">ft</option>
-          </select>
-        </div>
-
-        <!-- Comment on the current 3D view (§9): captures a viewpoint and hands it
-             to the discussion composer as an anchored annotation. -->
-        <button class="mv-act" title="Comment on the current 3D view" :disabled="!model3d.ready" @click="commentHere">💬 Comment here</button>
-
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
 
@@ -112,8 +37,112 @@
           :style="collapsed ? undefined : sideStyle"
           :aria-hidden="collapsed"
         >
-          <h2 class="mv-side-h">Objects</h2>
-          <div id="mv-object-tree" class="mv-tree"></div>
+          <!-- Tabbed side panel: the object tree and the viewer tools. -->
+          <div class="mv-tabs" role="tablist" aria-label="Side panel">
+            <button
+              class="mv-tab"
+              :class="{ 'mv-tab-on': sideTab === 'objects' }"
+              role="tab"
+              :aria-selected="sideTab === 'objects'"
+              @click="selectTab('objects')"
+            >Objects</button>
+            <button
+              class="mv-tab"
+              :class="{ 'mv-tab-on': sideTab === 'tools' }"
+              role="tab"
+              :aria-selected="sideTab === 'tools'"
+              @click="selectTab('tools')"
+            >Tools</button>
+          </div>
+
+          <!-- Objects: the xeokit TreeViewPlugin mounts into #mv-object-tree. Kept
+               mounted (v-show) so switching tabs never detaches the tree. -->
+          <div v-show="sideTab === 'objects'" class="mv-tabpanel">
+            <div id="mv-object-tree" class="mv-tree"></div>
+          </div>
+
+          <!-- Tools: navigation, views, section planes, measurement, annotate. -->
+          <div v-show="sideTab === 'tools'" class="mv-tabpanel mv-tools">
+            <section class="mv-toolsec">
+              <h3 class="mv-toolsec-h">Navigation</h3>
+              <div class="mv-toolrow" role="group" aria-label="Navigation mode">
+                <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.navMode === 'orbit' }"
+                        title="Orbit" @click="setNav('orbit')">⟲ Orbit</button>
+                <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.navMode === 'firstPerson' }"
+                        title="First-person / walk" @click="setNav('firstPerson')">🚶 Walk</button>
+                <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.navMode === 'planView' }"
+                        title="Plan (top-down) view" @click="setNav('planView')">▦ Plan</button>
+              </div>
+              <label class="mv-zoom" title="How far each zoom and pan step moves — lower it for fine control on small CAD models">
+                <span class="mv-zoom-lbl">Nav step</span>
+                <input
+                  class="mv-zoom-slider"
+                  type="range"
+                  :min="NAV_MIN"
+                  :max="NAV_MAX"
+                  step="1"
+                  :value="navStep"
+                  aria-label="Viewer navigation step"
+                  @input="onNavInput"
+                />
+                <button
+                  class="mv-zoom-reset"
+                  type="button"
+                  title="Reset navigation step to the default"
+                  aria-label="Reset navigation step to default"
+                  :disabled="navStep === NAV_DEFAULT"
+                  @click="resetNav"
+                >⟲</button>
+              </label>
+            </section>
+
+            <section class="mv-toolsec">
+              <h3 class="mv-toolsec-h">Views</h3>
+              <div class="mv-toolrow" role="group" aria-label="Standard views">
+                <button class="mv-act mv-icon" title="Top view" @click="view('top')">Top</button>
+                <button class="mv-act mv-icon" title="Front view" @click="view('front')">Front</button>
+                <button class="mv-act mv-icon" title="Isometric view" @click="view('iso')">Iso</button>
+                <button class="mv-act mv-icon" title="Frame the current selection" @click="fitSel">Fit sel</button>
+                <button class="mv-act mv-icon" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset</button>
+              </div>
+            </section>
+
+            <section class="mv-toolsec">
+              <h3 class="mv-toolsec-h">Section planes</h3>
+              <div class="mv-toolrow" role="group" aria-label="Section planes">
+                <button class="mv-act mv-icon" title="Cut along X" :disabled="!model3d.ready" @click="section('x')">✂X</button>
+                <button class="mv-act mv-icon" title="Cut along Y" :disabled="!model3d.ready" @click="section('y')">✂Y</button>
+                <button class="mv-act mv-icon" title="Cut along Z" :disabled="!model3d.ready" @click="section('z')">✂Z</button>
+                <button class="mv-act mv-icon" title="Section box (isolate a region)" :disabled="!model3d.ready" @click="sectionBox">▣ Box</button>
+                <button class="mv-act mv-icon" title="Clear all section planes" :disabled="!model3d.hasSection" @click="clearSections">
+                  ✕ Cuts<span v-if="model3d.sectionPlaneIds.length"> ({{ model3d.sectionPlaneIds.length }})</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="mv-toolsec">
+              <h3 class="mv-toolsec-h">Measure</h3>
+              <div class="mv-toolrow" role="group" aria-label="Measurement">
+                <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.activeTool === 'distance' }"
+                        title="Measure distance" :disabled="!model3d.ready" @click="measure('distance')">📏 Dist</button>
+                <button class="mv-act mv-icon" :class="{ 'mv-on': model3d.activeTool === 'angle' }"
+                        title="Measure angle" :disabled="!model3d.ready" @click="measure('angle')">📐 Angle</button>
+                <button v-if="model3d.isMeasuring" class="mv-act mv-icon" title="Stop measuring" @click="measure('none')">■ Stop</button>
+                <button class="mv-act mv-icon" title="Clear measurements" :disabled="!model3d.ready" @click="clearMeasure">✕ Meas</button>
+                <select class="mv-units" :value="model3d.measureUnits" title="Measurement units"
+                        aria-label="Measurement units" @change="setUnits(($event.target as HTMLSelectElement).value)">
+                  <option value="mm">mm</option>
+                  <option value="m">m</option>
+                  <option value="ft">ft</option>
+                </select>
+              </div>
+            </section>
+
+            <section class="mv-toolsec">
+              <h3 class="mv-toolsec-h">Annotate</h3>
+              <button class="mv-act" title="Comment on the current 3D view" :disabled="!model3d.ready" @click="commentHere">💬 Comment here</button>
+            </section>
+          </div>
         </aside>
 
         <!-- Drag handle to resize the object tree; hidden when the tree is collapsed. -->
@@ -122,7 +151,7 @@
           class="mv-side-resizer"
           role="separator"
           aria-orientation="vertical"
-          title="Drag to resize the object tree"
+          title="Drag to resize the panel"
           @pointerdown="startSideResize"
         ></div>
 
@@ -271,6 +300,12 @@ watch([combinedActive, discussionPos, discLayout, discSideW, discBottomPct, side
 
 const COLLAPSE_KEY = 'fe.model3d.sidebarCollapsed'
 const collapsed = ref(readCollapsed())
+
+// Which side-panel tab is showing: the object tree or the viewer tools.
+const sideTab = ref<'objects' | 'tools'>('objects')
+function selectTab(tab: 'objects' | 'tools') {
+  sideTab.value = tab
+}
 
 // Navigation-step slider: scales the viewer's zoom *and* pan rates together. The
 // range is centred on xeokit's default (100) so the halfway position — NAV_DEFAULT
@@ -626,11 +661,74 @@ onBeforeUnmount(() => {
 .mv-side {
   flex: 0 0 280px;
   max-width: 280px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   background: #1b1d21;
   border-right: 1px solid #2a2d31;
-  padding: 0.5rem 0.6rem;
   transition: flex-basis 0.15s ease, margin-left 0.15s ease;
+}
+/* Tabbed side panel: Objects (tree) / Tools. */
+.mv-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  border-bottom: 1px solid #2a2d31;
+}
+.mv-tab {
+  flex: 1 1 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9aa;
+  padding: 0.5rem 0.4rem;
+  cursor: pointer;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.mv-tab:hover {
+  color: #e8e8ea;
+}
+.mv-tab-on {
+  color: #cfe0ff;
+  border-bottom-color: #6ea8fe;
+}
+.mv-tabpanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.5rem 0.6rem;
+}
+/* Tools tab: labeled sections stacked vertically, buttons wrapping in rows. */
+.mv-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.mv-toolsec {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.mv-toolsec-h {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7f8894;
+  margin: 0;
+}
+.mv-toolrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.mv-tools .mv-zoom {
+  width: 100%;
+}
+.mv-tools .mv-zoom-slider {
+  flex: 1 1 auto;
+  width: auto;
 }
 /* Collapsed → fully out of the way so the viewport gets the whole overlay. */
 .mv-side-collapsed {

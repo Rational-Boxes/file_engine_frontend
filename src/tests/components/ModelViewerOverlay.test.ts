@@ -133,14 +133,29 @@ describe('ModelViewerOverlay', () => {
     expect(document.body.style.overflow).toBe('')
   })
 
-  it('resets the camera to the default view via the header button', async () => {
+  it('resets the camera to the default view from the tools panel', async () => {
     const w = mountOverlay()
     useModel3dStore().open('file1', 'tower.ifc')
     await flushPromises()
-    const reset = w.findAll('.mv-act').find((b) => b.text().includes('Reset camera'))!
+    const reset = w
+      .findAll('button')
+      .find((b) => b.attributes('title') === 'Reset the camera to the default view')!
     expect(reset).toBeTruthy()
     await reset.trigger('click')
     expect(hh.resetCameraSpy).toHaveBeenCalled()
+  })
+
+  it('tabs the side panel between Objects and Tools (tree stays mounted)', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    expect(w.findAll('.mv-tab').map((t) => t.text())).toEqual(['Objects', 'Tools'])
+    expect(w.find('#mv-object-tree').exists()).toBe(true) // tree present on the Objects tab
+    await w.findAll('.mv-tab')[1].trigger('click') // → Tools
+    await flushPromises()
+    expect(w.findAll('.mv-tab')[1].classes()).toContain('mv-tab-on')
+    expect(w.find('.mv-tools').exists()).toBe(true)
+    expect(w.find('#mv-object-tree').exists()).toBe(true) // kept mounted (v-show), not detached
   })
 
   it('drives the viewer navigation step (zoom + pan) from the slider and persists it', async () => {
