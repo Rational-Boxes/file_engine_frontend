@@ -1,6 +1,14 @@
 <template>
   <div class="m3d" ref="rootEl">
-    <canvas ref="canvasEl" class="m3d-canvas"></canvas>
+    <!-- The on-model menu opens ONLY on Ctrl/⌘+left-click (see onCanvasClick), so
+         plain left/right buttons stay free for navigation. @contextmenu.prevent
+         just suppresses the browser's right-click menu (right-drag pan). -->
+    <canvas
+      ref="canvasEl"
+      class="m3d-canvas"
+      @contextmenu.prevent
+      @click="onCanvasClick"
+    ></canvas>
     <!-- Navigation cube: a small in-canvas corner widget. Temporarily disabled —
          xeokit-sdk #2016: NavCubePlugin throws "Missing input materialEmissive"
          (regressed in 2.6.104, unfixed through the current latest 2.6.112) which
@@ -16,9 +24,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, defineExpose } from 'vue'
-import { renditionArrayBuffer } from '@/services/renditions'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { renditionArrayBuffer, renditionText } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
+import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
+import type { ModelViewpointAnchor } from '@/services/discussionService'
 
 // `xktUid` is the rendition child's uid (the .xkt bytes). `treeContainerId`
 // (optional) is the id of the sidebar element the object tree mounts into.
@@ -27,15 +37,42 @@ import { fileService } from '@/services/fileService'
 const props = withDefaults(
   defineProps<{
     xktUid: string
+    // Optional xeokit MetaModel JSON rendition (objects/tree/props — §5.2). When
+    // present it is loaded alongside the geometry so the object tree, selection,
+    // and annotation object_refs work against real model objects.
+    metamodelUid?: string
     treeContainerId?: string
     navStep?: number
   }>(),
   { navStep: 100 },
 )
 
+// annotation-activate: an in-scene marker was clicked (viewer restored the
+//   viewpoint; host focuses the thread).
+// object-context: a right-click picked an object — the host opens a context menu
+//   at (clientX, clientY); null means the click hit empty space (dismiss).
+const emit = defineEmits<{
+  (e: 'annotation-activate', threadId: string): void
+  (e: 'object-context', payload: ObjectContext | null): void
+}>()
+
+interface ObjectContext {
+  clientX: number
+  clientY: number
+  objectId: string
+  worldPos?: { x: number; y: number; z: number }
+  worldDir?: { x: number; y: number; z: number } // surface normal — a slice plane's direction
+}
+
 // xeokit-sdk #2016: the NavCubePlugin shader crashes ("Missing input
 // materialEmissive") in 2.6.104–2.6.112. Keep the integration but off until fixed.
 const NAVCUBE_ENABLED = false
+
+const store = useModel3dStore()
+
+// Marker id → its thread + viewpoint, so a marker click restores the right view
+// and focuses the right thread. Rebuilt on every renderAnnotations().
+let annotationMeta: Record<string, { threadId: string; viewpoint: unknown }> = {}
 
 const rootEl = ref<HTMLElement | null>(null)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
@@ -44,8 +81,16 @@ const loading = ref(false)
 const error = ref('')
 
 // xeokit handles (kept untyped — the SDK is loaded lazily). Disposed on unmount.
+// This component is the plugin HOST: it owns the Viewer plus the markup/BCF plugin
+// suite and exposes a typed imperative API (see defineExpose) that the markup
+// toolbar and the annotation layer drive; live state is mirrored into the store.
 let viewer: any = null
 let treeView: any = null
+let sectionPlanes: any = null // SectionPlanesPlugin — cut-away (Workstream B / §7)
+let distanceMeasurements: any = null // DistanceMeasurementsPlugin (Workstream C / §8)
+let angleMeasurements: any = null // AngleMeasurementsPlugin (Workstream C / §8)
+let annotations: any = null // AnnotationsPlugin — markers (Workstream D / §9)
+let bcfViewpoints: any = null // BCFViewpointsPlugin — viewpoint get/set (§4)
 
 async function load() {
   destroy()
@@ -58,6 +103,7 @@ async function load() {
     viewer = new xeokit.Viewer({ canvasElement: canvasEl.value, transparent: true })
     applyNavStep()
     patchCameraPan()
+    applyCameraControlDefaults()
 
     // The core requirement is rendering the model. The nav-cube, object tree and
     // camera fit are *enhancements* — a failure in any of them (e.g. a model with
@@ -76,18 +122,39 @@ async function load() {
           hierarchy: 'containment',
           autoExpandDepth: 1,
         })
+        // In see-through mode, clicking a tree node toggles X-ray on its subtree.
+        treeView.on?.('nodeTitleClicked', (e: { treeViewNode?: { objectId?: string } }) => {
+          if (!store.seeThroughMode) return
+          const oid = e?.treeViewNode?.objectId
+          if (oid) xraySubtree(oid, !store.xrayedIds.includes(oid))
+        })
       }
     } catch (e) {
       console.warn('[Model3DViewer] object tree unavailable (model may have no metadata)', e)
     }
 
+    // Instantiate the markup / BCF plugin suite. Each is the backing capability
+    // for one imperative method below; a plugin that fails to construct must
+    // never break the preview, so each is isolated (same discipline as the tree).
+    makePlugins(xeokit)
+
     const loader = new xeokit.XKTLoaderPlugin(viewer)
     const xkt = await renditionArrayBuffer(props.xktUid)
-    const model = loader.load({ id: 'model', xkt })
+    // Load the MetaModel sidecar alongside the geometry when present (§5.2), so the
+    // object tree/selection resolve to real objects. Best-effort — geometry loads
+    // regardless if the metamodel is missing or malformed.
+    const metaModelData = await loadMetamodel()
+    const model = loader.load(
+      metaModelData ? { id: 'model', xkt, metaModelData } : { id: 'model', xkt },
+    )
     // Frame the whole model once it's loaded — this is the default camera view
     // that the overlay's "Reset camera" button returns to.
     if (model && typeof model.on === 'function') model.on('loaded', resetCamera)
     else resetCamera()
+    // The viewer is live: publish its default state so the toolbar can reflect it.
+    setNavMode('orbit')
+    setMeasurementUnits(store.measureUnits)
+    store.setReady(true)
     loading.value = false
   } catch (e) {
     // Surface the real cause (do not swallow it) so failures are diagnosable.
@@ -98,6 +165,39 @@ async function load() {
   }
 }
 
+// Build the markup/BCF plugin suite over the live viewer. Guarded on export
+// presence (a version bump could drop one — see the plugin smoke test) and
+// wrapped so a constructor failure only warns.
+function makePlugins(xeokit: any) {
+  const mk = (label: string, Ctor: any): any => {
+    if (typeof Ctor !== 'function') return null
+    try {
+      return new Ctor(viewer)
+    } catch (e) {
+      console.warn(`[Model3DViewer] ${label} plugin unavailable`, e)
+      return null
+    }
+  }
+  sectionPlanes = mk('section planes', xeokit.SectionPlanesPlugin)
+  distanceMeasurements = mk('distance measurement', xeokit.DistanceMeasurementsPlugin)
+  angleMeasurements = mk('angle measurement', xeokit.AngleMeasurementsPlugin)
+  annotations = mk('annotations', xeokit.AnnotationsPlugin)
+  bcfViewpoints = mk('BCF viewpoints', xeokit.BCFViewpointsPlugin)
+  wireAnnotationClicks()
+}
+
+// Fetch + parse the MetaModel JSON sidecar rendition, or null when there is none
+// / it can't be parsed (the viewer then loads geometry only).
+async function loadMetamodel(): Promise<unknown | null> {
+  if (!props.metamodelUid) return null
+  try {
+    return JSON.parse(await renditionText(props.metamodelUid))
+  } catch (e) {
+    console.warn('[Model3DViewer] metamodel unavailable — loading geometry only', e)
+    return null
+  }
+}
+
 function destroy() {
   try {
     treeView?.destroy?.()
@@ -105,12 +205,497 @@ function destroy() {
     /* ignore */
   }
   treeView = null
+  // Tear the plugin suite down before the viewer (documented clean order), then
+  // drop our handles so nothing dangles onto a dead viewer. Each destroy is
+  // guarded — a plugin may be absent or already gone.
+  for (const plugin of [sectionPlanes, distanceMeasurements, angleMeasurements, annotations, bcfViewpoints]) {
+    try {
+      plugin?.destroy?.()
+    } catch {
+      /* ignore */
+    }
+  }
+  sectionPlanes = distanceMeasurements = angleMeasurements = annotations = bcfViewpoints = null
   try {
     viewer?.destroy?.()
   } catch {
     /* ignore */
   }
   viewer = null
+  // The live viewer is gone — clear the mirrored state so the toolbar doesn't
+  // reflect a viewer that no longer exists.
+  store.resetViewerState()
+}
+
+// ---------------------------------------------------------------------------
+// Imperative API (the plugin host's surface). Every method is defensive — the
+// SDK is untyped and a plugin may be absent — and mirrors any state the markup
+// toolbar / annotation layer needs into the model3d store.
+// ---------------------------------------------------------------------------
+
+// Capture the current view as a BCF-2.1 viewpoint (camera + visibility +
+// selection + clipping planes + optional snapshot). This is the `anchor.viewpoint`
+// the annotation/BCF layers persist and round-trip (§4).
+function getViewpoint(options?: unknown): unknown {
+  try {
+    return bcfViewpoints?.getViewpoint?.(options) ?? null
+  } catch {
+    return null
+  }
+}
+
+// Restore a previously captured viewpoint — the deep-link "take me to exactly
+// what the author framed, cut-planes and all" primitive (§9).
+function setViewpoint(viewpoint: unknown, options?: unknown) {
+  try {
+    bcfViewpoints?.setViewpoint?.(viewpoint, options)
+  } catch {
+    /* best-effort */
+  }
+  // The viewpoint restores X-ray straight on the scene; reconcile the store so the
+  // see-through UI (counter, ✕ Reset) matches what was restored.
+  syncXRayFromScene()
+}
+
+// Capture the current view as a model-viewpoint annotation anchor (§9): the BCF
+// viewpoint (camera + visibility + selection + clipping + snapshot) plus an
+// optional world-space marker. object_refs stay empty until the §5.2 metamodel
+// lands — camera/section-only anchors work now. Returns null if there is no
+// viewpoint (e.g. the BCF plugin is unavailable).
+function captureViewpointAnchor(
+  marker?: { x: number; y: number; z: number },
+  objectId?: string,
+): ModelViewpointAnchor | null {
+  const viewpoint = getViewpoint()
+  if (!viewpoint) return null
+  return {
+    kind: 'model-viewpoint',
+    schema: 'fileengine.anchor.v1',
+    viewpoint,
+    ...(marker ? { marker } : {}),
+    // A picked object anchors the annotation to a real element (source-tagging
+    // lands with the §5.2 metamodel; the id is the xeokit entity id today).
+    object_refs: objectId ? [{ id: objectId }] : [],
+  }
+}
+
+// Ctrl/⌘ + left-click opens the on-model menu — plain left/right buttons stay free
+// for navigation (pan/orbit). metaKey covers macOS ⌘.
+function onCanvasClick(e: MouseEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.button === 0) {
+    e.preventDefault()
+    openObjectMenu(e)
+  }
+}
+
+// Pick the object/surface under the cursor and ask the host to open a context menu
+// there (the marker/object/normal flow into an annotation or a section plane).
+// Sole trigger is onCanvasClick (Ctrl/⌘+left-click).
+function openObjectMenu(e: MouseEvent) {
+  if (!viewer || !canvasEl.value) return
+  const rect = canvasEl.value.getBoundingClientRect()
+  const canvasPos = [e.clientX - rect.left, e.clientY - rect.top]
+  let hit: { entity?: { id?: string }; worldPos?: number[]; worldNormal?: number[] } | null = null
+  try {
+    hit = viewer.scene?.pick?.({ canvasPos, pickSurface: true }) ?? null
+  } catch {
+    hit = null
+  }
+  const objectId = hit?.entity?.id
+  if (!objectId) {
+    emit('object-context', null) // empty space → dismiss any open menu
+    return
+  }
+  const toVec = (a?: number[]) =>
+    Array.isArray(a) && a.length >= 3 ? { x: a[0], y: a[1], z: a[2] } : undefined
+  highlightObjects([String(objectId)]) // show what was picked
+  emit('object-context', {
+    clientX: e.clientX,
+    clientY: e.clientY,
+    objectId: String(objectId),
+    worldPos: toVec(hit?.worldPos),
+    worldDir: toVec(hit?.worldNormal), // slice-plane direction at the surface
+  })
+}
+
+// One model-viewpoint annotation to render as an in-scene marker.
+interface AnnotationMarker {
+  id: string
+  threadId: string
+  marker?: { x: number; y: number; z: number }
+  viewpoint: unknown
+}
+
+// Render the given annotations as in-scene markers (§9). Each needs a world-space
+// marker point; camera-only annotations have no badge but still exist as comments.
+// Clicking a marker restores its viewpoint and activates its thread (see
+// wireAnnotationClicks). Rebuilds the marker set each call.
+function renderAnnotations(items: AnnotationMarker[]) {
+  if (!annotations) return
+  try {
+    annotations.clear?.()
+    annotationMeta = {}
+    for (const it of items || []) {
+      if (!it.marker) continue
+      const aid = 'ann-' + it.id
+      annotations.createAnnotation?.({
+        id: aid,
+        worldPos: [it.marker.x, it.marker.y, it.marker.z],
+        occludable: true,
+        markerShown: true,
+        labelShown: false,
+      })
+      annotationMeta[aid] = { threadId: it.threadId, viewpoint: it.viewpoint }
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
+// One-time wiring: clicking any annotation marker restores its saved viewpoint and
+// asks the host to focus the matching thread.
+function wireAnnotationClicks() {
+  try {
+    annotations?.on?.('markerClicked', (annotation: { id?: string }) => {
+      const meta = annotationMeta[annotation?.id ?? '']
+      if (!meta) return
+      if (meta.viewpoint) setViewpoint(meta.viewpoint)
+      emit('annotation-activate', meta.threadId)
+    })
+  } catch {
+    /* best-effort */
+  }
+}
+
+// PNG data-URL of the current canvas — the annotation / BCF snapshot.
+function captureSnapshot(opts?: { width?: number; height?: number }): string | null {
+  try {
+    return viewer?.getSnapshot?.({ format: 'png', ...(opts || {}) }) ?? null
+  } catch {
+    return null
+  }
+}
+
+function syncSectionPlanes() {
+  const planes = sectionPlanes?.sectionPlanes || {}
+  store.setSectionPlanes(Object.keys(planes))
+}
+
+// Add a cut-away plane (Workstream B). Returns its id; mirrors the live plane set
+// into the store so viewpoints capture them and annotations restore them.
+function addSectionPlane(cfg?: { pos?: number[]; dir?: number[] }): string | null {
+  try {
+    const plane = sectionPlanes?.createSectionPlane?.(cfg || {})
+    if (plane?.id != null) {
+      syncSectionPlanes()
+      return String(plane.id)
+    }
+  } catch {
+    /* best-effort */
+  }
+  return null
+}
+
+function clearSectionPlanes() {
+  try {
+    sectionPlanes?.hideControl?.()
+  } catch {
+    /* ignore */
+  }
+  try {
+    sectionPlanes?.clear?.()
+  } catch {
+    /* ignore */
+  }
+  syncSectionPlanes()
+}
+
+// Centre of the model's bounding box — the anchor for axis quick-cuts / the box.
+function sceneCenter(): number[] | null {
+  const aabb = viewer?.scene?.aabb
+  if (!aabb || aabb.length < 6) return null
+  return [(aabb[0] + aabb[3]) / 2, (aabb[1] + aabb[4]) / 2, (aabb[2] + aabb[5]) / 2]
+}
+
+// Axis-aligned quick-cut through the model centre (§7). Shows the drag control on
+// the new plane so it can be slid/rotated immediately. Returns the plane id.
+function addAxisSection(axis: 'x' | 'y' | 'z'): string | null {
+  const c = sceneCenter()
+  if (!c) return null
+  const dir = axis === 'x' ? [1, 0, 0] : axis === 'y' ? [0, 1, 0] : [0, 0, 1]
+  const id = addSectionPlane({ pos: c, dir })
+  if (id) editSectionPlane(id)
+  return id
+}
+
+// A 6-plane "section box" at the bounding-box faces (§7) — drag the faces inward
+// to isolate a region. Each plane's normal points into the box. Returns the ids.
+function addSectionBox(): string[] {
+  const aabb = viewer?.scene?.aabb
+  if (!aabb || aabb.length < 6) return []
+  const cx = (aabb[0] + aabb[3]) / 2
+  const cy = (aabb[1] + aabb[4]) / 2
+  const cz = (aabb[2] + aabb[5]) / 2
+  const faces = [
+    { pos: [aabb[0], cy, cz], dir: [1, 0, 0] },
+    { pos: [aabb[3], cy, cz], dir: [-1, 0, 0] },
+    { pos: [cx, aabb[1], cz], dir: [0, 1, 0] },
+    { pos: [cx, aabb[4], cz], dir: [0, -1, 0] },
+    { pos: [cx, cy, aabb[2]], dir: [0, 0, 1] },
+    { pos: [cx, cy, aabb[5]], dir: [0, 0, -1] },
+  ]
+  const ids: string[] = []
+  for (const f of faces) {
+    const id = addSectionPlane(f)
+    if (id) ids.push(id)
+  }
+  return ids
+}
+
+// Flip a plane's cut direction (show the other half) — §7.
+function flipSectionPlane(id: string) {
+  try {
+    sectionPlanes?.sectionPlanes?.[id]?.flipDir?.()
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Per-plane visibility: enable/disable a plane without removing it (§7).
+function setSectionPlaneActive(id: string, active: boolean) {
+  try {
+    const plane = sectionPlanes?.sectionPlanes?.[id]
+    if (plane) plane.active = active
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Show the interactive drag/rotate control on a plane (click a plane to edit) — §7.
+function editSectionPlane(id: string) {
+  try {
+    sectionPlanes?.showControl?.(id)
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Activate a transient measurement tool (or 'none' to stop). Only one at a time.
+// Snapping to vertices/edges is enabled so picks land on real geometry (§8).
+function startMeasurement(kind: MeasureTool) {
+  try {
+    distanceMeasurements?.control?.deactivate?.()
+    angleMeasurements?.control?.deactivate?.()
+    if (kind === 'distance' && distanceMeasurements?.control) {
+      distanceMeasurements.control.snapping = true
+      distanceMeasurements.control.activate?.()
+    } else if (kind === 'angle' && angleMeasurements?.control) {
+      angleMeasurements.control.snapping = true
+      angleMeasurements.control.activate?.()
+    }
+  } catch {
+    /* best-effort */
+  }
+  store.setActiveTool(kind)
+}
+
+// Remove all measurements (they are transient viewer aids by default; a
+// measurement is only persisted when promoted into an annotation — §9).
+function clearMeasurements() {
+  try {
+    distanceMeasurements?.clear?.()
+  } catch {
+    /* ignore */
+  }
+  try {
+    angleMeasurements?.clear?.()
+  } catch {
+    /* ignore */
+  }
+}
+
+// Measurement display units (§8). xeokit's Metrics drives what the measurement
+// labels show; BCF export is always metres regardless (§17).
+const XEOKIT_UNITS: Record<MeasureUnits, string> = {
+  mm: 'millimeters',
+  m: 'meters',
+  ft: 'feet',
+}
+function setMeasurementUnits(units: MeasureUnits) {
+  try {
+    const metrics = viewer?.scene?.metrics
+    if (metrics) metrics.units = XEOKIT_UNITS[units]
+  } catch {
+    /* best-effort */
+  }
+  store.setMeasureUnits(units)
+}
+
+// Set the camera navigation mode (orbit / first-person / plan) — Workstream A.
+function setNavMode(mode: NavMode) {
+  try {
+    if (viewer?.cameraControl) viewer.cameraControl.navMode = mode
+  } catch {
+    /* best-effort */
+  }
+  store.setNavMode(mode)
+}
+
+// Feel defaults (§6): pivot orbiting about the point under the cursor — the single
+// biggest navigation-feel win — with smart pivoting when the cursor is on empty
+// space. Applied once per viewer, right after construction.
+function applyCameraControlDefaults() {
+  const cc = viewer?.cameraControl
+  if (!cc) return
+  try {
+    cc.followPointer = true
+    cc.smartPivot = true
+  } catch {
+    /* best-effort — never let a control tweak break the preview */
+  }
+}
+
+// Standard orientation shortcuts (§6): top / front / iso, plus 'fit' to frame the
+// whole model. They double as the seeds of saved viewpoints. Best-effort — falls
+// back to the default framing when the scene AABB isn't available.
+function standardView(kind: 'top' | 'front' | 'iso' | 'fit') {
+  const scene = viewer?.scene
+  if (!scene) return
+  const aabb = kind === 'fit' ? null : scene.aabb
+  if (kind === 'fit' || !aabb || aabb.length < 6) {
+    resetCamera()
+    return
+  }
+  const cx = (aabb[0] + aabb[3]) / 2
+  const cy = (aabb[1] + aabb[4]) / 2
+  const cz = (aabb[2] + aabb[5]) / 2
+  const dx = aabb[3] - aabb[0]
+  const dy = aabb[4] - aabb[1]
+  const dz = aabb[5] - aabb[2]
+  const dist = (Math.sqrt(dx * dx + dy * dy + dz * dz) || 1) * 1.3
+  let eye: number[]
+  let up: number[]
+  if (kind === 'top') {
+    eye = [cx, cy + dist, cz]
+    up = [0, 0, -1]
+  } else if (kind === 'front') {
+    eye = [cx, cy, cz + dist]
+    up = [0, 1, 0]
+  } else {
+    const k = dist / Math.sqrt(3) // iso — equal offset on each axis
+    eye = [cx + k, cy + k, cz + k]
+    up = [0, 1, 0]
+  }
+  try {
+    viewer.cameraFlight.flyTo({ eye, look: [cx, cy, cz], up })
+  } catch {
+    resetCamera()
+  }
+}
+
+// Frame the current selection (§6): fly to the AABB of the highlighted objects,
+// or the whole model when nothing is selected.
+function fitToSelection() {
+  const scene = viewer?.scene
+  try {
+    const ids: string[] = scene?.highlightedObjectIds || []
+    if (ids.length && typeof scene.getAABB === 'function') {
+      viewer.cameraFlight.flyTo({ aabb: scene.getAABB(ids) })
+      return
+    }
+  } catch {
+    /* best-effort */
+  }
+  resetCamera()
+}
+
+// Highlight a set of objects by id (clearing any prior highlight) and record the
+// selection. Centering-on-object within a restored view is annotation deep-link
+// work (§9); this is the primitive it builds on.
+function highlightObjects(ids: string[]) {
+  const scene = viewer?.scene
+  try {
+    const prev: string[] = scene?.highlightedObjectIds || []
+    if (prev.length) scene?.setObjectsHighlighted?.(prev, false)
+    if (ids?.length) scene?.setObjectsHighlighted?.(ids, true)
+  } catch {
+    /* best-effort */
+  }
+  store.setSelection(ids || [])
+}
+
+// Which of the given object ids actually exist in the currently-loaded model.
+// Used to detect a *drifted anchor*: a comment can tag an element by a rendition-
+// local id (non-IFC formats like STEP/glTF have no stable GlobalId), so after the
+// model is re-converted that id may no longer resolve. If the scene isn't queryable
+// yet we assume present, so we never raise a false alarm before the model is ready.
+function resolveObjectIds(ids: string[]): string[] {
+  const objects = viewer?.scene?.objects
+  if (!objects) return ids || []
+  return (ids || []).filter((id) => !!objects[id])
+}
+
+// The scene-object ids under a metamodel node (the object + all its descendants
+// that actually have geometry). Falls back to just the object when there is no
+// metamodel subtree. Powers see-through-a-whole-storey/assembly from the tree.
+function subtreeObjectIds(objectId: string): string[] {
+  const scene = viewer?.scene
+  const metaObjects = viewer?.metaScene?.metaObjects
+  const out: string[] = []
+  const add = (id?: string) => {
+    if (id && scene?.objects?.[id]) out.push(id)
+  }
+  const root = metaObjects?.[objectId]
+  if (root) {
+    const stack: Array<{ id?: string; children?: unknown[] }> = [root]
+    while (stack.length) {
+      const m = stack.pop()
+      add(m?.id)
+      for (const c of (m?.children as Array<{ id?: string; children?: unknown[] }>) || []) stack.push(c)
+    }
+  } else {
+    add(objectId)
+  }
+  return out
+}
+
+// Set an object + its subtree to translucent see-through (X-ray), or back (§tree).
+function xraySubtree(objectId: string, xrayed: boolean) {
+  const ids = subtreeObjectIds(objectId)
+  if (!ids.length) return
+  try {
+    viewer?.scene?.setObjectsXRayed?.(ids, xrayed)
+  } catch {
+    /* best-effort */
+  }
+  const next = new Set(store.xrayedIds)
+  for (const id of ids) (xrayed ? next.add(id) : next.delete(id))
+  store.setXRayed([...next])
+}
+
+// Reconcile the store's see-through set with the scene's actual X-rayed objects.
+// setViewpoint() restores X-ray straight on the xeokit scene (bypassing the store),
+// so a restored view would otherwise leave the "✕ Reset (N)" counter and clearXRay()
+// out of sync — call this after any viewpoint restore.
+function syncXRayFromScene() {
+  try {
+    store.setXRayed([...(viewer?.scene?.xrayedObjectIds ?? [])])
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Clear all see-through, restoring every X-rayed object to solid.
+function clearXRay() {
+  const ids = store.xrayedIds
+  if (ids.length) {
+    try {
+      viewer?.scene?.setObjectsXRayed?.(ids, false)
+    } catch {
+      /* best-effort */
+    }
+  }
+  store.setXRayed([])
 }
 
 // Called by the overlay when the sidebar collapses/expands so xeokit recomputes
@@ -183,7 +768,35 @@ watch(() => props.xktUid, load)
 // Live-apply slider changes to the already-running viewer (no reload needed).
 watch(() => props.navStep, applyNavStep)
 onBeforeUnmount(destroy)
-defineExpose({ resize, resetCamera })
+defineExpose({
+  // camera / canvas (existing)
+  resize,
+  resetCamera,
+  // markup / BCF imperative API (§5.3) — the plugin host's surface
+  getViewpoint,
+  setViewpoint,
+  captureViewpointAnchor,
+  renderAnnotations,
+  captureSnapshot,
+  addSectionPlane,
+  addAxisSection,
+  addSectionBox,
+  flipSectionPlane,
+  setSectionPlaneActive,
+  editSectionPlane,
+  clearSectionPlanes,
+  startMeasurement,
+  clearMeasurements,
+  setMeasurementUnits,
+  setNavMode,
+  standardView,
+  fitToSelection,
+  highlightObjects,
+  resolveObjectIds,
+  xraySubtree,
+  clearXRay,
+  syncXRayFromScene,
+})
 
 async function downloadOriginal() {
   try {

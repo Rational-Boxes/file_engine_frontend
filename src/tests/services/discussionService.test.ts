@@ -104,4 +104,27 @@ describe('discussionService', () => {
     expect(client.patch).toHaveBeenCalledWith('/threads/t1', { status: 'resolved', resolved_version: 'v2' })
     expect(t.resolvedVersion).toBe('v2')
   })
+
+  it('openThread forwards a model-viewpoint anchor and maps it back (§9)', async () => {
+    const anchor = {
+      kind: 'model-viewpoint' as const,
+      schema: 'fileengine.anchor.v1',
+      viewpoint: { perspective_camera: {} },
+      object_refs: [],
+    }
+    client.post.mockResolvedValue({
+      data: { id: 't9', file_uid: 'f1', opened_by: 'bob', anchor },
+    })
+    const t = await discussionService.openThread('f1', { body: 'see this clash', anchor })
+    expect(client.post).toHaveBeenCalledWith('/files/f1/threads', { body: 'see this clash', anchor })
+    expect(t.anchor).toEqual(anchor)
+  })
+
+  it('toThread defaults a missing anchor to null (plain comment thread)', async () => {
+    client.get.mockResolvedValue({
+      data: { threads: [{ id: 't1', file_uid: 'f1', opened_by: 'bob' }] },
+    })
+    const [t] = await discussionService.listThreads('f1')
+    expect(t.anchor).toBeNull()
+  })
 })

@@ -19,6 +19,16 @@ Browser (this SPA) ────┤   (the <version>-model.xkt rendition, bytes)
 
 ---
 
+> **Extended by `XEOKIT_UPGRADE_MARKUP_BCF_PLAN.md` (2026-07).** This document is the
+> *baseline* viewer — load and explore an XKT rendition. The follow-on plan takes it further:
+> the xeokit SDK upgrade; **navigation, section / cut-away, measurement, and annotation**
+> plugins; annotation as a first-class anchored **comment** (deep-linking back to the model
+> object with a full viewpoint restore); **BCF** file round-trip + a BCF-API subservice; and —
+> the load-bearing foundation — **preserving object metadata across *every* 3D format (BIM
+> *and* CAD/CAM)** and delivering it to the viewer as a **metamodel** (the object tree here is
+> empty without it). Two future proposals build on it: conversational/agentic model access and
+> inter-version model diff. See that plan for anything beyond baseline viewing.
+
 ## 1. Current state (baseline)
 
 - **Renditions are half-wired.** `services/renditions.ts` parses a file's hidden

@@ -92,6 +92,7 @@
 
       <article
         v-for="t in threads"
+        :id="`thread-${t.id}`"
         :key="t.id"
         class="thread"
         :class="{ resolved: t.status === 'resolved' }"
@@ -99,6 +100,14 @@
         <div v-if="t.anchorStale || t.status === 'resolved' || t.status === 'open'" class="thread-head">
           <span v-if="t.anchorStale" class="stale" title="Commented on an earlier revision">stale</span>
           <span v-if="t.status === 'resolved'" class="badge-res">resolved</span>
+          <!-- Annotation thread: restore the author's captured 3D view (§9). -->
+          <button
+            v-if="t.anchor?.kind === 'model-viewpoint'"
+            type="button"
+            class="tp-viewbtn"
+            title="Restore this 3D view"
+            @click="emit('restore-view', t.id)"
+          >🎯 View</button>
           <span class="thread-spacer"></span>
           <button
             v-if="t.status === 'open'"
@@ -128,9 +137,14 @@
 
       <!-- Composer for a new root message — always available, below the messages. -->
       <div class="tp-composer">
+        <!-- A 3D viewpoint captured from the viewer is attached to the next thread (§9). -->
+        <div v-if="pendingAnchor" class="tp-anchor-chip">
+          <span>📍 3D view attached</span>
+          <button type="button" class="tp-anchor-clear" title="Detach the 3D view" @click="clearPendingAnchor">✕</button>
+        </div>
         <CommentEditor
           v-model="newBody"
-          placeholder="Write a comment…"
+          :placeholder="pendingAnchor ? 'Describe what you\'re pointing at…' : 'Write a comment…'"
           submit-label="Post"
           :max-chars="maxChars"
           :mention-source="mentionSource"
@@ -197,6 +211,7 @@ import {
   type FlagCounts,
   type MentionUser,
   type ReviewRequest,
+  type ModelViewpointAnchor,
 } from '@/services/discussionService'
 import { LiveSession, type LiveCommentEvent } from '@/services/discussionLive'
 
@@ -215,6 +230,10 @@ const emit = defineEmits<{
   (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void
   (e: 'update:pos', p: 'side' | 'bottom'): void
   (e: 'count', n: number): void
+  // The current thread list, so a host (e.g. the 3D viewer) can render markers (§9).
+  (e: 'threads', threads: Thread[]): void
+  // Restore an annotation thread's saved 3D view (host wires this to the viewer).
+  (e: 'restore-view', threadId: string): void
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
@@ -231,6 +250,9 @@ const presence = ref<string[]>([])
 const flag = ref<FlagCounts | null>(null)
 const flashing = reactive(new Set<string>())
 const newBody = ref('')
+// A 3D view captured from the viewer, pending attachment to the next new thread
+// (§9). Set by the viewer's "Comment here"; rides along on open() then clears.
+const pendingAnchor = ref<ModelViewpointAnchor | null>(null)
 const reviewOpen = ref(false)
 const reviewInput = ref('')
 const reviewMsg = ref('')
@@ -271,6 +293,9 @@ const totalComments = computed(() =>
 )
 // Surface the count so a parent-owned header control (e.g. the 3D viewer) can show it.
 watch(totalComments, (n) => emit('count', n), { immediate: true })
+// Surface the thread set to the host (the 3D viewer renders a marker per anchored
+// thread). Fires on load and whenever a thread is added/removed.
+watch(() => threads.value.length, () => emit('threads', threads.value), { immediate: true })
 const flagText = computed(() => {
   if (!flag.value) return ''
   const parts: string[] = []
@@ -412,6 +437,26 @@ function threadOf(id: string): Thread | undefined {
   return threads.value.find((t) => t.id === id)
 }
 
+// Begin an annotation: attach a viewer-captured viewpoint to the next new thread
+// and reveal the composer. Called by the viewer's "Comment here" (via a ref).
+function startAnnotation(anchor: ModelViewpointAnchor) {
+  pendingAnchor.value = anchor
+  if (layout.value === 'collapsed') layout.value = props.pos === 'bottom' ? 'bottom' : 'right'
+}
+function clearPendingAnchor() {
+  pendingAnchor.value = null
+}
+
+// Scroll a thread into view (and open the panel if collapsed) — used when an
+// in-scene 3D annotation marker is clicked (§9).
+function focusThread(threadId: string) {
+  if (layout.value === 'collapsed') layout.value = props.pos === 'bottom' ? 'bottom' : 'right'
+  requestAnimationFrame(() => {
+    document.getElementById(`thread-${threadId}`)?.scrollIntoView({ block: 'center' })
+  })
+}
+defineExpose({ startAnnotation, focusThread })
+
 async function open() {
   const body = newBody.value.trim()
   if (!body) return
@@ -420,9 +465,12 @@ async function open() {
     const t = await discussionService.openThread(props.fileUid, {
       body,
       mentions: extractMentions(body),
+      // A pending 3D viewpoint turns this thread into an anchored annotation (§9).
+      anchor: pendingAnchor.value ?? undefined,
     })
     if (!threads.value.some((x) => x.id === t.id)) threads.value.unshift(t)
     newBody.value = ''
+    pendingAnchor.value = null
   } catch (e: unknown) {
     const detail = (e as { response?: { data?: { detail?: { invalid_mentions?: string[] } } } })
       ?.response?.data?.detail
@@ -937,10 +985,43 @@ onBeforeUnmount(() => session?.close())
   cursor: pointer;
   font-size: 0.8rem;
 }
+.tp-viewbtn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+.tp-viewbtn:hover {
+  border-color: var(--accent, #6ea8fe);
+}
 .tp-composer {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+}
+/* "3D view attached" chip above the composer when a viewpoint is pending (§9). */
+.tp-anchor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 8px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--fg);
+}
+.tp-anchor-clear {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
 }
 
 /* New content flashes in (§10h) — respects reduced-motion. */
