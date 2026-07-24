@@ -53,6 +53,7 @@ interface ObjectContext {
   clientY: number
   objectId: string
   worldPos?: { x: number; y: number; z: number }
+  worldDir?: { x: number; y: number; z: number } // surface normal — a slice plane's direction
 }
 
 // xeokit-sdk #2016: the NavCubePlugin shader crashes ("Missing input
@@ -267,7 +268,7 @@ function onCanvasContextMenu(e: MouseEvent) {
   if (!viewer || !canvasEl.value) return
   const rect = canvasEl.value.getBoundingClientRect()
   const canvasPos = [e.clientX - rect.left, e.clientY - rect.top]
-  let hit: { entity?: { id?: string }; worldPos?: number[] } | null = null
+  let hit: { entity?: { id?: string }; worldPos?: number[]; worldNormal?: number[] } | null = null
   try {
     hit = viewer.scene?.pick?.({ canvasPos, pickSurface: true }) ?? null
   } catch {
@@ -278,10 +279,16 @@ function onCanvasContextMenu(e: MouseEvent) {
     emit('object-context', null) // empty space → dismiss any open menu
     return
   }
-  const wp = hit?.worldPos
-  const worldPos = Array.isArray(wp) && wp.length >= 3 ? { x: wp[0], y: wp[1], z: wp[2] } : undefined
+  const toVec = (a?: number[]) =>
+    Array.isArray(a) && a.length >= 3 ? { x: a[0], y: a[1], z: a[2] } : undefined
   highlightObjects([String(objectId)]) // show what was picked
-  emit('object-context', { clientX: e.clientX, clientY: e.clientY, objectId: String(objectId), worldPos })
+  emit('object-context', {
+    clientX: e.clientX,
+    clientY: e.clientY,
+    objectId: String(objectId),
+    worldPos: toVec(hit?.worldPos),
+    worldDir: toVec(hit?.worldNormal), // slice-plane direction at the surface
+  })
 }
 
 // One model-viewpoint annotation to render as an in-scene marker.

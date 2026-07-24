@@ -214,6 +214,18 @@
         <div class="mv-ctx-backdrop" @pointerdown="closeCtxMenu" @contextmenu.prevent="closeCtxMenu"></div>
         <div class="mv-ctxmenu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" role="menu">
           <button class="mv-ctxitem" role="menuitem" @click="commentOnObject">💬 Comment on this object</button>
+          <button
+            v-if="ctxMenu.worldPos && ctxMenu.worldDir"
+            class="mv-ctxitem"
+            role="menuitem"
+            title="Add a section plane at this surface"
+            @click="sliceHere"
+          >✂ Slice here</button>
+          <div class="mv-ctxsep"></div>
+          <div class="mv-ctxlabel">Navigation</div>
+          <button class="mv-ctxitem" role="menuitem" :class="{ 'mv-ctxitem-on': model3d.navMode === 'orbit' }" @click="setNavFromMenu('orbit')">⟲ Orbit</button>
+          <button class="mv-ctxitem" role="menuitem" :class="{ 'mv-ctxitem-on': model3d.navMode === 'firstPerson' }" @click="setNavFromMenu('firstPerson')">🚶 Walk</button>
+          <button class="mv-ctxitem" role="menuitem" :class="{ 'mv-ctxitem-on': model3d.navMode === 'planView' }" @click="setNavFromMenu('planView')">▦ Plan</button>
         </div>
       </template>
     </div>
@@ -451,9 +463,17 @@ function commentHere() {
 
 // On-model right-click menu (§9): the viewer picked an object; show a menu at the
 // cursor. Null payload = empty space → dismiss.
-const ctxMenu = ref<{ x: number; y: number; objectId: string; worldPos?: { x: number; y: number; z: number } } | null>(null)
-function onObjectContext(p: { clientX: number; clientY: number; objectId: string; worldPos?: { x: number; y: number; z: number } } | null) {
-  ctxMenu.value = p ? { x: p.clientX, y: p.clientY, objectId: p.objectId, worldPos: p.worldPos } : null
+interface Vec3 {
+  x: number
+  y: number
+  z: number
+}
+type ObjectCtx = { clientX: number; clientY: number; objectId: string; worldPos?: Vec3; worldDir?: Vec3 }
+const ctxMenu = ref<{ x: number; y: number; objectId: string; worldPos?: Vec3; worldDir?: Vec3 } | null>(null)
+function onObjectContext(p: ObjectCtx | null) {
+  ctxMenu.value = p
+    ? { x: p.clientX, y: p.clientY, objectId: p.objectId, worldPos: p.worldPos, worldDir: p.worldDir }
+    : null
 }
 function closeCtxMenu() {
   ctxMenu.value = null
@@ -468,6 +488,23 @@ function commentOnObject() {
   if (!anchor) return
   discMin.value = false
   threadPanelRef.value?.startAnnotation(anchor)
+}
+// Set the navigation mode from the menu.
+function setNavFromMenu(mode: NavMode) {
+  ctxMenu.value = null
+  viewerRef.value?.setNavMode(mode)
+}
+// "Slice here": drop a section plane at the picked surface (position + normal) and
+// show its drag control for adjustment.
+function sliceHere() {
+  const m = ctxMenu.value
+  ctxMenu.value = null
+  if (!m?.worldPos || !m?.worldDir) return
+  const id = viewerRef.value?.addSectionPlane({
+    pos: [m.worldPos.x, m.worldPos.y, m.worldPos.z],
+    dir: [m.worldDir.x, m.worldDir.y, m.worldDir.z],
+  })
+  if (id) viewerRef.value?.editSectionPlane(id)
 }
 
 // Latest thread set from the panel; also the lookup for deep-link / restore-view.
@@ -963,6 +1000,21 @@ onBeforeUnmount(() => {
 }
 .mv-ctxitem:hover {
   background: #2a2d31;
+}
+.mv-ctxitem-on {
+  color: #cfe0ff;
+}
+.mv-ctxsep {
+  height: 1px;
+  background: #2a2d31;
+  margin: 4px 2px;
+}
+.mv-ctxlabel {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7f8894;
+  padding: 0.2rem 0.6rem;
 }
 .mv-err,
 .mv-muted {

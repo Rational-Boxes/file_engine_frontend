@@ -18,6 +18,9 @@ const hh = vi.hoisted(() => ({
   highlightObjects: vi.fn(),
   renderAnnotations: vi.fn(),
   captureViewpointAnchor: vi.fn(() => ({ kind: 'model-viewpoint' })),
+  setNavMode: vi.fn(),
+  addSectionPlane: vi.fn(() => 'sp1'),
+  editSectionPlane: vi.fn(),
   // ThreadPanel exposed methods.
   focusThread: vi.fn(),
   startAnnotation: vi.fn(),
@@ -48,6 +51,9 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
         highlightObjects: hh.highlightObjects,
         renderAnnotations: hh.renderAnnotations,
         captureViewpointAnchor: hh.captureViewpointAnchor,
+        setNavMode: hh.setNavMode,
+        addSectionPlane: hh.addSectionPlane,
+        editSectionPlane: hh.editSectionPlane,
       })
       return () => createEl('div', { class: 'm3d-stub' })
     },
@@ -301,5 +307,44 @@ describe('ModelViewerOverlay', () => {
     w.findComponent({ name: 'Model3DViewer' }).vm.$emit('object-context', null)
     await flushPromises()
     expect(w.find('.mv-ctxmenu').exists()).toBe(false)
+  })
+
+  const openCtxMenu = async (w: ReturnType<typeof mountOverlay>) => {
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    w.findComponent({ name: 'Model3DViewer' }).vm.$emit('object-context', {
+      clientX: 10, clientY: 10, objectId: 'obj-3',
+      worldPos: { x: 1, y: 2, z: 3 }, worldDir: { x: 0, y: 0, z: 1 },
+    })
+    await flushPromises()
+  }
+
+  it('the menu sets navigation mode from its Navigation options', async () => {
+    const w = mountOverlay()
+    await openCtxMenu(w)
+    const plan = w.findAll('.mv-ctxitem').find((b) => b.text().includes('Plan'))!
+    await plan.trigger('click')
+    expect(hh.setNavMode).toHaveBeenCalledWith('planView')
+    expect(w.find('.mv-ctxmenu').exists()).toBe(false) // closed after acting
+  })
+
+  it('"Slice here" drops a section plane at the picked surface', async () => {
+    const w = mountOverlay()
+    await openCtxMenu(w)
+    const slice = w.findAll('.mv-ctxitem').find((b) => b.text().includes('Slice here'))!
+    await slice.trigger('click')
+    expect(hh.addSectionPlane).toHaveBeenCalledWith({ pos: [1, 2, 3], dir: [0, 0, 1] })
+    expect(hh.editSectionPlane).toHaveBeenCalledWith('sp1') // show the drag control
+  })
+
+  it('"Slice here" is hidden when the pick has no surface normal', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    w.findComponent({ name: 'Model3DViewer' }).vm.$emit('object-context', {
+      clientX: 10, clientY: 10, objectId: 'obj-3', worldPos: { x: 1, y: 2, z: 3 }, // no worldDir
+    })
+    await flushPromises()
+    expect(w.findAll('.mv-ctxitem').some((b) => b.text().includes('Slice here'))).toBe(false)
   })
 })

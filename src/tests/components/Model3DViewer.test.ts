@@ -269,13 +269,14 @@ describe('Model3DViewer', () => {
   })
 
   it('right-click picks an object, highlights it, and emits object-context', async () => {
-    h.pickHit = { entity: { id: 'obj-7' }, worldPos: [1, 2, 3] }
+    h.pickHit = { entity: { id: 'obj-7' }, worldPos: [1, 2, 3], worldNormal: [0, 0, 1] }
     const w = mountViewer({ xktUid: 'r1' })
     await flushPromises()
     await w.find('canvas.m3d-canvas').trigger('contextmenu', { clientX: 40, clientY: 50 })
     expect(w.emitted('object-context')?.[0]?.[0]).toMatchObject({
       objectId: 'obj-7',
       worldPos: { x: 1, y: 2, z: 3 },
+      worldDir: { x: 0, y: 0, z: 1 }, // surface normal for "Slice here"
       clientX: 40,
       clientY: 50,
     })
