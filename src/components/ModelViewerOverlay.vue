@@ -143,6 +143,7 @@
               v-else-if="xktUid"
               ref="viewerRef"
               :xkt-uid="xktUid"
+              :metamodel-uid="metamodelUid || undefined"
               :nav-step="navStep"
               tree-container-id="mv-object-tree"
               @annotation-activate="onAnnotationActivate"
@@ -190,7 +191,7 @@ import HelpIcon from '@/components/HelpIcon.vue'
 import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
 import { useAuthStore } from '@/stores/auth'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
-import { loadRenditionSet, modelRendition } from '@/services/renditions'
+import { loadRenditionSet, modelRendition, metamodelRendition } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
 import type { Thread } from '@/services/discussionService'
 
@@ -247,6 +248,7 @@ function openLocation() {
 }
 
 const xktUid = ref('')
+const metamodelUid = ref('')
 const resolveError = ref('')
 const viewerRef = ref<InstanceType<typeof Model3DViewer> | null>(null)
 const threadPanelRef = ref<InstanceType<typeof ThreadPanel> | null>(null)
@@ -495,6 +497,7 @@ watch(
   () => model3d.uid,
   async (uid) => {
     xktUid.value = ''
+    metamodelUid.value = ''
     resolveError.value = ''
     if (!uid) return
     document.body.style.overflow = 'hidden'
@@ -507,6 +510,7 @@ watch(
         return
       }
       xktUid.value = model.uid
+      metamodelUid.value = metamodelRendition(set)?.uid ?? '' // §5.2 sidecar, when present
     } catch {
       resolveError.value = 'Could not load the 3D model.'
     }

@@ -10,10 +10,11 @@ import { fileService, type FileItem } from '@/services/fileService'
 //   pdf        inline document PDF (Office docs)     ← fetched only on demand
 //   poster     video poster frame (PNG)
 //   model      xeokit XKT 3D/BIM model               ← loaded by the 3D viewer
+//   metamodel  xeokit MetaModel JSON (objects/tree)  ← loaded alongside the model
 //   chatlog    chat provenance log (HTML) for an AI-generated report ← "view log"
-export type RenditionFmt = 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model' | 'chatlog'
+export type RenditionFmt = 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model' | 'metamodel' | 'chatlog'
 
-const KNOWN: readonly RenditionFmt[] = ['thumbnail', 'preview', 'pdf', 'poster', 'model', 'chatlog']
+const KNOWN: readonly RenditionFmt[] = ['thumbnail', 'preview', 'pdf', 'poster', 'model', 'metamodel', 'chatlog']
 
 export interface RenditionRef {
   uid: string
@@ -103,6 +104,13 @@ export function revokeRenditionUrl(url: string): void {
 // surfaced by thumbnailImage()/previewImage().
 export function modelRendition(set: RenditionSet): RenditionRef | undefined {
   return set.model
+}
+
+// The xeokit MetaModel JSON sidecar (objects/tree/props), when the pipeline emitted
+// one (IFC today; more formats as the §5.2 metamodel track lands). Loaded into the
+// viewer via XKTLoaderPlugin.load({ xkt, metaModelData }).
+export function metamodelRendition(set: RenditionSet): RenditionRef | undefined {
+  return set.metamodel
 }
 
 // Download a rendition's bytes as an ArrayBuffer — what the xeokit XKTLoaderPlugin

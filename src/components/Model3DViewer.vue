@@ -17,7 +17,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { renditionArrayBuffer } from '@/services/renditions'
+import { renditionArrayBuffer, renditionText } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
 import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
 import type { ModelViewpointAnchor } from '@/services/discussionService'
@@ -29,6 +29,10 @@ import type { ModelViewpointAnchor } from '@/services/discussionService'
 const props = withDefaults(
   defineProps<{
     xktUid: string
+    // Optional xeokit MetaModel JSON rendition (objects/tree/props — §5.2). When
+    // present it is loaded alongside the geometry so the object tree, selection,
+    // and annotation object_refs work against real model objects.
+    metamodelUid?: string
     treeContainerId?: string
     navStep?: number
   }>(),
@@ -109,7 +113,13 @@ async function load() {
 
     const loader = new xeokit.XKTLoaderPlugin(viewer)
     const xkt = await renditionArrayBuffer(props.xktUid)
-    const model = loader.load({ id: 'model', xkt })
+    // Load the MetaModel sidecar alongside the geometry when present (§5.2), so the
+    // object tree/selection resolve to real objects. Best-effort — geometry loads
+    // regardless if the metamodel is missing or malformed.
+    const metaModelData = await loadMetamodel()
+    const model = loader.load(
+      metaModelData ? { id: 'model', xkt, metaModelData } : { id: 'model', xkt },
+    )
     // Frame the whole model once it's loaded — this is the default camera view
     // that the overlay's "Reset camera" button returns to.
     if (model && typeof model.on === 'function') model.on('loaded', resetCamera)
@@ -147,6 +157,18 @@ function makePlugins(xeokit: any) {
   annotations = mk('annotations', xeokit.AnnotationsPlugin)
   bcfViewpoints = mk('BCF viewpoints', xeokit.BCFViewpointsPlugin)
   wireAnnotationClicks()
+}
+
+// Fetch + parse the MetaModel JSON sidecar rendition, or null when there is none
+// / it can't be parsed (the viewer then loads geometry only).
+async function loadMetamodel(): Promise<unknown | null> {
+  if (!props.metamodelUid) return null
+  try {
+    return JSON.parse(await renditionText(props.metamodelUid))
+  } catch (e) {
+    console.warn('[Model3DViewer] metamodel unavailable — loading geometry only', e)
+    return null
+  }
 }
 
 function destroy() {

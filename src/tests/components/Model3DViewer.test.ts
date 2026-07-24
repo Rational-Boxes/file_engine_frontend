@@ -39,6 +39,7 @@ const h = vi.hoisted(() => {
     resizeSpy: vi.fn(),
     navCube: vi.fn(),
     renditionArrayBuffer: vi.fn(),
+    renditionText: vi.fn(),
     // The CameraControl whose dolly rates + navMode the API/slider tweak.
     cameraControl: {} as Record<string, unknown>,
     // The Camera whose pan() the viewer wraps to scale panning; fresh per test.
@@ -61,7 +62,10 @@ const h = vi.hoisted(() => {
   }
 })
 
-vi.mock('@/services/renditions', () => ({ renditionArrayBuffer: h.renditionArrayBuffer }))
+vi.mock('@/services/renditions', () => ({
+  renditionArrayBuffer: h.renditionArrayBuffer,
+  renditionText: h.renditionText,
+}))
 vi.mock('@/services/fileService', () => ({ fileService: { downloadFile: vi.fn() } }))
 
 vi.mock('@xeokit/xeokit-sdk', () => ({
@@ -108,7 +112,12 @@ let pinia: ReturnType<typeof createPinia>
 
 // Mount with pinia installed; the component's plugin host mirrors state into the
 // model3d store.
-function mountViewer(props: { xktUid: string; treeContainerId?: string; navStep?: number }) {
+function mountViewer(props: {
+  xktUid: string
+  metamodelUid?: string
+  treeContainerId?: string
+  navStep?: number
+}) {
   return mount(Model3DViewer, { props, global: { plugins: [pinia] } })
 }
 
@@ -164,6 +173,27 @@ describe('Model3DViewer', () => {
     expect(h.navCube).not.toHaveBeenCalled()
     expect(XKTLoaderPlugin).toHaveBeenCalledTimes(1)
     expect(h.loadSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 'model', xkt: XKT }))
+  })
+
+  it('loads the MetaModel sidecar as metaModelData when a metamodelUid is given (§5.2)', async () => {
+    h.renditionText.mockResolvedValue(JSON.stringify({ metaObjects: [{ id: 'g1', type: 'IfcWall' }] }))
+    mountViewer({ xktUid: 'r1', metamodelUid: 'mm1' })
+    await flushPromises()
+    expect(h.renditionText).toHaveBeenCalledWith('mm1')
+    expect(h.loadSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'model',
+        xkt: XKT,
+        metaModelData: expect.objectContaining({ metaObjects: expect.any(Array) }),
+      }),
+    )
+  })
+
+  it('loads geometry only when there is no metamodel (unchanged path)', async () => {
+    mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    expect(h.renditionText).not.toHaveBeenCalled()
+    expect(h.loadSpy).toHaveBeenCalledWith(expect.not.objectContaining({ metaModelData: expect.anything() }))
   })
 
   it('constructs the markup / BCF plugin suite on load (the plugin host)', async () => {

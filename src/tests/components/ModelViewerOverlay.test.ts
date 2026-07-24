@@ -6,6 +6,7 @@ import { createPinia, setActivePinia } from 'pinia'
 const hh = vi.hoisted(() => ({
   loadRenditionSet: vi.fn(),
   modelRendition: vi.fn(),
+  metamodelRendition: vi.fn(() => undefined),
   resizeSpy: vi.fn(),
   resetCameraSpy: vi.fn(),
   downloadFile: vi.fn(),
@@ -24,6 +25,7 @@ const hh = vi.hoisted(() => ({
 vi.mock('@/services/renditions', () => ({
   loadRenditionSet: hh.loadRenditionSet,
   modelRendition: hh.modelRendition,
+  metamodelRendition: hh.metamodelRendition,
 }))
 vi.mock('@/services/fileService', () => ({ fileService: { downloadFile: hh.downloadFile } }))
 vi.mock('vue-router', () => ({
