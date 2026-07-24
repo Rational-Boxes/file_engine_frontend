@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import bcfService, { buildBcfTopic, bcfFilename } from '@/services/bcfService'
 import type { Thread } from '@/services/discussionService'
 
+vi.mock('@/utils/tokenStorage', () => ({
+  tokenStorage: {
+    getAccessToken: vi.fn(() => 'sess-token'),
+    getActiveTenant: vi.fn(() => 'acme'),
+  },
+}))
+
 function comment(over: Record<string, unknown> = {}) {
   return {
     id: 'c1',
@@ -96,21 +103,27 @@ describe('bcfService.downloadThreadBcf', () => {
     vi.restoreAllMocks()
   })
 
-  it('POSTs the topic to the export endpoint and triggers a .bcfzip download', async () => {
+  it('POSTs the topic with the session bearer + tenant and triggers a .bcfzip download', async () => {
     const blob = new Blob(['zip'], { type: 'application/octet-stream' })
     ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       blob: () => Promise.resolve(blob),
     })
     await bcfService.downloadThreadBcf(anchoredThread({ title: 'T' }))
-    expect(fetch).toHaveBeenCalledWith(
-      '/bcf/2.1/bcf-xml/export',
-      expect.objectContaining({ method: 'POST' }),
-    )
-    const body = JSON.parse((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body)
-    expect(body.topics[0].guid).toBe('th1')
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/bcf/2.1/bcf-xml/export')
+    expect(init.method).toBe('POST')
+    // Session-gated: the SPA bearer + active tenant ride with the request.
+    expect(init.headers.Authorization).toBe('Bearer sess-token')
+    expect(init.headers['X-Tenant']).toBe('acme')
+    expect(JSON.parse(init.body).topics[0].guid).toBe('th1')
     expect(URL.createObjectURL).toHaveBeenCalledWith(blob)
     expect(clickSpy).toHaveBeenCalled()
+  })
+
+  it('surfaces an expired-session message on 401', async () => {
+    ;(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, status: 401 })
+    await expect(bcfService.downloadThreadBcf(anchoredThread())).rejects.toThrow('session has expired')
   })
 
   it('throws on a non-OK response', async () => {

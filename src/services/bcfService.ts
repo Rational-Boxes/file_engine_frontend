@@ -21,6 +21,7 @@
 // router is itself mounted under `/bcf`), so the request path is `/bcf/2.1/...`.
 // Override the origin with VITE_BCF_BASE when the SPA is served elsewhere.
 import type { Thread } from '@/services/discussionService'
+import { tokenStorage } from '@/utils/tokenStorage'
 
 const BCF_BASE = import.meta.env.VITE_BCF_BASE ?? ''
 
@@ -101,11 +102,20 @@ function triggerDownload(blob: Blob, filename: string): void {
 export async function downloadThreadBcf(thread: Thread): Promise<void> {
   const topic = buildBcfTopic(thread)
   if (!topic) throw new Error('This comment has no 3D viewpoint to export.')
+  // The endpoint is session-gated: present the SPA's bearer (the same token every
+  // other service accepts) so the export runs under — and is authorized as — the
+  // logged-in user. The tenant header scopes it to the active workspace.
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const token = tokenStorage.getAccessToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const tenant = tokenStorage.getActiveTenant()
+  if (tenant) headers['X-Tenant'] = tenant
   const res = await fetch(`${BCF_BASE}/bcf/2.1/bcf-xml/export`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ topics: [topic] }),
   })
+  if (res.status === 401) throw new Error('Your session has expired — please sign in again.')
   if (!res.ok) throw new Error(`BCF export failed (${res.status})`)
   triggerDownload(await res.blob(), bcfFilename(topic))
 }
