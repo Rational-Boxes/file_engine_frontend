@@ -624,6 +624,17 @@ function highlightObjects(ids: string[]) {
   store.setSelection(ids || [])
 }
 
+// Which of the given object ids actually exist in the currently-loaded model.
+// Used to detect a *drifted anchor*: a comment can tag an element by a rendition-
+// local id (non-IFC formats like STEP/glTF have no stable GlobalId), so after the
+// model is re-converted that id may no longer resolve. If the scene isn't queryable
+// yet we assume present, so we never raise a false alarm before the model is ready.
+function resolveObjectIds(ids: string[]): string[] {
+  const objects = viewer?.scene?.objects
+  if (!objects) return ids || []
+  return (ids || []).filter((id) => !!objects[id])
+}
+
 // The scene-object ids under a metamodel node (the object + all its descendants
 // that actually have geometry). Falls back to just the object when there is no
 // metamodel subtree. Powers see-through-a-whole-storey/assembly from the tree.
@@ -781,6 +792,7 @@ defineExpose({
   standardView,
   fitToSelection,
   highlightObjects,
+  resolveObjectIds,
   xraySubtree,
   clearXRay,
   syncXRayFromScene,

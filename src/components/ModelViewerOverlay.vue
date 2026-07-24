@@ -201,6 +201,15 @@
             <div v-if="xktUid && !resolveError" class="mv-hint" aria-hidden="true">
               <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+click an element for options
             </div>
+
+            <!-- Drifted-anchor notice: the restored comment tagged an element that
+                 isn't in this version of the model (non-IFC ids aren't stable across
+                 re-conversion). The view still restored; only the selection is lost. -->
+            <div v-if="anchorMiss" class="mv-anchor-note" role="status">
+              <span>⚠ The tagged element isn’t in this version of the model — the view
+                was restored, but the element may have changed since the comment.</span>
+              <button class="mv-anchor-x" title="Dismiss" aria-label="Dismiss" @click="anchorMiss = false">✕</button>
+            </div>
           </section>
 
           <div
@@ -538,6 +547,10 @@ function sliceHere() {
   if (id) viewerRef.value?.editSectionPlane(id)
 }
 
+// Set when a restored comment's tagged element no longer exists in the current
+// model (a drifted anchor — see restoreThreadView). Cleared on the next restore.
+const anchorMiss = ref(false)
+
 // Latest thread set from the panel; also the lookup for deep-link / restore-view.
 let threadsCache: Thread[] = []
 // A ?view deep-link is consumed once per open (guarded so it doesn't re-fire as
@@ -564,7 +577,15 @@ function restoreThreadView(threadId: string, objectId?: string) {
   if (anchor?.kind !== 'model-viewpoint') return
   viewerRef.value?.setViewpoint(anchor.viewpoint)
   const objId = objectId ?? (anchor.object_refs?.[0] as { id?: string } | undefined)?.id
-  if (objId) viewerRef.value?.highlightObjects([objId])
+  anchorMiss.value = false
+  if (objId) {
+    // The tagged element's id may no longer resolve if the model was re-converted
+    // (rendition-local ids on non-IFC formats aren't stable). Restore the view
+    // either way; only select — and only flag a miss — based on what's really there.
+    const found = viewerRef.value?.resolveObjectIds([objId]) ?? [objId]
+    if (found.length) viewerRef.value?.highlightObjects(found)
+    else anchorMiss.value = true
+  }
   discMin.value = false
   threadPanelRef.value?.focusThread(threadId)
 }
@@ -611,6 +632,7 @@ watch(
     if (!open) {
       deepLinkRestored = false
       threadsCache = []
+      anchorMiss.value = false
     }
   },
 )
@@ -1086,6 +1108,38 @@ onBeforeUnmount(() => {
   border-radius: 3px;
   background: #1b1d21;
   color: #cfe0ff;
+}
+/* Drifted-anchor notice: sits top-centre of the viewport, dismissible. */
+.mv-anchor-note {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(560px, 90%);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: #f3e3b0;
+  background: rgba(52, 42, 15, 0.92);
+  border: 1px solid #6b5a1f;
+  border-radius: 6px;
+  z-index: 15;
+}
+.mv-anchor-x {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: #f3e3b0;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  font-size: 0.85rem;
+}
+.mv-anchor-x:hover {
+  color: #fff;
 }
 .mv-err,
 .mv-muted {

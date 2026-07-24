@@ -16,6 +16,9 @@ const hh = vi.hoisted(() => ({
   // Viewer imperative API spies (the overlay drives these).
   setViewpoint: vi.fn(),
   highlightObjects: vi.fn(),
+  // By default every tagged id resolves (present in the model); a test overrides
+  // this to simulate a drifted anchor (id no longer in the re-converted model).
+  resolveObjectIds: vi.fn((ids: string[]) => ids),
   renderAnnotations: vi.fn(),
   captureViewpointAnchor: vi.fn(() => ({ kind: 'model-viewpoint' })),
   setNavMode: vi.fn(),
@@ -50,6 +53,7 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
         resetCamera: hh.resetCameraSpy,
         setViewpoint: hh.setViewpoint,
         highlightObjects: hh.highlightObjects,
+        resolveObjectIds: hh.resolveObjectIds,
         renderAnnotations: hh.renderAnnotations,
         captureViewpointAnchor: hh.captureViewpointAnchor,
         setNavMode: hh.setNavMode,
@@ -280,6 +284,25 @@ describe('ModelViewerOverlay', () => {
     expect(hh.setViewpoint).toHaveBeenCalledWith({ vp: 2 })
     expect(hh.highlightObjects).toHaveBeenCalledWith(['obj-42']) // tagged object selected
     expect(hh.focusThread).toHaveBeenCalledWith('t2')
+  })
+
+  it('flags a drifted anchor: restores the view but does not select a missing element', async () => {
+    // The tagged id no longer resolves (e.g. a non-IFC model was re-converted).
+    hh.resolveObjectIds.mockReturnValueOnce([])
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'part.stp')
+    await flushPromises()
+    useModel3dStore().setReady(true)
+    const tp = w.findComponent({ name: 'ThreadPanel' })
+    tp.vm.$emit('threads', [anchoredThread('t9', { vp: 9 }, '=>[0:1:1:2]')])
+    tp.vm.$emit('restore-view', 't9')
+    await flushPromises()
+    expect(hh.setViewpoint).toHaveBeenCalledWith({ vp: 9 }) // view still restored
+    expect(hh.highlightObjects).not.toHaveBeenCalled() // nothing selected — the id is gone
+    expect(w.find('.mv-anchor-note').exists()).toBe(true) // the drift notice shows
+    // Dismissible.
+    await w.find('.mv-anchor-x').trigger('click')
+    expect(w.find('.mv-anchor-note').exists()).toBe(false)
   })
 
   it('a marker activation focuses the thread in the panel', async () => {

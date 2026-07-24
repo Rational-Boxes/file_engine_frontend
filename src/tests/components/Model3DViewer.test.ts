@@ -162,6 +162,7 @@ type ViewerApi = {
   standardView: (k: 'top' | 'front' | 'iso' | 'fit') => void
   fitToSelection: () => void
   highlightObjects: (ids: string[]) => void
+  resolveObjectIds: (ids: string[]) => string[]
   xraySubtree: (objectId: string, xrayed: boolean) => void
   clearXRay: () => void
 }
@@ -499,6 +500,22 @@ describe('Model3DViewer', () => {
     ;(w.vm as unknown as ViewerApi).highlightObjects(['a', 'b'])
     expect(h.setHighlighted).toHaveBeenCalledWith(['a', 'b'], true)
     expect(useModel3dStore().selection).toEqual(['a', 'b'])
+  })
+
+  it('resolveObjectIds() keeps only ids present in the current model (drift check)', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    // The scene captured h.sceneObjects by reference at construction — mutate in place.
+    Object.assign(h.sceneObjects, { wall: {}, door: {} }) // what the loaded model has
+    try {
+      const vm = w.vm as unknown as ViewerApi
+      expect(vm.resolveObjectIds(['wall', 'ghost'])).toEqual(['wall']) // drifted id dropped
+      expect(vm.resolveObjectIds(['door', 'wall'])).toEqual(['door', 'wall'])
+      expect(vm.resolveObjectIds(['nope'])).toEqual([]) // fully drifted → empty
+    } finally {
+      delete h.sceneObjects.wall
+      delete h.sceneObjects.door
+    }
   })
 
   it('applies followPointer + smartPivot on load (Workstream A feel)', async () => {
