@@ -34,10 +34,14 @@ The viewer opens full-screen with a **left side panel** and a title bar. The sid
 panel has two tabs:
 
 - **Objects** — the model's element tree (and the see-through controls).
-- **Tools** — navigation, standard views, section planes, and measurement.
+- **Tools** — navigation, section planes, and measurement.
 
 Use the **☰** button in the title bar to show or hide the panel and give the model
 more room. The panel edge is draggable to resize it.
+
+Standard views live in the **title bar** (not the panel), so **Top**, **Front**,
+**Iso**, **Fit sel** (frame the current selection), and **⟳ Reset** are always one
+click away.
 
 ## Navigating a model
 
@@ -49,8 +53,8 @@ On the **Tools** tab, under **Navigation**:
 - The **Nav step** slider sets how far each zoom/pan step moves — lower it for fine
   control on small CAD parts, raise it for large scenes; **⟲** resets it.
 
-Under **Views**: jump to **Top**, **Front**, or **Iso** orientations, **Fit sel**
-to frame the current selection, or **⟳ Reset** to return to the default view.
+From the **title bar**, jump to **Top**, **Front**, or **Iso** orientations, **Fit
+sel** to frame the current selection, or **⟳ Reset** to return to the default view.
 
 **⬇ Download original** gets the source file, and **📂 Open file location** closes
 the viewer and jumps to the file's folder in the [Files browser](#files).

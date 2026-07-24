@@ -8,6 +8,17 @@
           ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} panel</span>
         </button>
         <h1 class="mv-title" :title="title">{{ title }}</h1>
+
+        <!-- Standard views live in the title bar so they're one click away without
+             opening the Tools panel. -->
+        <div class="mv-group" role="group" aria-label="Standard views">
+          <button class="mv-act mv-icon" title="Top view" @click="view('top')">Top</button>
+          <button class="mv-act mv-icon" title="Front view" @click="view('front')">Front</button>
+          <button class="mv-act mv-icon" title="Isometric view" @click="view('iso')">Iso</button>
+          <button class="mv-act mv-icon" title="Frame the current selection" @click="fitSel">Fit sel</button>
+          <button class="mv-act mv-icon" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset</button>
+        </div>
+
         <HelpIcon topic="cad-bim" label="About CAD &amp; BIM model viewing" />
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
@@ -112,17 +123,6 @@
                   @click="resetNav"
                 >⟲</button>
               </label>
-            </section>
-
-            <section class="mv-toolsec">
-              <h3 class="mv-toolsec-h">Views</h3>
-              <div class="mv-toolrow" role="group" aria-label="Standard views">
-                <button class="mv-act mv-icon" title="Top view" @click="view('top')">Top</button>
-                <button class="mv-act mv-icon" title="Front view" @click="view('front')">Front</button>
-                <button class="mv-act mv-icon" title="Isometric view" @click="view('iso')">Iso</button>
-                <button class="mv-act mv-icon" title="Frame the current selection" @click="fitSel">Fit sel</button>
-                <button class="mv-act mv-icon" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset</button>
-              </div>
             </section>
 
             <section class="mv-toolsec">
