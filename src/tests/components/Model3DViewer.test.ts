@@ -58,6 +58,8 @@ const h = vi.hoisted(() => {
     pickHit: null as unknown,
     // See-through (X-ray): setObjectsXRayed spy + scene.objects + metaScene subtree.
     setXRayed: vi.fn(),
+    // The scene's live X-rayed set — what setViewpoint restores and syncXRayFromScene reads.
+    sceneXrayed: [] as string[],
     sceneObjects: {} as Record<string, unknown>,
     metaScene: { metaObjects: {} as Record<string, unknown> },
     sectionPlanes,
@@ -88,6 +90,9 @@ vi.mock('@xeokit/xeokit-sdk', () => ({
       metrics: h.metrics,
       pick: h.scenePick,
       setObjectsXRayed: h.setXRayed,
+      get xrayedObjectIds() {
+        return h.sceneXrayed
+      },
       objects: h.sceneObjects,
     },
     metaScene: h.metaScene,
@@ -235,6 +240,21 @@ describe('Model3DViewer', () => {
     expect(h.bcf.getViewpoint).toHaveBeenCalled()
     vm.setViewpoint(h.VIEWPOINT)
     expect(h.bcf.setViewpoint).toHaveBeenCalledWith(h.VIEWPOINT, undefined)
+  })
+
+  it('setViewpoint() syncs the see-through store from the restored scene X-ray', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const vm = w.vm as unknown as ViewerApi
+    // The restored viewpoint leaves these objects X-rayed on the scene.
+    h.sceneXrayed = ['wall', 'door']
+    try {
+      vm.setViewpoint(h.VIEWPOINT)
+      // The store (which drives the "✕ Reset (N)" counter + clearXRay) now matches.
+      expect([...useModel3dStore().xrayedIds].sort()).toEqual(['door', 'wall'])
+    } finally {
+      h.sceneXrayed = []
+    }
   })
 
   it('captureViewpointAnchor() builds a model-viewpoint anchor from the current view', async () => {

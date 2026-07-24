@@ -252,6 +252,9 @@ function setViewpoint(viewpoint: unknown, options?: unknown) {
   } catch {
     /* best-effort */
   }
+  // The viewpoint restores X-ray straight on the scene; reconcile the store so the
+  // see-through UI (counter, ✕ Reset) matches what was restored.
+  syncXRayFromScene()
 }
 
 // Capture the current view as a model-viewpoint annotation anchor (§9): the BCF
@@ -659,6 +662,18 @@ function xraySubtree(objectId: string, xrayed: boolean) {
   store.setXRayed([...next])
 }
 
+// Reconcile the store's see-through set with the scene's actual X-rayed objects.
+// setViewpoint() restores X-ray straight on the xeokit scene (bypassing the store),
+// so a restored view would otherwise leave the "✕ Reset (N)" counter and clearXRay()
+// out of sync — call this after any viewpoint restore.
+function syncXRayFromScene() {
+  try {
+    store.setXRayed([...(viewer?.scene?.xrayedObjectIds ?? [])])
+  } catch {
+    /* best-effort */
+  }
+}
+
 // Clear all see-through, restoring every X-rayed object to solid.
 function clearXRay() {
   const ids = store.xrayedIds
@@ -768,6 +783,7 @@ defineExpose({
   highlightObjects,
   xraySubtree,
   clearXRay,
+  syncXRayFromScene,
 })
 
 async function downloadOriginal() {
