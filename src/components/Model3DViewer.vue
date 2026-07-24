@@ -1,6 +1,6 @@
 <template>
   <div class="m3d" ref="rootEl">
-    <canvas ref="canvasEl" class="m3d-canvas"></canvas>
+    <canvas ref="canvasEl" class="m3d-canvas" @contextmenu.prevent="onCanvasContextMenu"></canvas>
     <!-- Navigation cube: a small in-canvas corner widget. Temporarily disabled —
          xeokit-sdk #2016: NavCubePlugin throws "Missing input materialEmissive"
          (regressed in 2.6.104, unfixed through the current latest 2.6.112) which
@@ -39,9 +39,21 @@ const props = withDefaults(
   { navStep: 100 },
 )
 
-// Emitted when an in-scene annotation marker is clicked: the viewer restores the
-// annotation's viewpoint itself, and the host focuses the matching comment thread.
-const emit = defineEmits<{ (e: 'annotation-activate', threadId: string): void }>()
+// annotation-activate: an in-scene marker was clicked (viewer restored the
+//   viewpoint; host focuses the thread).
+// object-context: a right-click picked an object — the host opens a context menu
+//   at (clientX, clientY); null means the click hit empty space (dismiss).
+const emit = defineEmits<{
+  (e: 'annotation-activate', threadId: string): void
+  (e: 'object-context', payload: ObjectContext | null): void
+}>()
+
+interface ObjectContext {
+  clientX: number
+  clientY: number
+  objectId: string
+  worldPos?: { x: number; y: number; z: number }
+}
 
 // xeokit-sdk #2016: the NavCubePlugin shader crashes ("Missing input
 // materialEmissive") in 2.6.104–2.6.112. Keep the integration but off until fixed.
@@ -232,7 +244,10 @@ function setViewpoint(viewpoint: unknown, options?: unknown) {
 // optional world-space marker. object_refs stay empty until the §5.2 metamodel
 // lands — camera/section-only anchors work now. Returns null if there is no
 // viewpoint (e.g. the BCF plugin is unavailable).
-function captureViewpointAnchor(marker?: { x: number; y: number; z: number }): ModelViewpointAnchor | null {
+function captureViewpointAnchor(
+  marker?: { x: number; y: number; z: number },
+  objectId?: string,
+): ModelViewpointAnchor | null {
   const viewpoint = getViewpoint()
   if (!viewpoint) return null
   return {
@@ -240,8 +255,33 @@ function captureViewpointAnchor(marker?: { x: number; y: number; z: number }): M
     schema: 'fileengine.anchor.v1',
     viewpoint,
     ...(marker ? { marker } : {}),
-    object_refs: [],
+    // A picked object anchors the annotation to a real element (source-tagging
+    // lands with the §5.2 metamodel; the id is the xeokit entity id today).
+    object_refs: objectId ? [{ id: objectId }] : [],
   }
+}
+
+// Right-click on the model: pick the object/surface under the cursor and ask the
+// host to open a context menu there (the marker/object flow into an annotation).
+function onCanvasContextMenu(e: MouseEvent) {
+  if (!viewer || !canvasEl.value) return
+  const rect = canvasEl.value.getBoundingClientRect()
+  const canvasPos = [e.clientX - rect.left, e.clientY - rect.top]
+  let hit: { entity?: { id?: string }; worldPos?: number[] } | null = null
+  try {
+    hit = viewer.scene?.pick?.({ canvasPos, pickSurface: true }) ?? null
+  } catch {
+    hit = null
+  }
+  const objectId = hit?.entity?.id
+  if (!objectId) {
+    emit('object-context', null) // empty space → dismiss any open menu
+    return
+  }
+  const wp = hit?.worldPos
+  const worldPos = Array.isArray(wp) && wp.length >= 3 ? { x: wp[0], y: wp[1], z: wp[2] } : undefined
+  highlightObjects([String(objectId)]) // show what was picked
+  emit('object-context', { clientX: e.clientX, clientY: e.clientY, objectId: String(objectId), worldPos })
 }
 
 // One model-viewpoint annotation to render as an in-scene marker.

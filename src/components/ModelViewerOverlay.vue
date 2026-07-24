@@ -176,6 +176,7 @@
               :nav-step="navStep"
               tree-container-id="mv-object-tree"
               @annotation-activate="onAnnotationActivate"
+              @object-context="onObjectContext"
             />
             <p v-else class="mv-muted">Loading…</p>
           </section>
@@ -207,6 +208,14 @@
           </section>
         </div>
       </div>
+
+      <!-- On-model right-click menu: pick an object, then comment on it (§9). -->
+      <template v-if="ctxMenu">
+        <div class="mv-ctx-backdrop" @pointerdown="closeCtxMenu" @contextmenu.prevent="closeCtxMenu"></div>
+        <div class="mv-ctxmenu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" role="menu">
+          <button class="mv-ctxitem" role="menuitem" @click="commentOnObject">💬 Comment on this object</button>
+        </div>
+      </template>
     </div>
   </Teleport>
 </template>
@@ -440,6 +449,27 @@ function commentHere() {
   threadPanelRef.value?.startAnnotation(anchor)
 }
 
+// On-model right-click menu (§9): the viewer picked an object; show a menu at the
+// cursor. Null payload = empty space → dismiss.
+const ctxMenu = ref<{ x: number; y: number; objectId: string; worldPos?: { x: number; y: number; z: number } } | null>(null)
+function onObjectContext(p: { clientX: number; clientY: number; objectId: string; worldPos?: { x: number; y: number; z: number } } | null) {
+  ctxMenu.value = p ? { x: p.clientX, y: p.clientY, objectId: p.objectId, worldPos: p.worldPos } : null
+}
+function closeCtxMenu() {
+  ctxMenu.value = null
+}
+// "Comment on this object": capture a viewpoint anchored to the picked object +
+// its world point and hand it to the composer.
+function commentOnObject() {
+  const m = ctxMenu.value
+  ctxMenu.value = null
+  if (!m) return
+  const anchor = viewerRef.value?.captureViewpointAnchor(m.worldPos, m.objectId)
+  if (!anchor) return
+  discMin.value = false
+  threadPanelRef.value?.startAnnotation(anchor)
+}
+
 // Latest thread set from the panel; also the lookup for deep-link / restore-view.
 let threadsCache: Thread[] = []
 // A ?view deep-link is consumed once per open (guarded so it doesn't re-fire as
@@ -567,6 +597,10 @@ watch(
 function onKey(e: KeyboardEvent) {
   if (e.key !== 'Escape' || e.defaultPrevented || !model3d.isOpen) return
   e.preventDefault()
+  if (ctxMenu.value) {
+    ctxMenu.value = null // Esc closes the object menu before the viewer
+    return
+  }
   model3d.close()
 }
 onMounted(() => window.addEventListener('keydown', onKey, true))
@@ -897,6 +931,38 @@ onBeforeUnmount(() => {
   background: #2a2d31;
   border-color: #6ea8fe;
   color: #cfe0ff;
+}
+/* On-model right-click context menu + its click-away backdrop. */
+.mv-ctx-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+}
+.mv-ctxmenu {
+  position: absolute;
+  z-index: 21;
+  min-width: 180px;
+  background: #0f1113;
+  border: 1px solid #3a3d42;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+.mv-ctxitem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #e8e8ea;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+.mv-ctxitem:hover {
+  background: #2a2d31;
 }
 .mv-err,
 .mv-muted {

@@ -53,6 +53,9 @@ const h = vi.hoisted(() => {
     getAABB: vi.fn(() => [0, 0, 0, 2, 2, 2]),
     highlightedIds: [] as string[],
     aabb: [0, 0, 0, 10, 10, 10], // centre (5,5,5), diagonal ~17.3
+    // Right-click picking: scene.pick returns the configured hit.
+    scenePick: vi.fn(),
+    pickHit: null as unknown,
     sectionPlanes,
     distance: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn() },
     angle: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn() },
@@ -79,6 +82,7 @@ vi.mock('@xeokit/xeokit-sdk', () => ({
       aabb: h.aabb,
       getAABB: h.getAABB,
       metrics: h.metrics,
+      pick: h.scenePick,
     },
     cameraFlight: { flyTo: h.flyTo },
     cameraControl: h.cameraControl,
@@ -127,7 +131,7 @@ type ViewerApi = {
   resetCamera: () => void
   getViewpoint: () => unknown
   setViewpoint: (v: unknown) => void
-  captureViewpointAnchor: (marker?: { x: number; y: number; z: number }) => unknown
+  captureViewpointAnchor: (marker?: { x: number; y: number; z: number }, objectId?: string) => unknown
   renderAnnotations: (
     items: Array<{ id: string; threadId: string; marker?: { x: number; y: number; z: number }; viewpoint: unknown }>,
   ) => void
@@ -160,6 +164,8 @@ describe('Model3DViewer', () => {
     h.distance.control.snapping = false
     h.angle.control.snapping = false
     h.metrics.units = 'meters'
+    h.pickHit = null
+    h.scenePick.mockImplementation(() => h.pickHit)
     h.renditionArrayBuffer.mockResolvedValue(XKT)
   })
 
@@ -260,6 +266,38 @@ describe('Model3DViewer', () => {
     h.annHandlers.markerClicked({ id: 'ann-t1' })
     expect(h.bcf.setViewpoint).toHaveBeenCalledWith(h.VIEWPOINT, undefined)
     expect(w.emitted('annotation-activate')?.[0]).toEqual(['t1'])
+  })
+
+  it('right-click picks an object, highlights it, and emits object-context', async () => {
+    h.pickHit = { entity: { id: 'obj-7' }, worldPos: [1, 2, 3] }
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    await w.find('canvas.m3d-canvas').trigger('contextmenu', { clientX: 40, clientY: 50 })
+    expect(w.emitted('object-context')?.[0]?.[0]).toMatchObject({
+      objectId: 'obj-7',
+      worldPos: { x: 1, y: 2, z: 3 },
+      clientX: 40,
+      clientY: 50,
+    })
+    expect(h.setHighlighted).toHaveBeenCalledWith(['obj-7'], true)
+  })
+
+  it('right-click on empty space emits a null object-context (dismiss)', async () => {
+    h.pickHit = null
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    await w.find('canvas.m3d-canvas').trigger('contextmenu')
+    expect(w.emitted('object-context')?.[0]?.[0]).toBeNull()
+  })
+
+  it('captureViewpointAnchor(marker, objectId) records the object ref', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const anchor = (w.vm as unknown as ViewerApi).captureViewpointAnchor(
+      { x: 0, y: 0, z: 0 },
+      'obj-9',
+    ) as Record<string, unknown>
+    expect(anchor.object_refs).toEqual([{ id: 'obj-9' }])
   })
 
   it('captureSnapshot() returns the viewer PNG snapshot', async () => {

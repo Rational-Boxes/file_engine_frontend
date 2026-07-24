@@ -17,6 +17,7 @@ const hh = vi.hoisted(() => ({
   setViewpoint: vi.fn(),
   highlightObjects: vi.fn(),
   renderAnnotations: vi.fn(),
+  captureViewpointAnchor: vi.fn(() => ({ kind: 'model-viewpoint' })),
   // ThreadPanel exposed methods.
   focusThread: vi.fn(),
   startAnnotation: vi.fn(),
@@ -37,8 +38,8 @@ vi.mock('vue-router', () => ({
 vi.mock('@/components/Model3DViewer.vue', () => ({
   default: defineComponent({
     name: 'Model3DViewer',
-    props: ['xktUid', 'treeContainerId', 'navStep'],
-    emits: ['annotation-activate'],
+    props: ['xktUid', 'metamodelUid', 'treeContainerId', 'navStep'],
+    emits: ['annotation-activate', 'object-context'],
     setup(_, { expose }) {
       expose({
         resize: hh.resizeSpy,
@@ -46,6 +47,7 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
         setViewpoint: hh.setViewpoint,
         highlightObjects: hh.highlightObjects,
         renderAnnotations: hh.renderAnnotations,
+        captureViewpointAnchor: hh.captureViewpointAnchor,
       })
       return () => createEl('div', { class: 'm3d-stub' })
     },
@@ -273,5 +275,31 @@ describe('ModelViewerOverlay', () => {
     w.findComponent({ name: 'Model3DViewer' }).vm.$emit('annotation-activate', 't3')
     await flushPromises()
     expect(hh.focusThread).toHaveBeenCalledWith('t3')
+  })
+
+  it('right-click object → context menu → comment on object opens the composer', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    w.findComponent({ name: 'Model3DViewer' }).vm.$emit('object-context', {
+      clientX: 100, clientY: 120, objectId: 'obj-3', worldPos: { x: 1, y: 2, z: 3 },
+    })
+    await flushPromises()
+    const menu = w.find('.mv-ctxmenu')
+    expect(menu.exists()).toBe(true)
+    await menu.find('.mv-ctxitem').trigger('click')
+    // Anchored to the picked object + its world point, then handed to the composer.
+    expect(hh.captureViewpointAnchor).toHaveBeenCalledWith({ x: 1, y: 2, z: 3 }, 'obj-3')
+    expect(hh.startAnnotation).toHaveBeenCalled()
+    expect(w.find('.mv-ctxmenu').exists()).toBe(false) // menu closed after acting
+  })
+
+  it('a null object-context (empty space) shows no menu', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+    w.findComponent({ name: 'Model3DViewer' }).vm.$emit('object-context', null)
+    await flushPromises()
+    expect(w.find('.mv-ctxmenu').exists()).toBe(false)
   })
 })
