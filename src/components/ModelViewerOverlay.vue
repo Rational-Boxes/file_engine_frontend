@@ -179,6 +179,10 @@
               @object-context="onObjectContext"
             />
             <p v-else class="mv-muted">Loading…</p>
+            <!-- Discrete hint: how to open the on-model menu (§9). -->
+            <div v-if="xktUid && !resolveError" class="mv-hint" aria-hidden="true">
+              <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+click an element for options
+            </div>
           </section>
 
           <div
@@ -1015,6 +1019,32 @@ onBeforeUnmount(() => {
   letter-spacing: 0.05em;
   color: #7f8894;
   padding: 0.2rem 0.6rem;
+}
+/* Discrete "Ctrl/⌘+click for options" hint in the viewport corner. */
+.mv-hint {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.72rem;
+  color: #aab;
+  background: rgba(15, 17, 19, 0.6);
+  border: 1px solid #2a2d31;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0.7;
+}
+.mv-hint kbd {
+  font-family: inherit;
+  font-size: 0.68rem;
+  padding: 0 0.25rem;
+  border: 1px solid #3a3d42;
+  border-radius: 3px;
+  background: #1b1d21;
+  color: #cfe0ff;
 }
 .mv-err,
 .mv-muted {

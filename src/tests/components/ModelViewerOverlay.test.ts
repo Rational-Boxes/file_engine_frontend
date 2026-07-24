@@ -103,6 +103,7 @@ describe('ModelViewerOverlay', () => {
     expect(w.find('.mv-root').exists()).toBe(true)
     expect(w.find('.mv-title').text()).toBe('tower.ifc')
     expect(w.find('.m3d-stub').exists()).toBe(true) // viewer mounted with resolved rendition
+    expect(w.find('.mv-hint').exists()).toBe(true) // discrete Ctrl/⌘+click hint
     expect(document.body.style.overflow).toBe('hidden')
   })
 
