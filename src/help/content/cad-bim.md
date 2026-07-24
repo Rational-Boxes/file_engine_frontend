@@ -103,8 +103,12 @@ to the same view and element.
 
 A model comment shows a **🎯 View** link. Clicking it **restores the saved view** —
 camera, section cuts, and visibility — and **selects the element** the comment is
-about. These comments behave like any other [comment](#comments): replies, mentions,
-resolve/reopen, and live updates all work, and they appear as markers in the model.
+about. Next to it, **⬇ BCF** downloads the comment as a **`.bcfzip`** (BCF 2.1) file
+— the camera, clipping, and tagged element packaged for opening in a desktop BCF
+Manager or any BCF-compatible tool, for when working through the live API isn't
+convenient. These comments behave like any other [comment](#comments): replies,
+mentions, resolve/reopen, and live updates all work, and they appear as markers in
+the model.
 
 > Tip: the small **Ctrl/⌘+click an element for options** hint in the corner of the
 > viewport is a reminder of the on-model menu (comment, slice, and navigation).

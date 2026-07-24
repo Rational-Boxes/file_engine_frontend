@@ -74,6 +74,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/audit/, ''),
       },
+      '/bcf': {
+        target: 'http://localhost:8098', // BCF-API 2.1 — BCF-XML export/import (§11)
+        changeOrigin: true, // NB: no rewrite — the service's router is mounted under /bcf
+      },
     },
   },
   test: {

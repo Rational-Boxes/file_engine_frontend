@@ -76,8 +76,9 @@ it.
 
 On a 3D model you can **pin a comment to a specific view or element**: a pinned
 comment shows a **🎯 View** link that jumps everyone back to the exact camera angle,
-section cuts, and highlighted element the author was looking at. See
-[viewing CAD & BIM models](#cad-bim) for how to create them.
+section cuts, and highlighted element the author was looking at, and a **⬇ BCF**
+link that downloads it as a standard **`.bcfzip`** (BCF 2.1) file for use in desktop
+BIM tools. See [viewing CAD & BIM models](#cad-bim) for how to create them.
 
 ## Who can comment
 

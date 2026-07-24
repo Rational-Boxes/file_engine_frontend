@@ -125,6 +125,15 @@
             title="Restore this 3D view"
             @click="emit('restore-view', t.id)"
           >🎯 View</button>
+          <!-- Download the anchored comment as a BCF file (.bcfzip) for use outside
+               the API — e.g. opening the issue in a desktop BCF Manager. -->
+          <button
+            v-if="t.anchor?.kind === 'model-viewpoint'"
+            type="button"
+            class="tp-viewbtn"
+            title="Download this comment as a BCF file (.bcfzip)"
+            @click="downloadBcf(t)"
+          >⬇ BCF</button>
           <span class="thread-spacer"></span>
           <button
             v-if="t.status === 'open'"
@@ -230,6 +239,7 @@ import {
   type ReviewRequest,
   type ModelViewpointAnchor,
 } from '@/services/discussionService'
+import bcfService from '@/services/bcfService'
 import { LiveSession, type LiveCommentEvent } from '@/services/discussionLive'
 
 defineOptions({ inheritAttrs: false })
@@ -462,6 +472,17 @@ function startAnnotation(anchor: ModelViewpointAnchor) {
 }
 function clearPendingAnchor() {
   pendingAnchor.value = null
+}
+
+// Download an anchored comment as a BCF (.bcfzip) via the BCF-XML export door, for
+// use outside the API (e.g. a desktop BCF Manager). Surfaces an inline error on
+// failure rather than throwing at the click handler.
+async function downloadBcf(t: Thread) {
+  try {
+    await bcfService.downloadThreadBcf(t)
+  } catch {
+    error.value = 'Could not export the BCF file.'
+  }
 }
 
 // Scroll a thread into view (and open the panel if collapsed) — used when an
