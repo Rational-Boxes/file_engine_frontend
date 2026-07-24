@@ -122,6 +122,12 @@ async function load() {
           hierarchy: 'containment',
           autoExpandDepth: 1,
         })
+        // In see-through mode, clicking a tree node toggles X-ray on its subtree.
+        treeView.on?.('nodeTitleClicked', (e: { treeViewNode?: { objectId?: string } }) => {
+          if (!store.seeThroughMode) return
+          const oid = e?.treeViewNode?.objectId
+          if (oid) xraySubtree(oid, !store.xrayedIds.includes(oid))
+        })
       }
     } catch (e) {
       console.warn('[Model3DViewer] object tree unavailable (model may have no metadata)', e)
@@ -615,6 +621,57 @@ function highlightObjects(ids: string[]) {
   store.setSelection(ids || [])
 }
 
+// The scene-object ids under a metamodel node (the object + all its descendants
+// that actually have geometry). Falls back to just the object when there is no
+// metamodel subtree. Powers see-through-a-whole-storey/assembly from the tree.
+function subtreeObjectIds(objectId: string): string[] {
+  const scene = viewer?.scene
+  const metaObjects = viewer?.metaScene?.metaObjects
+  const out: string[] = []
+  const add = (id?: string) => {
+    if (id && scene?.objects?.[id]) out.push(id)
+  }
+  const root = metaObjects?.[objectId]
+  if (root) {
+    const stack: Array<{ id?: string; children?: unknown[] }> = [root]
+    while (stack.length) {
+      const m = stack.pop()
+      add(m?.id)
+      for (const c of (m?.children as Array<{ id?: string; children?: unknown[] }>) || []) stack.push(c)
+    }
+  } else {
+    add(objectId)
+  }
+  return out
+}
+
+// Set an object + its subtree to translucent see-through (X-ray), or back (§tree).
+function xraySubtree(objectId: string, xrayed: boolean) {
+  const ids = subtreeObjectIds(objectId)
+  if (!ids.length) return
+  try {
+    viewer?.scene?.setObjectsXRayed?.(ids, xrayed)
+  } catch {
+    /* best-effort */
+  }
+  const next = new Set(store.xrayedIds)
+  for (const id of ids) (xrayed ? next.add(id) : next.delete(id))
+  store.setXRayed([...next])
+}
+
+// Clear all see-through, restoring every X-rayed object to solid.
+function clearXRay() {
+  const ids = store.xrayedIds
+  if (ids.length) {
+    try {
+      viewer?.scene?.setObjectsXRayed?.(ids, false)
+    } catch {
+      /* best-effort */
+    }
+  }
+  store.setXRayed([])
+}
+
 // Called by the overlay when the sidebar collapses/expands so xeokit recomputes
 // the viewport for the new canvas size.
 function resize() {
@@ -709,6 +766,8 @@ defineExpose({
   standardView,
   fitToSelection,
   highlightObjects,
+  xraySubtree,
+  clearXRay,
 })
 
 async function downloadOriginal() {

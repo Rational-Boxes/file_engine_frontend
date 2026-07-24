@@ -56,6 +56,10 @@ const h = vi.hoisted(() => {
     // Right-click picking: scene.pick returns the configured hit.
     scenePick: vi.fn(),
     pickHit: null as unknown,
+    // See-through (X-ray): setObjectsXRayed spy + scene.objects + metaScene subtree.
+    setXRayed: vi.fn(),
+    sceneObjects: {} as Record<string, unknown>,
+    metaScene: { metaObjects: {} as Record<string, unknown> },
     sectionPlanes,
     distance: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn() },
     angle: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn() },
@@ -83,7 +87,10 @@ vi.mock('@xeokit/xeokit-sdk', () => ({
       getAABB: h.getAABB,
       metrics: h.metrics,
       pick: h.scenePick,
+      setObjectsXRayed: h.setXRayed,
+      objects: h.sceneObjects,
     },
+    metaScene: h.metaScene,
     cameraFlight: { flyTo: h.flyTo },
     cameraControl: h.cameraControl,
     camera: h.camera,
@@ -150,6 +157,8 @@ type ViewerApi = {
   standardView: (k: 'top' | 'front' | 'iso' | 'fit') => void
   fitToSelection: () => void
   highlightObjects: (ids: string[]) => void
+  xraySubtree: (objectId: string, xrayed: boolean) => void
+  clearXRay: () => void
 }
 
 describe('Model3DViewer', () => {
@@ -166,6 +175,8 @@ describe('Model3DViewer', () => {
     h.metrics.units = 'meters'
     h.pickHit = null
     h.scenePick.mockImplementation(() => h.pickHit)
+    h.sceneObjects = {}
+    h.metaScene.metaObjects = {}
     h.renditionArrayBuffer.mockResolvedValue(XKT)
   })
 
@@ -424,6 +435,42 @@ describe('Model3DViewer', () => {
     ;(w.vm as unknown as ViewerApi).setMeasurementUnits('mm')
     expect(h.metrics.units).toBe('millimeters')
     expect(useModel3dStore().measureUnits).toBe('mm')
+  })
+
+  it('xraySubtree() X-rays an object + its metamodel subtree and tracks it', async () => {
+    h.metaScene.metaObjects = {
+      storey: { id: 'storey', children: [{ id: 'wall', children: [] }, { id: 'door', children: [] }] },
+    }
+    h.sceneObjects = { storey: {}, wall: {}, door: {} } // only geometry objects
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    ;(w.vm as unknown as ViewerApi).xraySubtree('storey', true)
+    const [ids, on] = h.setXRayed.mock.calls[0]
+    expect([...ids].sort()).toEqual(['door', 'storey', 'wall'])
+    expect(on).toBe(true)
+    expect([...useModel3dStore().xrayedIds].sort()).toEqual(['door', 'storey', 'wall'])
+  })
+
+  it('xraySubtree() falls back to the single object when there is no metamodel node', async () => {
+    h.metaScene.metaObjects = {}
+    h.sceneObjects = { x: {} }
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    ;(w.vm as unknown as ViewerApi).xraySubtree('x', true)
+    expect(h.setXRayed).toHaveBeenCalledWith(['x'], true)
+  })
+
+  it('clearXRay() restores every X-rayed object to solid', async () => {
+    h.metaScene.metaObjects = { a: { id: 'a', children: [] } }
+    h.sceneObjects = { a: {} }
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    const vm = w.vm as unknown as ViewerApi
+    vm.xraySubtree('a', true)
+    expect(useModel3dStore().xrayedIds).toEqual(['a'])
+    vm.clearXRay()
+    expect(h.setXRayed).toHaveBeenLastCalledWith(['a'], false)
+    expect(useModel3dStore().xrayedIds).toEqual([])
   })
 
   it('highlightObjects() highlights the set and records the selection', async () => {

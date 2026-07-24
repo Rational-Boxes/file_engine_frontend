@@ -58,6 +58,24 @@
           <!-- Objects: the xeokit TreeViewPlugin mounts into #mv-object-tree. Kept
                mounted (v-show) so switching tabs never detaches the tree. -->
           <div v-show="sideTab === 'objects'" class="mv-tabpanel">
+            <!-- See-through (X-ray) controls: toggle the mode, then click a tree
+                 node to make that element + its subtree translucent. -->
+            <div class="mv-objtools" role="group" aria-label="See-through">
+              <button
+                class="mv-act mv-icon"
+                :class="{ 'mv-on': model3d.seeThroughMode }"
+                :aria-pressed="model3d.seeThroughMode"
+                title="See-through mode: click a tree object to make it (and its subtree) translucent"
+                @click="toggleSeeThrough"
+              >🔲 See-through</button>
+              <button
+                class="mv-act mv-icon"
+                title="Clear see-through"
+                :disabled="!model3d.xrayedIds.length"
+                @click="resetXRay"
+              >✕ Reset<span v-if="model3d.xrayedIds.length"> ({{ model3d.xrayedIds.length }})</span></button>
+            </div>
+            <p v-if="model3d.seeThroughMode" class="mv-objhint">Click an object to toggle see-through.</p>
             <div id="mv-object-tree" class="mv-tree"></div>
           </div>
 
@@ -430,6 +448,15 @@ function view(kind: 'top' | 'front' | 'iso' | 'fit') {
 }
 function fitSel() {
   viewerRef.value?.fitToSelection()
+}
+
+// See-through (X-ray) controls: toggle the mode (tree clicks then X-ray a subtree)
+// and clear all see-through.
+function toggleSeeThrough() {
+  model3d.setSeeThroughMode(!model3d.seeThroughMode)
+}
+function resetXRay() {
+  viewerRef.value?.clearXRay()
 }
 
 // Section-plane controls (§7): axis quick-cuts, a section box, and clear-all.
@@ -858,6 +885,18 @@ onBeforeUnmount(() => {
 }
 .mv-tree {
   font-size: 0.85rem;
+}
+/* See-through controls above the object tree. */
+.mv-objtools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+.mv-objhint {
+  font-size: 0.72rem;
+  color: #9aa;
+  margin: 0 0 0.5rem;
 }
 /* 3D viewport + docked discussion. */
 .mv-main {

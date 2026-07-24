@@ -28,6 +28,8 @@ interface Model3dState {
   measureUnits: MeasureUnits // measurement display units
   sectionPlaneIds: string[] // ids of the live SectionPlanesPlugin planes
   selection: string[] // currently highlighted/selected object ids
+  seeThroughMode: boolean // Objects-tree clicks toggle X-ray (translucent) on a subtree
+  xrayedIds: string[] // objects currently in see-through (X-ray) mode
 }
 
 // The viewer-state slice, at rest. Extracted so open/close/teardown all reset to
@@ -40,6 +42,8 @@ function freshViewerState() {
     measureUnits: 'm' as MeasureUnits,
     sectionPlaneIds: [] as string[],
     selection: [] as string[],
+    seeThroughMode: false,
+    xrayedIds: [] as string[],
   }
 }
 
@@ -79,6 +83,12 @@ export const useModel3dStore = defineStore('model3d', {
     },
     setSelection(ids: string[]) {
       this.selection = ids
+    },
+    setSeeThroughMode(v: boolean) {
+      this.seeThroughMode = v
+    },
+    setXRayed(ids: string[]) {
+      this.xrayedIds = ids
     },
     // Called when the viewer tears down (unmount or model swap) so stale live
     // state never lingers after the plugin host is gone.

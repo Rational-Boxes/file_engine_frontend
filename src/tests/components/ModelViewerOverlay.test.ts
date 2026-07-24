@@ -21,6 +21,7 @@ const hh = vi.hoisted(() => ({
   setNavMode: vi.fn(),
   addSectionPlane: vi.fn(() => 'sp1'),
   editSectionPlane: vi.fn(),
+  clearXRay: vi.fn(),
   // ThreadPanel exposed methods.
   focusThread: vi.fn(),
   startAnnotation: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
         setNavMode: hh.setNavMode,
         addSectionPlane: hh.addSectionPlane,
         editSectionPlane: hh.editSectionPlane,
+        clearXRay: hh.clearXRay,
       })
       return () => createEl('div', { class: 'm3d-stub' })
     },
@@ -324,6 +326,29 @@ describe('ModelViewerOverlay', () => {
     })
     await flushPromises()
   }
+
+  it('toggles see-through mode and resets X-ray from the Objects tab', async () => {
+    const w = mountOverlay()
+    const store = useModel3dStore()
+    store.open('file1', 'tower.ifc')
+    await flushPromises()
+    const seeThrough = w.findAll('.mv-act').find((b) => b.text().includes('See-through'))!
+    expect(store.seeThroughMode).toBe(false)
+    await seeThrough.trigger('click')
+    await flushPromises()
+    expect(store.seeThroughMode).toBe(true) // mode on
+    expect(w.findAll('.mv-act').find((b) => b.text().includes('See-through'))!.classes()).toContain('mv-on')
+
+    // Reset is disabled with nothing X-rayed, enabled once something is.
+    const resetBtn = () => w.findAll('.mv-act').find((b) => b.text().includes('✕ Reset'))!
+    expect((resetBtn().element as HTMLButtonElement).disabled).toBe(true)
+    store.setXRayed(['a', 'b'])
+    await flushPromises()
+    await w.vm.$nextTick()
+    expect((resetBtn().element as HTMLButtonElement).disabled).toBe(false)
+    await resetBtn().trigger('click')
+    expect(hh.clearXRay).toHaveBeenCalled()
+  })
 
   it('the menu sets navigation mode from its Navigation options', async () => {
     const w = mountOverlay()
