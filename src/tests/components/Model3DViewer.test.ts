@@ -291,6 +291,22 @@ describe('Model3DViewer', () => {
     expect(w.emitted('object-context')?.[0]?.[0]).toBeNull()
   })
 
+  it('Ctrl+left-click also opens the object menu', async () => {
+    h.pickHit = { entity: { id: 'obj-2' }, worldPos: [4, 5, 6], worldNormal: [1, 0, 0] }
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    await w.find('canvas.m3d-canvas').trigger('click', { ctrlKey: true, button: 0, clientX: 5, clientY: 6 })
+    expect(w.emitted('object-context')?.[0]?.[0]).toMatchObject({ objectId: 'obj-2' })
+  })
+
+  it('a plain left-click does not open the menu (kept free for navigation)', async () => {
+    h.pickHit = { entity: { id: 'obj-2' }, worldPos: [0, 0, 0] }
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    await w.find('canvas.m3d-canvas').trigger('click', { button: 0, clientX: 5, clientY: 6 })
+    expect(w.emitted('object-context')).toBeUndefined()
+  })
+
   it('captureViewpointAnchor(marker, objectId) records the object ref', async () => {
     const w = mountViewer({ xktUid: 'r1' })
     await flushPromises()

@@ -1,6 +1,11 @@
 <template>
   <div class="m3d" ref="rootEl">
-    <canvas ref="canvasEl" class="m3d-canvas" @contextmenu.prevent="onCanvasContextMenu"></canvas>
+    <canvas
+      ref="canvasEl"
+      class="m3d-canvas"
+      @contextmenu.prevent="openObjectMenu"
+      @click="onCanvasClick"
+    ></canvas>
     <!-- Navigation cube: a small in-canvas corner widget. Temporarily disabled —
          xeokit-sdk #2016: NavCubePlugin throws "Missing input materialEmissive"
          (regressed in 2.6.104, unfixed through the current latest 2.6.112) which
@@ -262,9 +267,19 @@ function captureViewpointAnchor(
   }
 }
 
-// Right-click on the model: pick the object/surface under the cursor and ask the
-// host to open a context menu there (the marker/object flow into an annotation).
-function onCanvasContextMenu(e: MouseEvent) {
+// Ctrl/⌘ + left-click opens the on-model menu — plain left/right buttons stay free
+// for navigation (pan/orbit). metaKey covers macOS ⌘.
+function onCanvasClick(e: MouseEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.button === 0) {
+    e.preventDefault()
+    openObjectMenu(e)
+  }
+}
+
+// Pick the object/surface under the cursor and ask the host to open a context menu
+// there (the marker/object/normal flow into an annotation or a section plane).
+// Triggered by right-click or Ctrl/⌘+left-click.
+function openObjectMenu(e: MouseEvent) {
   if (!viewer || !canvasEl.value) return
   const rect = canvasEl.value.getBoundingClientRect()
   const canvasPos = [e.clientX - rect.left, e.clientY - rect.top]
