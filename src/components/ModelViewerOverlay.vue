@@ -530,12 +530,14 @@ function onThreads(ts: Thread[]) {
 }
 
 // Restore a thread's saved view (§9): replay the full viewpoint (camera + section
-// planes + visibility + selection) and, if given, centre/highlight an element.
+// planes + visibility + selection) and highlight the referenced element — the
+// explicit deep-link object, or the anchor's first object_ref (the tagged object).
 function restoreThreadView(threadId: string, objectId?: string) {
   const anchor = threadsCache.find((t) => t.id === threadId)?.anchor
   if (anchor?.kind !== 'model-viewpoint') return
   viewerRef.value?.setViewpoint(anchor.viewpoint)
-  if (objectId) viewerRef.value?.highlightObjects([objectId])
+  const objId = objectId ?? (anchor.object_refs?.[0] as { id?: string } | undefined)?.id
+  if (objId) viewerRef.value?.highlightObjects([objId])
   discMin.value = false
   threadPanelRef.value?.focusThread(threadId)
 }

@@ -230,9 +230,13 @@ describe('ModelViewerOverlay', () => {
   })
 
   // ---- annotation markers + deep-link (§9, Phase D part 2/3) ----------------
-  const anchoredThread = (id: string, viewpoint: unknown) => ({
+  const anchoredThread = (id: string, viewpoint: unknown, objectId?: string) => ({
     id,
-    anchor: { kind: 'model-viewpoint', viewpoint },
+    anchor: {
+      kind: 'model-viewpoint',
+      viewpoint,
+      object_refs: objectId ? [{ id: objectId }] : [],
+    },
   })
 
   it('renders a marker per anchored thread the panel surfaces', async () => {
@@ -268,10 +272,11 @@ describe('ModelViewerOverlay', () => {
     await flushPromises()
     useModel3dStore().setReady(true)
     const tp = w.findComponent({ name: 'ThreadPanel' })
-    tp.vm.$emit('threads', [anchoredThread('t2', { vp: 2 })])
+    tp.vm.$emit('threads', [anchoredThread('t2', { vp: 2 }, 'obj-42')])
     tp.vm.$emit('restore-view', 't2')
     await flushPromises()
     expect(hh.setViewpoint).toHaveBeenCalledWith({ vp: 2 })
+    expect(hh.highlightObjects).toHaveBeenCalledWith(['obj-42']) // tagged object selected
     expect(hh.focusThread).toHaveBeenCalledWith('t2')
   })
 
