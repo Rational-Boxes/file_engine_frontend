@@ -268,11 +268,11 @@ describe('Model3DViewer', () => {
     expect(w.emitted('annotation-activate')?.[0]).toEqual(['t1'])
   })
 
-  it('right-click picks an object, highlights it, and emits object-context', async () => {
+  it('Ctrl+left-click picks an object, highlights it, and emits object-context', async () => {
     h.pickHit = { entity: { id: 'obj-7' }, worldPos: [1, 2, 3], worldNormal: [0, 0, 1] }
     const w = mountViewer({ xktUid: 'r1' })
     await flushPromises()
-    await w.find('canvas.m3d-canvas').trigger('contextmenu', { clientX: 40, clientY: 50 })
+    await w.find('canvas.m3d-canvas').trigger('click', { ctrlKey: true, button: 0, clientX: 40, clientY: 50 })
     expect(w.emitted('object-context')?.[0]?.[0]).toMatchObject({
       objectId: 'obj-7',
       worldPos: { x: 1, y: 2, z: 3 },
@@ -283,27 +283,35 @@ describe('Model3DViewer', () => {
     expect(h.setHighlighted).toHaveBeenCalledWith(['obj-7'], true)
   })
 
-  it('right-click on empty space emits a null object-context (dismiss)', async () => {
+  it('⌘+left-click works too (macOS)', async () => {
+    h.pickHit = { entity: { id: 'obj-8' }, worldPos: [0, 0, 0] }
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    await w.find('canvas.m3d-canvas').trigger('click', { metaKey: true, button: 0 })
+    expect(w.emitted('object-context')?.[0]?.[0]).toMatchObject({ objectId: 'obj-8' })
+  })
+
+  it('Ctrl+left-click on empty space emits a null object-context (dismiss)', async () => {
     h.pickHit = null
     const w = mountViewer({ xktUid: 'r1' })
     await flushPromises()
-    await w.find('canvas.m3d-canvas').trigger('contextmenu')
+    await w.find('canvas.m3d-canvas').trigger('click', { ctrlKey: true, button: 0 })
     expect(w.emitted('object-context')?.[0]?.[0]).toBeNull()
   })
 
-  it('Ctrl+left-click also opens the object menu', async () => {
-    h.pickHit = { entity: { id: 'obj-2' }, worldPos: [4, 5, 6], worldNormal: [1, 0, 0] }
-    const w = mountViewer({ xktUid: 'r1' })
-    await flushPromises()
-    await w.find('canvas.m3d-canvas').trigger('click', { ctrlKey: true, button: 0, clientX: 5, clientY: 6 })
-    expect(w.emitted('object-context')?.[0]?.[0]).toMatchObject({ objectId: 'obj-2' })
-  })
-
-  it('a plain left-click does not open the menu (kept free for navigation)', async () => {
+  it('a plain left-click does NOT open the menu (kept free for navigation)', async () => {
     h.pickHit = { entity: { id: 'obj-2' }, worldPos: [0, 0, 0] }
     const w = mountViewer({ xktUid: 'r1' })
     await flushPromises()
     await w.find('canvas.m3d-canvas').trigger('click', { button: 0, clientX: 5, clientY: 6 })
+    expect(w.emitted('object-context')).toBeUndefined()
+  })
+
+  it('a right-click does NOT open the menu (kept free for pan)', async () => {
+    h.pickHit = { entity: { id: 'obj-2' }, worldPos: [0, 0, 0] }
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    await w.find('canvas.m3d-canvas').trigger('contextmenu')
     expect(w.emitted('object-context')).toBeUndefined()
   })
 

@@ -1,9 +1,12 @@
 <template>
   <div class="m3d" ref="rootEl">
+    <!-- The on-model menu opens ONLY on Ctrl/⌘+left-click (see onCanvasClick), so
+         plain left/right buttons stay free for navigation. @contextmenu.prevent
+         just suppresses the browser's right-click menu (right-drag pan). -->
     <canvas
       ref="canvasEl"
       class="m3d-canvas"
-      @contextmenu.prevent="openObjectMenu"
+      @contextmenu.prevent
       @click="onCanvasClick"
     ></canvas>
     <!-- Navigation cube: a small in-canvas corner widget. Temporarily disabled —
@@ -278,7 +281,7 @@ function onCanvasClick(e: MouseEvent) {
 
 // Pick the object/surface under the cursor and ask the host to open a context menu
 // there (the marker/object/normal flow into an annotation or a section plane).
-// Triggered by right-click or Ctrl/⌘+left-click.
+// Sole trigger is onCanvasClick (Ctrl/⌘+left-click).
 function openObjectMenu(e: MouseEvent) {
   if (!viewer || !canvasEl.value) return
   const rect = canvasEl.value.getBoundingClientRect()
