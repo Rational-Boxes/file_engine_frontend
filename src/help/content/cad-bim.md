@@ -91,6 +91,10 @@ On the **Tools** tab, under **Measure**:
 - **■ Stop** ends the current tool; **✕ Meas** clears measurements.
 - Switch the display units with the **mm / m / ft** selector.
 
+Measurements are viewer aids and normally clear when you reload — but if you **add
+a comment** while they're on screen, they're **saved with that comment** and come
+back (re-pinned to the same points) whenever anyone opens its **🎯 View**.
+
 ## Commenting on the model
 
 You can pin a comment to exactly what you're looking at, so a teammate can jump back
@@ -102,8 +106,8 @@ to the same view and element.
   your view.
 
 A model comment shows a **🎯 View** link. Clicking it **restores the saved view** —
-camera, section cuts, and visibility — and **selects the element** the comment is
-about. Next to it, **⬇ BCF** downloads the comment as a **`.bcfzip`** (BCF 2.1) file
+camera, section cuts, visibility, and **any measurements** you had drawn — and
+**selects the element** the comment is about. Next to it, **⬇ BCF** downloads the comment as a **`.bcfzip`** (BCF 2.1) file
 — the camera, clipping, and tagged element packaged for opening in a desktop BCF
 Manager or any BCF-compatible tool, for when working through the live API isn't
 convenient. These comments behave like any other [comment](#comments): replies,

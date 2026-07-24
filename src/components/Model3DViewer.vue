@@ -45,7 +45,11 @@ import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { renditionArrayBuffer, renditionText } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
 import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
-import type { ModelViewpointAnchor } from '@/services/discussionService'
+import type {
+  ModelViewpointAnchor,
+  AnchorMeasurement,
+  AnchorMeasurePoint,
+} from '@/services/discussionService'
 
 // `xktUid` is the rendition child's uid (the .xkt bytes). `treeContainerId`
 // (optional) is the id of the sidebar element the object tree mounts into.
@@ -89,7 +93,7 @@ const store = useModel3dStore()
 
 // Marker id → its thread + viewpoint, so a marker click restores the right view
 // and focuses the right thread. Rebuilt on every renderAnnotations().
-let annotationMeta: Record<string, { threadId: string; viewpoint: unknown }> = {}
+let annotationMeta: Record<string, { threadId: string; viewpoint: unknown; measurements?: AnchorMeasurement[] }> = {}
 
 const rootEl = ref<HTMLElement | null>(null)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
@@ -285,6 +289,7 @@ function captureViewpointAnchor(
 ): ModelViewpointAnchor | null {
   const viewpoint = getViewpoint()
   if (!viewpoint) return null
+  const measurements = captureMeasurements()
   return {
     kind: 'model-viewpoint',
     schema: 'fileengine.anchor.v1',
@@ -293,6 +298,73 @@ function captureViewpointAnchor(
     // A picked object anchors the annotation to a real element (source-tagging
     // lands with the §5.2 metamodel; the id is the xeokit entity id today).
     object_refs: objectId ? [{ id: objectId }] : [],
+    // Persist any drawn measurements with the comment (Option B): BCF has no
+    // measurement entity, so these are FileEngine-native and restore in our viewer.
+    ...(measurements.length ? { measurements } : {}),
+  }
+}
+
+// Snapshot the currently-drawn distance/angle measurements as plain data for the
+// anchor. Each endpoint keeps its world point and (if it snapped to geometry) the
+// element id, so the measurement re-pins to the same spot on restore.
+function captureMeasurements(): AnchorMeasurement[] {
+  const out: AnchorMeasurement[] = []
+  const pt = (m: { worldPos?: number[]; entity?: { id?: string } }): AnchorMeasurePoint => ({
+    pos: [m?.worldPos?.[0] ?? 0, m?.worldPos?.[1] ?? 0, m?.worldPos?.[2] ?? 0],
+    ...(m?.entity?.id ? { entity: String(m.entity.id) } : {}),
+  })
+  try {
+    const ds = distanceMeasurements?.measurements ?? {}
+    for (const id in ds) {
+      const m = ds[id]
+      out.push({ type: 'distance', points: [pt(m.origin), pt(m.target)], value: m.length })
+    }
+  } catch {
+    /* best-effort */
+  }
+  try {
+    const as = angleMeasurements?.measurements ?? {}
+    for (const id in as) {
+      const m = as[id]
+      out.push({ type: 'angle', points: [pt(m.origin), pt(m.corner), pt(m.target)], value: m.angle })
+    }
+  } catch {
+    /* best-effort */
+  }
+  return out
+}
+
+// Recreate persisted measurements from an anchor (restore path). Clears any existing
+// measurements first, then re-pins each to its captured endpoints — snapping back to
+// the recorded element when it still resolves in the current model.
+function renderMeasurements(measurements?: AnchorMeasurement[]) {
+  clearMeasurements()
+  if (!Array.isArray(measurements)) return
+  const ent = (p?: AnchorMeasurePoint) =>
+    p?.entity ? viewer?.scene?.objects?.[p.entity] : undefined
+  let i = 0
+  for (const m of measurements) {
+    try {
+      const p = m.points || []
+      if (m.type === 'distance' && distanceMeasurements && p.length >= 2) {
+        distanceMeasurements.createMeasurement({
+          id: `anchor-dist-${i++}`,
+          origin: { worldPos: p[0].pos, entity: ent(p[0]) },
+          target: { worldPos: p[1].pos, entity: ent(p[1]) },
+          visible: true,
+        })
+      } else if (m.type === 'angle' && angleMeasurements && p.length >= 3) {
+        angleMeasurements.createMeasurement({
+          id: `anchor-angle-${i++}`,
+          origin: { worldPos: p[0].pos, entity: ent(p[0]) },
+          corner: { worldPos: p[1].pos, entity: ent(p[1]) },
+          target: { worldPos: p[2].pos, entity: ent(p[2]) },
+          visible: true,
+        })
+      }
+    } catch {
+      /* best-effort — skip a measurement that won't reconstruct */
+    }
   }
 }
 
@@ -341,6 +413,7 @@ interface AnnotationMarker {
   threadId: string
   marker?: { x: number; y: number; z: number }
   viewpoint: unknown
+  measurements?: AnchorMeasurement[]
 }
 
 // Render the given annotations as in-scene markers (§9). Each needs a world-space
@@ -362,7 +435,7 @@ function renderAnnotations(items: AnnotationMarker[]) {
         markerShown: true,
         labelShown: false,
       })
-      annotationMeta[aid] = { threadId: it.threadId, viewpoint: it.viewpoint }
+      annotationMeta[aid] = { threadId: it.threadId, viewpoint: it.viewpoint, measurements: it.measurements }
     }
   } catch {
     /* best-effort */
@@ -377,6 +450,7 @@ function wireAnnotationClicks() {
       const meta = annotationMeta[annotation?.id ?? '']
       if (!meta) return
       if (meta.viewpoint) setViewpoint(meta.viewpoint)
+      renderMeasurements(meta.measurements)
       emit('annotation-activate', meta.threadId)
     })
   } catch {
@@ -805,6 +879,8 @@ defineExpose({
   startMeasurement,
   clearMeasurements,
   setMeasurementUnits,
+  captureMeasurements,
+  renderMeasurements,
   setNavMode,
   standardView,
   fitToSelection,

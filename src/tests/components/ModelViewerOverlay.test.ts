@@ -35,6 +35,7 @@ const hh = vi.hoisted(() => ({
   // this to simulate a drifted anchor (id no longer in the re-converted model).
   resolveObjectIds: vi.fn((ids: string[]) => ids),
   renderAnnotations: vi.fn(),
+  renderMeasurements: vi.fn(),
   captureViewpointAnchor: vi.fn(() => ({ kind: 'model-viewpoint' })),
   setNavMode: vi.fn(),
   addSectionPlane: vi.fn(() => 'sp1'),
@@ -70,6 +71,7 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
         highlightObjects: hh.highlightObjects,
         resolveObjectIds: hh.resolveObjectIds,
         renderAnnotations: hh.renderAnnotations,
+        renderMeasurements: hh.renderMeasurements,
         captureViewpointAnchor: hh.captureViewpointAnchor,
         setNavMode: hh.setNavMode,
         addSectionPlane: hh.addSectionPlane,
@@ -251,12 +253,13 @@ describe('ModelViewerOverlay', () => {
   })
 
   // ---- annotation markers + deep-link (§9, Phase D part 2/3) ----------------
-  const anchoredThread = (id: string, viewpoint: unknown, objectId?: string) => ({
+  const anchoredThread = (id: string, viewpoint: unknown, objectId?: string, measurements?: unknown[]) => ({
     id,
     anchor: {
       kind: 'model-viewpoint',
       viewpoint,
       object_refs: objectId ? [{ id: objectId }] : [],
+      ...(measurements ? { measurements } : {}),
     },
   })
 
@@ -293,11 +296,13 @@ describe('ModelViewerOverlay', () => {
     await flushPromises()
     useModel3dStore().setReady(true)
     const tp = w.findComponent({ name: 'ThreadPanel' })
-    tp.vm.$emit('threads', [anchoredThread('t2', { vp: 2 }, 'obj-42')])
+    const measures = [{ type: 'distance', points: [{ pos: [0, 0, 0] }, { pos: [1, 0, 0] }], value: 1 }]
+    tp.vm.$emit('threads', [anchoredThread('t2', { vp: 2 }, 'obj-42', measures)])
     tp.vm.$emit('restore-view', 't2')
     await flushPromises()
     expect(hh.setViewpoint).toHaveBeenCalledWith({ vp: 2 })
     expect(hh.highlightObjects).toHaveBeenCalledWith(['obj-42']) // tagged object selected
+    expect(hh.renderMeasurements).toHaveBeenCalledWith(measures) // measurements re-drawn
     expect(hh.focusThread).toHaveBeenCalledWith('t2')
   })
 

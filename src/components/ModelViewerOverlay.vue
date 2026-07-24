@@ -581,7 +581,13 @@ function onThreads(ts: Thread[]) {
   threadsCache = ts
   const markers = ts
     .filter((t) => t.anchor?.kind === 'model-viewpoint')
-    .map((t) => ({ id: t.id, threadId: t.id, marker: t.anchor?.marker, viewpoint: t.anchor?.viewpoint }))
+    .map((t) => ({
+      id: t.id,
+      threadId: t.id,
+      marker: t.anchor?.marker,
+      viewpoint: t.anchor?.viewpoint,
+      measurements: t.anchor?.measurements,
+    }))
   viewerRef.value?.renderAnnotations(markers)
   maybeRestoreDeepLink()
 }
@@ -593,6 +599,8 @@ function restoreThreadView(threadId: string, objectId?: string) {
   const anchor = threadsCache.find((t) => t.id === threadId)?.anchor
   if (anchor?.kind !== 'model-viewpoint') return
   viewerRef.value?.setViewpoint(anchor.viewpoint)
+  // Re-draw any measurements captured with the comment (Option B).
+  viewerRef.value?.renderMeasurements(anchor.measurements)
   const objId = objectId ?? (anchor.object_refs?.[0] as { id?: string } | undefined)?.id
   anchorMiss.value = false
   if (objId) {

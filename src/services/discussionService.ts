@@ -48,6 +48,23 @@ export interface MentionUser {
 // null anchor = a plain file-level comment (unchanged behaviour). The `viewpoint`
 // is what xeokit's BCFViewpointsPlugin.getViewpoint() emits — camera, visibility,
 // selection, clipping planes, snapshot — so it restores exactly via setViewpoint().
+// A captured measurement endpoint: a world-space point and (when the pick landed on
+// geometry) the id of the element it snapped to, so the measurement can be re-pinned.
+export interface AnchorMeasurePoint {
+  pos: [number, number, number]
+  entity?: string
+}
+
+// A measurement persisted with a comment (Option B — FileEngine-native, since BCF
+// has no measurement/dimension entity). `points` holds the ordered endpoints:
+// distance → [origin, target]; angle → [origin, corner, target]. `value` is the
+// length/angle at capture time, kept for reference (the viewer recomputes on render).
+export interface AnchorMeasurement {
+  type: 'distance' | 'angle'
+  points: AnchorMeasurePoint[]
+  value?: number
+}
+
 export interface ModelViewpointAnchor {
   kind: 'model-viewpoint'
   schema: string
@@ -55,6 +72,7 @@ export interface ModelViewpointAnchor {
   marker?: { x: number; y: number; z: number }
   object_refs?: unknown[]
   snapshot_rendition_uid?: string
+  measurements?: AnchorMeasurement[]
 }
 
 export interface Thread {

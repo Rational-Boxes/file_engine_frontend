@@ -78,8 +78,10 @@ const h = vi.hoisted(() => {
     sceneObjects: {} as Record<string, unknown>,
     metaScene: { metaObjects: {} as Record<string, unknown> },
     sectionPlanes,
-    distance: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn() },
-    angle: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn() },
+    distance: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn(),
+                measurements: {} as Record<string, unknown>, createMeasurement: vi.fn() },
+    angle: { control: { activate: vi.fn(), deactivate: vi.fn(), snapping: false }, clear: vi.fn(),
+             measurements: {} as Record<string, unknown>, createMeasurement: vi.fn() },
     metrics: { units: 'meters' },
     bcf: { getViewpoint: vi.fn(() => VIEWPOINT), setViewpoint: vi.fn() },
     VIEWPOINT,
@@ -159,6 +161,8 @@ type ViewerApi = {
   getViewpoint: () => unknown
   setViewpoint: (v: unknown) => void
   captureViewpointAnchor: (marker?: { x: number; y: number; z: number }, objectId?: string) => unknown
+  captureMeasurements: () => unknown[]
+  renderMeasurements: (m?: unknown[]) => void
   renderAnnotations: (
     items: Array<{ id: string; threadId: string; marker?: { x: number; y: number; z: number }; viewpoint: unknown }>,
   ) => void
@@ -193,6 +197,8 @@ describe('Model3DViewer', () => {
     h.highlightedIds = []
     h.distance.control.snapping = false
     h.angle.control.snapping = false
+    h.distance.measurements = {}
+    h.angle.measurements = {}
     h.metrics.units = 'meters'
     h.pickHit = null
     h.scenePick.mockImplementation(() => h.pickHit)
@@ -370,6 +376,57 @@ describe('Model3DViewer', () => {
       'obj-9',
     ) as Record<string, unknown>
     expect(anchor.object_refs).toEqual([{ id: 'obj-9' }])
+  })
+
+  it('captureMeasurements() snapshots distance + angle measurements (points, entity, value)', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    h.distance.measurements = {
+      d1: { origin: { worldPos: [0, 0, 0], entity: { id: 'wall' } }, target: { worldPos: [3, 0, 0] }, length: 3 },
+    }
+    h.angle.measurements = {
+      a1: { origin: { worldPos: [0, 0, 0] }, corner: { worldPos: [1, 0, 0] }, target: { worldPos: [1, 1, 0] }, angle: 90 },
+    }
+    const ms = (w.vm as unknown as ViewerApi).captureMeasurements()
+    expect(ms).toEqual([
+      { type: 'distance', points: [{ pos: [0, 0, 0], entity: 'wall' }, { pos: [3, 0, 0] }], value: 3 },
+      { type: 'angle', points: [{ pos: [0, 0, 0] }, { pos: [1, 0, 0] }, { pos: [1, 1, 0] }], value: 90 },
+    ])
+  })
+
+  it('captureViewpointAnchor() includes drawn measurements', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    h.distance.measurements = { d1: { origin: { worldPos: [0, 0, 0] }, target: { worldPos: [2, 0, 0] }, length: 2 } }
+    const anchor = (w.vm as unknown as ViewerApi).captureViewpointAnchor() as Record<string, unknown>
+    expect(anchor.measurements).toEqual([
+      { type: 'distance', points: [{ pos: [0, 0, 0] }, { pos: [2, 0, 0] }], value: 2 },
+    ])
+  })
+
+  it('renderMeasurements() clears then recreates each measurement (re-pinning entities)', async () => {
+    const w = mountViewer({ xktUid: 'r1' })
+    await flushPromises()
+    h.sceneObjects.wall = { id: 'wall' } // the recorded element still resolves
+    ;(w.vm as unknown as ViewerApi).renderMeasurements([
+      { type: 'distance', points: [{ pos: [0, 0, 0], entity: 'wall' }, { pos: [3, 0, 0] }], value: 3 },
+      { type: 'angle', points: [{ pos: [0, 0, 0] }, { pos: [1, 0, 0] }, { pos: [1, 1, 0] }], value: 90 },
+    ])
+    expect(h.distance.clear).toHaveBeenCalled() // cleared first
+    expect(h.distance.createMeasurement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: { worldPos: [0, 0, 0], entity: { id: 'wall' } },
+        target: { worldPos: [3, 0, 0], entity: undefined },
+      }),
+    )
+    expect(h.angle.createMeasurement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: { worldPos: [0, 0, 0], entity: undefined },
+        corner: { worldPos: [1, 0, 0], entity: undefined },
+        target: { worldPos: [1, 1, 0], entity: undefined },
+      }),
+    )
+    delete h.sceneObjects.wall
   })
 
   it('captureSnapshot() returns the viewer PNG snapshot', async () => {
