@@ -65,12 +65,18 @@ export const conversationService = {
 
   // A single chat plus its messages (for resume). Throws on 404 (not the user's).
   async get(id: string): Promise<ConversationDetail> {
-    const { data } = await csaiClient.get<{ id: string; title: string; messages?: RawMessage[] }>(
-      `/conversations/${id}`,
-    )
+    const { data } = await csaiClient.get<{
+      id: string
+      title: string
+      scope?: Array<{ uid: string; path: string }>
+      messages?: RawMessage[]
+    }>(`/conversations/${id}`)
     return {
       id: data.id,
       title: data.title || 'New chat',
+      scope: (data.scope ?? [])
+        .filter((s) => s && s.uid)
+        .map((s) => ({ uid: String(s.uid), path: String(s.path ?? '') })),
       messages: (data.messages ?? []).map((m) => ({
         role: m.role === 'assistant' ? 'assistant' : 'user',
         content: m.content ?? '',

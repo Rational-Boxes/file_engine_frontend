@@ -164,6 +164,23 @@ describe('ChatSession', () => {
     expect(JSON.parse(ws.sent[1])).toEqual({ message: 'second' })
   })
 
+  it('sends scope_folders (with paths) when a folder scope is provided', () => {
+    const { ws, session } = setup()
+    ws.open()
+    const scope = [
+      { uid: 'fa', path: '/A' },
+      { uid: 'fb', path: '/B' },
+    ]
+    session.send('scoped', { scopeFolders: scope })
+    expect(JSON.parse(ws.sent[0])).toEqual({ message: 'scoped', scope_folders: scope })
+    // An empty scope is still sent (so clearing it persists on the conversation).
+    session.send('cleared', { scopeFolders: [] })
+    expect(JSON.parse(ws.sent[1])).toEqual({ message: 'cleared', scope_folders: [] })
+    // Omitting the option entirely sends no scope field.
+    session.send('none')
+    expect(JSON.parse(ws.sent[2])).toEqual({ message: 'none' })
+  })
+
   it('dispatches incoming events to the handlers', () => {
     const { ws, tok, cites, done, err, session } = setup()
     void session

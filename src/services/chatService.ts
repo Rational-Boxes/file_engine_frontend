@@ -65,6 +65,10 @@ export interface ChatSendOptions {
   // "Generate report": pins the exact destination the user chose (a bridge folder
   // UID + filename). The model never chooses where — see GENERATE_REPORT_TO_TARGET.
   reportTarget?: { folderUid: string; folderPath: string; filename: string }
+  // Optional RAG folder scope: confine retrieval to these folders + subfolders. Each
+  // carries the folder path too, so it round-trips for display + restore on resume.
+  // Empty/omitted ⇒ search all documents the user can read (the default).
+  scopeFolders?: Array<{ uid: string; path: string }>
 }
 
 function parseCitation(c: unknown): Citation {
@@ -192,6 +196,9 @@ export class ChatSession {
       payload.report_target_filename = opts.reportTarget.filename
       payload.report_target_path = opts.reportTarget.folderPath
     }
+    // Sent whenever provided (even empty) so a cleared scope persists on the
+    // conversation; the server derives the UIDs and stores it for resume.
+    if (opts.scopeFolders) payload.scope_folders = opts.scopeFolders
     const json = JSON.stringify(payload)
     // OPEN === 1 (avoid referencing the WebSocket global, absent in jsdom).
     if (this.ws.readyState === 1) this.ws.send(json)

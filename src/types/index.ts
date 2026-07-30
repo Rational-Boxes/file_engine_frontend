@@ -128,5 +128,7 @@ export interface ConversationSummary {
 export interface ConversationDetail {
   id: string
   title: string
+  // The conversation's saved RAG folder scope (restores the "Limit to folders" tool).
+  scope: Array<{ uid: string; path: string }>
   messages: Array<{ role: 'user' | 'assistant'; content: string; citations: Citation[] }>
 }

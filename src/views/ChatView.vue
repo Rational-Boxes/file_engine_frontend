@@ -175,11 +175,33 @@
           title="Generate a report of this conversation and save it to a folder you choose"
           @click="openReportDialog"
         >📄 Generate report</button>
-        <p class="tb-hint">Summarize this conversation into a document saved to a folder you choose.</p>
+        <p class="tb-hint">Summarize this conversation into an editable Word document saved to a folder you choose.</p>
+
+        <button
+          class="tb-action"
+          type="button"
+          :class="{ 'tb-action-on': scopeFolders.length }"
+          :disabled="busy"
+          title="Limit which folders the assistant searches for answers"
+          @click="openScopeDialog"
+        >🗂 Limit to folders{{ scopeFolders.length ? ` (${scopeFolders.length})` : '' }}</button>
+        <p class="tb-hint">
+          {{ scopeFolders.length
+            ? 'Retrieval is limited to the folders below and their subfolders.'
+            : 'By default the assistant can use all your documents. Pick folders to narrow it.' }}
+        </p>
+        <ul v-if="scopeFolders.length" class="tb-chips">
+          <li v-for="f in scopeFolders" :key="f.uid" class="tb-chip" :title="f.path">
+            <span class="tb-chip-txt">{{ f.path }}</span>
+            <button class="tb-chip-x" type="button" title="Remove" @click="removeScope(f.uid)">✕</button>
+          </li>
+          <li><button class="tb-chip-clear" type="button" @click="clearScope">Clear all</button></li>
+        </ul>
       </aside>
     </div>
 
     <ReportTargetDialog :open="reportDialogOpen" @select="onReportTarget" @cancel="reportDialogOpen = false" />
+    <FolderScopeDialog :open="scopeDialogOpen" :selected="scopeFolders" @apply="onScopeApply" @cancel="scopeDialogOpen = false" />
   </div>
 </template>
 
@@ -200,6 +222,7 @@ import { renderMarkdown } from '@/utils/markdown'
 import { linkifyFileRefs, extractFileRefUids } from '@/utils/fileRefs'
 import ShadowHtml from '@/components/ShadowHtml.vue'
 import ReportTargetDialog from '@/components/ReportTargetDialog.vue'
+import FolderScopeDialog from '@/components/FolderScopeDialog.vue'
 import type { Citation, ConversationSummary } from '@/types'
 
 const preview = usePreviewStore()
@@ -407,6 +430,8 @@ async function selectConversation(id: string) {
       report: m.role === 'assistant' ? reportFromContent(m.content) : undefined,
     }))
     currentConversationId.value = id
+    // Restore the "Limit to folders" tool to the state saved with this conversation.
+    scopeFolders.value = convo.scope || []
     error.value = ''
     stick.value = true // jump to the latest message of the resumed chat
     resolveNames([
@@ -427,6 +452,7 @@ function newChat() {
   if (busy.value) return
   messages.value = []
   currentConversationId.value = null
+  scopeFolders.value = [] // a fresh chat starts unscoped (all documents)
   error.value = ''
 }
 
@@ -450,10 +476,30 @@ function send() {
   // Always send the checkbox state (true OR false) so the user's choice is
   // authoritative — omitting it lets the server fall back to its web_search_default
   // (which may be on), so the model would search even with the box unchecked.
-  const opts: ChatSendOptions = { history, webSearch: webSearch.value }
+  const opts: ChatSendOptions = { history, webSearch: webSearch.value, scopeFolders: scopeFolders.value }
   if (currentConversationId.value) opts.conversationId = currentConversationId.value
   session.send(text, opts)
   input.value = ''
+}
+
+// --- RAG folder scope ------------------------------------------------------
+// When set, the assistant's document retrieval is confined to these folders and
+// their subfolders (for the whole conversation); empty ⇒ all documents (default).
+const scopeDialogOpen = ref(false)
+const scopeFolders = ref<Array<{ uid: string; path: string }>>([])
+
+function openScopeDialog() {
+  if (!busy.value) scopeDialogOpen.value = true
+}
+function onScopeApply(folders: Array<{ uid: string; path: string }>) {
+  scopeFolders.value = folders
+  scopeDialogOpen.value = false
+}
+function removeScope(uid: string) {
+  scopeFolders.value = scopeFolders.value.filter((f) => f.uid !== uid)
+}
+function clearScope() {
+  scopeFolders.value = []
 }
 
 // --- Generate report -------------------------------------------------------
@@ -471,7 +517,9 @@ function onReportTarget(target: { folderUid: string; folderPath: string; filenam
   reportDialogOpen.value = false
   if (busy.value || !session) return
   const history = messages.value.map((m) => ({ role: m.role, content: m.content }))
-  const name = /\.html?$/i.test(target.filename) ? target.filename : target.filename + '.html'
+  // Reports are saved as editable Word (.docx) drafts (server always writes .docx).
+  const base = target.filename.replace(/\.(html?|docx)$/i, '')
+  const name = base + '.docx'
   const dest = (target.folderPath === '/' ? '' : target.folderPath) + '/' + name
   messages.value.push({ role: 'user', content: 'Generate a report of our conversation.', reportDest: dest })
   messages.value.push({ role: 'assistant', content: '', streaming: true, writingReport: true })
@@ -479,11 +527,13 @@ function onReportTarget(target: { folderUid: string; folderPath: string; filenam
   stick.value = true
   busy.value = true
   error.value = ''
-  const opts: ChatSendOptions = { history, reportTarget: target }
+  const opts: ChatSendOptions = { history, reportTarget: target, scopeFolders: scopeFolders.value }
   if (currentConversationId.value) opts.conversationId = currentConversationId.value
   session.send('Generate a report of our conversation.', opts)
 }
 
+// Open the saved report in the preview window (its PDF preview). The report is an
+// editable Word draft, so the user can open it in the editor from there when ready.
 function openReport(m: Msg) {
   if (m.report) preview.open(m.report.uid, m.report.name)
 }
@@ -884,11 +934,69 @@ function onFileRef(uid: string) {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* Active state for a toggle-like action (folder scope in use). */
+.tb-action-on {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+}
 .tb-hint {
   font-size: 12px;
   color: var(--muted);
   margin: 0 0 6px;
   line-height: 1.4;
+}
+/* Selected-folder chips for the RAG scope tool. */
+.tb-chips {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tb-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+.tb-chip-txt {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* keep the folder's leaf name visible when it overflows */
+  text-align: left;
+}
+.tb-chip-x {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+}
+.tb-chip-x:hover {
+  color: var(--primary);
+}
+.tb-chip-clear {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 0;
+  text-align: left;
+}
+.tb-chip-clear:hover {
+  color: var(--primary);
 }
 
 /* On narrow screens keep the tools column but make it compact (icon-ish, no
