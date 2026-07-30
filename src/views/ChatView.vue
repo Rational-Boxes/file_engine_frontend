@@ -677,10 +677,11 @@ function onFileRef(uid: string) {
 /* Full-width chat area (no column cap) so wide content — tables especially — can
    use the whole space. Prose is kept in a readable column by the message content
    itself (user bubbles stay compact; assistant prose is measure-limited in
-   ShadowHtml), not by squeezing the whole area. */
+   ShadowHtml), not by squeezing the whole area. No outer padding — the interface
+   is full-bleed. */
 .content {
   flex: 1;
-  padding: 22px 36px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   min-width: 0;
