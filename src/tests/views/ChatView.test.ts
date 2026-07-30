@@ -41,6 +41,7 @@ vi.mock('@/services/conversationService', () => ({
 
 import ChatView from '@/views/ChatView.vue'
 import ShadowHtml from '@/components/ShadowHtml.vue'
+import FolderScopeDialog from '@/components/FolderScopeDialog.vue'
 
 const mountView = () => mount(ChatView, { global: { stubs: { AppNav: true, HelpIcon: true } } })
 
@@ -67,7 +68,7 @@ describe('ChatView', () => {
     const w = mountView()
     await w.find('input').setValue('What were northern revenues?')
     await w.find('form').trigger('submit')
-    expect(sendMock).toHaveBeenCalledWith('What were northern revenues?', { history: [], webSearch: false })
+    expect(sendMock).toHaveBeenCalledWith('What were northern revenues?', { history: [], webSearch: false, scopeFolders: [] })
 
     handlers.onToken?.('<think>let me check the table</think>')
     handlers.onToken?.('Northern revenue reached **$175M**.')
@@ -103,6 +104,7 @@ describe('ChatView', () => {
         { role: 'assistant', content: 'answer one' },
       ],
       webSearch: false,
+      scopeFolders: [],
     })
   })
 
@@ -111,7 +113,7 @@ describe('ChatView', () => {
     await w.find('.tb-toggle input').setValue(true)
     await w.find('.composer-input').setValue('latest news?')
     await w.find('form').trigger('submit')
-    expect(sendMock).toHaveBeenCalledWith('latest news?', { history: [], webSearch: true })
+    expect(sendMock).toHaveBeenCalledWith('latest news?', { history: [], webSearch: true, scopeFolders: [] })
   })
 
   it('shows a searching indicator and renders web citations as external links', async () => {
@@ -270,7 +272,46 @@ describe('ChatView', () => {
     const btn = w.find('.open-report')
     expect(btn.exists()).toBe(true) // link rebuilt from the persisted confirmation
     await btn.trigger('click')
-    expect(open).toHaveBeenCalledWith('abc-123', 'q3.html') // opens the preview
+    expect(open).toHaveBeenCalledWith('abc-123', 'q3.html') // opens the preview window
+  })
+
+  it('applies a folder scope and sends scope_folders on the next message', async () => {
+    const w = mountView()
+    await flushPromises()
+    // The scope tool applies a folder selection (the dialog itself is exercised in
+    // its own unit; here we assert ChatView threads the choice into the send).
+    const scope = [
+      { uid: 'fa', path: '/A' },
+      { uid: 'fb', path: '/B' },
+    ]
+    w.findComponent(FolderScopeDialog).vm.$emit('apply', scope)
+    await flushPromises()
+    sendMock.mockClear()
+    await w.find('input').setValue('scoped question')
+    await w.find('form').trigger('submit')
+    const [, opts] = sendMock.mock.calls.at(-1)!
+    expect(opts.scopeFolders).toEqual(scope)
+  })
+
+  it('restores the saved folder scope when resuming a conversation', async () => {
+    listConvs.mockResolvedValue([{ id: 'c3', title: 'Scoped chat', updatedAt: 't' }])
+    getConv.mockResolvedValue({
+      id: 'c3',
+      title: 'Scoped chat',
+      scope: [{ uid: 'fa', path: '/Projects/Acme' }],
+      messages: [{ role: 'user', content: 'hi', citations: [] }],
+    })
+    const w = mountView()
+    await flushPromises()
+    await w.find('.conv-open').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('/Projects/Acme') // the scope chip is restored
+    // …and the next message carries the restored scope.
+    sendMock.mockClear()
+    await w.find('input').setValue('follow up')
+    await w.find('form').trigger('submit')
+    const [, opts] = sendMock.mock.calls.at(-1)!
+    expect(opts.scopeFolders).toEqual([{ uid: 'fa', path: '/Projects/Acme' }])
   })
 
   it('sends the adopted conversation_id on a follow-up after the server assigns it', async () => {
@@ -291,6 +332,7 @@ describe('ChatView', () => {
         { role: 'assistant', content: 'answer' },
       ],
       webSearch: false,
+      scopeFolders: [],
       conversationId: 'srv-123',
     })
   })
@@ -333,6 +375,6 @@ describe('ChatView', () => {
     // next send carries no conversation_id (fresh chat)
     await w.find('input').setValue('brand new')
     await w.find('form').trigger('submit')
-    expect(sendMock).toHaveBeenLastCalledWith('brand new', { history: [], webSearch: false })
+    expect(sendMock).toHaveBeenLastCalledWith('brand new', { history: [], webSearch: false, scopeFolders: [] })
   })
 })

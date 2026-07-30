@@ -73,6 +73,7 @@ describe('conversationService', () => {
     expect(convo).toEqual({
       id: 'c1',
       title: 'Chat',
+      scope: [],
       messages: [
         { role: 'user', content: 'q', citations: [] },
         {
@@ -85,6 +86,26 @@ describe('conversationService', () => {
         },
       ],
     })
+  })
+
+  it('maps the saved folder scope (dropping entries without a uid)', async () => {
+    get.mockResolvedValue({
+      data: {
+        id: 'c2',
+        title: 'Scoped',
+        scope: [
+          { uid: 'fa', path: '/A' },
+          { uid: 'fb', path: '/B/deep' },
+          { path: '/no-uid' }, // dropped
+        ],
+        messages: [],
+      },
+    })
+    const convo = await conversationService.get('c2')
+    expect(convo.scope).toEqual([
+      { uid: 'fa', path: '/A' },
+      { uid: 'fb', path: '/B/deep' },
+    ])
   })
 
   it('deletes and reports success / failure', async () => {

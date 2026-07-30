@@ -2,7 +2,7 @@
 id: ai-research
 title: The AI research chat
 category: AI Research
-keywords: [ai, chat, assistant, research, search, web search, citation, sources, llm, save, report, generate report, findings, provenance, chat log, audit, mcp, tools, external tools, consent, approve]
+keywords: [ai, chat, assistant, research, search, web search, citation, sources, llm, save, report, generate report, docx, word, editable, edit, folder scope, limit to folders, findings, provenance, chat log, audit, mcp, tools, external tools, consent, approve]
 order: 1
 related: [getting-started, editing, acl-basics]
 ---
@@ -34,8 +34,9 @@ see live progress — a blinking cursor as the answer streams in, *…thinking�
 reasons, and status notes like *🔎 Searching the web…* when it reaches out.
 
 The assistant answers from documents **you already have access to** — there's no need
-to attach files or pick a folder; it respects your [permissions](#acl-basics)
-automatically.
+to attach files; it respects your [permissions](#acl-basics) automatically. By default
+it can draw on **all** documents you can read; to focus it on particular folders, use
+**Limit to folders** (below).
 
 ## Web search — your choice
 
@@ -43,6 +44,23 @@ The **Tools** panel has a **Web search** toggle: *"Let the assistant search the 
 when your documents don't have the answer."* Turn it on when you want the assistant to
 look beyond your files, or leave it off to keep answers grounded only in your
 documents. Your choice for the conversation always wins.
+
+## Limiting which folders are searched
+
+By default the assistant can draw on **all** documents you have access to. When you
+want to focus a conversation on one area — a single project, client, or folder tree —
+use **🗂 Limit to folders** in the **Tools** panel.
+
+1. Choose **🗂 Limit to folders**. A dialog lets you browse and **tick** the folders
+   to include.
+2. Selecting a folder includes it **and everything inside it** (its subfolders).
+3. Choose **Limit to N folders** to apply — the chosen folders show as chips in the
+   Tools panel.
+
+While a scope is active, the assistant only searches those folders for answers (it
+still respects your [permissions](#acl-basics)). Remove a folder with its **✕**, or
+**Clear all** to go back to searching everything. The scope stays for the whole
+conversation until you change it.
 
 ## Conversations
 
@@ -92,8 +110,8 @@ report**. A **Generate report** dialog lets you pick exactly where it goes:
 
 1. Browse to a destination folder (starting at **Home**), creating one with
    **＋ New folder** if needed.
-2. Enter a **File name** (it saves as an `.html` document by default). A live hint
-   confirms *"Saves to &lt;folder&gt; as &lt;name&gt;."*
+2. Enter a **File name** (it saves as an editable **Word `.docx`** document). A live
+   hint confirms *"Saves to &lt;folder&gt; as &lt;name&gt;."*
 3. Choose **Generate report**.
 
 **Or just ask in chat** — say something like *"save this as a report"* or *"write
@@ -101,12 +119,13 @@ these results to a file."* The assistant browses folders you can access, propose
 destination for you to confirm, and saves it there.
 
 Either way, the report is saved as a **first-class file** in your storage — with its
-own [permissions](#acl-basics), version history, and comments, and an automatic
-preview. When it's done, an **📄 Open report** button appears on the answer, and the
-assistant confirms the location in the chat, for example: *"✅ Saved the report to
-/Reports/q3.html."* You need **write access** to the destination; if it can't save
-there, it tells you why. Because reports are saved as HTML, you can also
-[edit one in the browser](#editing) afterward.
+own [permissions](#acl-basics), version history, comments, and an automatic preview.
+Reports are written as an **editable Word (`.docx`) document**, so they're a **draft
+you can refine**: when it's done, an **📄 Open report** button appears on the answer
+and opens its **preview** (the generated PDF). From there you can open it in the
+[office editor](#editing) to revise it. The assistant also confirms the location in
+the chat, for example: *"✅ Saved the report to /Reports/q3.docx."* You need **write
+access** to the destination; if it can't save there, it tells you why.
 
 ## The chat log: reviewable provenance
 
