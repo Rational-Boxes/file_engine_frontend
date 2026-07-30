@@ -721,8 +721,10 @@ function onFileRef(uid: string) {
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
-  /* Keep user messages compact + right-aligned (they're short, plain text). */
+  /* Keep user messages compact + right-aligned (they're short, plain text), with a
+     little right margin so the bubble isn't flush against the edge. */
   max-width: min(46rem, 85%);
+  margin-right: 8px;
 }
 
 .text {
