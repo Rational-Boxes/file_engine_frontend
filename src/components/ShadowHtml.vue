@@ -58,17 +58,23 @@ const BASE = `
   :host { display: block; }
   .md { white-space: normal; font: inherit; color: inherit; }
   .md > :last-child { margin-bottom: 0; }
+  /* Prose stays in a readable column; wide block content (tables, code) may use the
+     full available width and only scrolls if it exceeds it (see .md table/.md pre). */
+  .md p, .md ul, .md ol, .md h1, .md h2, .md h3, .md h4, .md blockquote { max-width: 72ch; }
   .md p { margin: 0 0 8px; }
   .md ul, .md ol { margin: 0 0 8px; padding-left: 20px; }
   .md h1, .md h2, .md h3 { font-size: 14px; margin: 8px 0 4px; }
   .md code { background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 4px; font-family: var(--font-sans); font-size: 12px; }
-  .md pre { background: #0f172a; color: #e2e8f0; padding: 10px 12px; border-radius: 8px; overflow: auto; margin: 0 0 8px; }
+  .md pre { background: #0f172a; color: #e2e8f0; padding: 10px 12px; border-radius: 8px; overflow: auto; margin: 0 0 8px; max-width: 100%; }
   .md pre code { background: none; padding: 0; color: inherit; }
   .md a { color: var(--primary); }
   .md a.file-ref { cursor: pointer; text-decoration: none; border-bottom: 1px dotted currentColor; white-space: nowrap; }
   .md a.file-ref:hover { text-decoration: none; border-bottom-style: solid; }
   .md img { max-width: 100%; }
-  .md table { border-collapse: collapse; margin: 0 0 8px; }
+  /* A wide table grows to the full available width and scrolls ONLY when it exceeds
+     it (display:block + max-width:100% + overflow-x on the table itself — no
+     scrollbar until the content actually needs more than the available space). */
+  .md table { display: block; width: max-content; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0 0 8px; }
   .md th, .md td { border: 1px solid var(--border); padding: 4px 8px; }
   .md .thinking { color: var(--muted); font-style: italic; margin: 0; }
   .md.streaming > :last-child::after {
