@@ -674,11 +674,13 @@ function onFileRef(uid: string) {
   margin: 0;
 }
 
+/* Full-width chat area (no column cap) so wide content — tables especially — can
+   use the whole space. Prose is kept in a readable column by the message content
+   itself (user bubbles stay compact; assistant prose is measure-limited in
+   ShadowHtml), not by squeezing the whole area. */
 .content {
   flex: 1;
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 16px 18px;
+  padding: 22px 36px;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -703,7 +705,11 @@ function onFileRef(uid: string) {
 }
 
 .bubble {
-  max-width: 80%;
+  /* Assistant answers may use the full width (wide tables); prose inside stays in
+     a readable column (ShadowHtml). min-width:0 lets wide children scroll rather
+     than force the flex row wider. */
+  max-width: 100%;
+  min-width: 0;
   padding: 8px 12px;
   border-radius: 12px;
   background: var(--card);
@@ -715,6 +721,8 @@ function onFileRef(uid: string) {
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
+  /* Keep user messages compact + right-aligned (they're short, plain text). */
+  max-width: min(46rem, 85%);
 }
 
 .text {
