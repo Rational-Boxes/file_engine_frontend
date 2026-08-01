@@ -310,9 +310,9 @@ const openHint = computed(() => (mediaKind.value === 'video' ? 'Play the video' 
 // reshowing, else the live document.
 const viewerSrc = computed(() => (markupView.value ? markupUrl.value : pdfUrl.value))
 // Whether the markup toolbar is shown + editing enabled: on the full review surface,
-// for a writer, on the live document (never while reshowing a saved copy). The
-// discussion panel — where a saved markup attaches — lives on this surface too.
-const canAnnotate = computed(() => !!props.fullWidth && canWrite.value && !markupView.value)
+// for a writer. Applies to BOTH the live document and a reshown marked-up copy — the
+// user can add further markup to a saved copy and attach it to another comment.
+const canAnnotate = computed(() => !!props.fullWidth && canWrite.value)
 
 // Docking behaviour (orientation, minimize, draggable divider) is shared with the
 // 3D viewer via a composable; combined only on the full preview surface.
@@ -447,7 +447,9 @@ async function downloadOriginal() {
 // post and shows the error, so a failed upload never posts an orphaned comment.
 async function attachMarkup(): Promise<CommentMarkup | null> {
   const viewer = pdfViewerRef.value
-  if (!viewer || markupView.value || !props.uid || !viewer.hasEdits()) return null
+  // Captures whatever is on screen — the live document OR a reshown copy the user has
+  // marked up further — as a new rendition child of the source file.
+  if (!viewer || !props.uid || !viewer.hasEdits()) return null
   const bytes = await viewer.saveBytes()
   const { uid, name } = await createMarkupRendition(props.uid, auth.user || 'anon', bytes)
   // The markup is now saved to the comment, but it STAYS on the live document so the
@@ -493,6 +495,8 @@ async function onShowMarkup(markup: CommentMarkup) {
 }
 
 function closeMarkupView() {
+  // Guard: returning to the live document discards unsaved further-markup on the copy.
+  if (!confirmDiscard()) return
   markupView.value = null
   closeMarkupUrl()
 }

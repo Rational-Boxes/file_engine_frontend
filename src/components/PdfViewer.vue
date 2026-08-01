@@ -49,6 +49,9 @@
         type="button"
         @click="setMode(t.name)"
       >{{ t.icon }} {{ t.label }}</button>
+      <span class="pv-sep" aria-hidden="true"></span>
+      <button class="pv-tool" title="Undo (Ctrl+Z)" type="button" @click="undo">↶ Undo</button>
+      <button class="pv-tool" title="Redo (Ctrl+Y)" type="button" @click="redo">↷ Redo</button>
       <span class="pv-spacer"></span>
       <span v-if="dirty" class="pv-dirty" title="Unsaved markup">● unsaved markup</span>
     </div>
@@ -256,6 +259,14 @@ function setMode(name: ToolName) {
   }
 }
 
+// Undo/redo drive the annotation-editor UIManager via its `editingaction` event
+// (the same path its Ctrl+Z / Ctrl+Y shortcuts take).
+function editingAction(name: 'undo' | 'redo') {
+  eventBus?.dispatch('editingaction', { source: null, name })
+}
+const undo = () => editingAction('undo')
+const redo = () => editingAction('redo')
+
 // Produce the edited PDF bytes (annotations baked in). This is the byte round-trip
 // the native browser viewer never exposes — the caller PUTs these as a markup
 // rendition. Throws if no document is loaded.
@@ -338,6 +349,12 @@ defineExpose({
   border-color: var(--primary);
   color: var(--primary);
   font-weight: 600;
+}
+.pv-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--border);
 }
 .pv-spacer {
   flex: 1 1 auto;
