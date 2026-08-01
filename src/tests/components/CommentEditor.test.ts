@@ -55,4 +55,30 @@ describe('CommentEditor', () => {
     await filled.find('.ce-submit').trigger('click')
     expect(filled.emitted('submit')).toHaveLength(1)
   })
+
+  // Regression: PDF.js's annotation-editor UIManager installs GLOBAL keydown +
+  // copy/cut/paste listeners that hijack Backspace/Delete/Cut for a <textarea>
+  // (it only exempts <input type=text|number>). The composer must stop these
+  // events from bubbling to window/document, or editing a comment while a PDF
+  // markup is selected deletes the markup and eats the keystroke.
+  it('stops key/clipboard events from reaching global editor listeners', () => {
+    const w = mount(CommentEditor, { props: { modelValue: 'hi' }, attachTo: document.body })
+    const ta = w.find('textarea').element
+    const seen: string[] = []
+    const record = (e: Event) => seen.push(e.type)
+    for (const type of ['keydown', 'keyup', 'copy', 'cut', 'paste']) {
+      window.addEventListener(type, record)
+    }
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+    ta.dispatchEvent(new KeyboardEvent('keyup', { key: 'Backspace', bubbles: true }))
+    for (const type of ['copy', 'cut', 'paste']) {
+      ta.dispatchEvent(new Event(type, { bubbles: true }))
+    }
+    for (const type of ['keydown', 'keyup', 'copy', 'cut', 'paste']) {
+      window.removeEventListener(type, record)
+    }
+    w.unmount()
+    // None of the composer's events reached window (all stopped at the textarea).
+    expect(seen).toEqual([])
+  })
 })

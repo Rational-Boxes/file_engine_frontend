@@ -27,9 +27,17 @@ import { fileService, type FileItem } from '@/services/fileService'
 //   model      xeokit XKT 3D/BIM model               ← loaded by the 3D viewer
 //   metamodel  xeokit MetaModel JSON (objects/tree)  ← loaded alongside the model
 //   chatlog    chat provenance log (HTML) for an AI-generated report ← "view log"
-export type RenditionFmt = 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model' | 'metamodel' | 'chatlog'
+//   markup     a browser-annotated copy of a PDF (Phase 7.1) attached to a comment.
+//              UNLIKE the pipeline-produced fmts above, a markup is client-produced
+//              and keyed to the comment (user + timestamp) rather than a source
+//              version — many can coexist. It is referenced directly by uid from the
+//              comment's `markup` pointer, so it is never surfaced through the
+//              one-per-fmt RenditionSet (toRenditionSet keeps only the latest). It is
+//              deliberately NOT in convert_search_ai's _KNOWN_FMTS, so the conversion
+//              pipeline's version-pruner leaves markups alone across re-conversions.
+export type RenditionFmt = 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model' | 'metamodel' | 'chatlog' | 'markup'
 
-const KNOWN: readonly RenditionFmt[] = ['thumbnail', 'preview', 'pdf', 'poster', 'model', 'metamodel', 'chatlog']
+const KNOWN: readonly RenditionFmt[] = ['thumbnail', 'preview', 'pdf', 'poster', 'model', 'metamodel', 'chatlog', 'markup']
 
 export interface RenditionRef {
   uid: string
@@ -113,6 +121,35 @@ export async function renditionObjectUrl(uid: string, mime?: string): Promise<st
 
 export function revokeRenditionUrl(url: string): void {
   if (url && url.startsWith('blob:')) URL.revokeObjectURL(url)
+}
+
+// The filename for a client-produced `markup` rendition (Phase 7.1). Keyed to the
+// annotating user + capture time (NOT a source version), so several markups can
+// coexist under one PDF. Mirrors the "<version>-<fmt>.<ext>" shape parseRenditionName
+// expects, but the "version" slot carries "<user>_<timestamp>". Unsafe characters are
+// collapsed to '_' (including '-', so the trailing "-markup" delimiter is never
+// ambiguous). The comment stores the resulting child's uid + this name.
+export function markupRenditionName(user: string, at: Date = new Date()): string {
+  const safe = (s: string) => s.replace(/[^A-Za-z0-9._]/g, '_') || '0'
+  const stamp = safe(at.toISOString()) // e.g. 2026_08_01T12_00_00.000Z
+  const who = safe(user || 'anon')
+  return `${who}_${stamp}-markup.pdf`
+}
+
+// Create a `markup` rendition: a hidden child of the source PDF holding the
+// annotated bytes. Renditions are just children of a file UID (no special RPC — see
+// convert_search_ai/renditions.py), so touch(sourceUid, name) + PUT content is all
+// it takes; the child inherits the source's ACL + cascade delete. Returns the new
+// child's uid. Requires WRITE on the source file (enforced by the core on touch).
+export async function createMarkupRendition(
+  sourceUid: string,
+  user: string,
+  bytes: Uint8Array | Blob,
+): Promise<{ uid: string; name: string }> {
+  const name = markupRenditionName(user)
+  const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type: 'application/pdf' })
+  const uid = await fileService.createRendition(sourceUid, name, blob)
+  return { uid, name }
 }
 
 // The 3D model rendition (xeokit XKT), if present. Not an image, so it is never

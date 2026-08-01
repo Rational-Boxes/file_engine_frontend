@@ -155,9 +155,12 @@
           :max-chars="maxChars"
           :flashing="flashing"
           :mention-source="mentionSource"
+          :markup-provider="markupProvider"
+          :active-comment-id="activeCommentId"
           @posted="onPosted"
           @updated="onUpdated"
           @deleted="onDeleted"
+          @show-markup="(m, id) => emit('show-markup', m, id)"
         />
       </article>
 
@@ -238,6 +241,7 @@ import {
   type MentionUser,
   type ReviewRequest,
   type ModelViewpointAnchor,
+  type CommentMarkup,
 } from '@/services/discussionService'
 import bcfService from '@/services/bcfService'
 import { LiveSession, type LiveCommentEvent } from '@/services/discussionLive'
@@ -252,6 +256,12 @@ const props = defineProps<{
   titlebarTarget?: string // CSS selector of the window's title-bar slot for the minimized chip
   pos?: 'side' | 'bottom' // parent-owned dock orientation, shown in the header
   hideDock?: boolean // parent owns the dock/minimize controls (e.g. the 3D viewer header)
+  // Phase 7.1: called right before a comment is posted; returns a marked-up-PDF
+  // pointer to link to it (or null). The host (DocumentPreview) captures + uploads
+  // the current PDF markup here, so no separate "save markup" step is needed.
+  markupProvider?: () => Promise<CommentMarkup | null>
+  // The comment whose marked-up copy is currently being viewed (highlighted).
+  activeCommentId?: string | null
 }>()
 const emit = defineEmits<{
   (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void
@@ -261,6 +271,8 @@ const emit = defineEmits<{
   (e: 'threads', threads: Thread[]): void
   // Restore an annotation thread's saved 3D view (host wires this to the viewer).
   (e: 'restore-view', threadId: string): void
+  // Reshow a comment's marked-up PDF copy (host loads the rendition + highlights it).
+  (e: 'show-markup', markup: CommentMarkup, commentId: string): void
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
@@ -500,11 +512,15 @@ async function open() {
   if (!body) return
   error.value = ''
   try {
+    // Capture + upload any current PDF markup and link it to this comment (Phase
+    // 7.1). Runs before the post; a failure aborts (no orphaned comment).
+    const markup = props.markupProvider ? await props.markupProvider() : null
     const t = await discussionService.openThread(props.fileUid, {
       body,
       mentions: extractMentions(body),
       // A pending 3D viewpoint turns this thread into an anchored annotation (§9).
       anchor: pendingAnchor.value ?? undefined,
+      markup: markup ?? undefined,
     })
     if (!threads.value.some((x) => x.id === t.id)) threads.value.unshift(t)
     newBody.value = ''

@@ -17,7 +17,10 @@
 
 <template>
   <div class="cn" :style="{ marginLeft: indent + 'px' }">
-    <div class="cn-item" :class="{ flash: flashing.has(node.id), mine: node.author === me }">
+    <div
+      class="cn-item"
+      :class="{ flash: flashing.has(node.id), mine: node.author === me, 'markup-active': isActiveMarkup }"
+    >
       <div class="cn-meta">
         <span class="cn-author">{{ node.author }}</span>
         <time :title="node.createdAt">{{ ago(node.createdAt) }}</time>
@@ -32,6 +35,25 @@
       <div v-else-if="node.deleted" class="cn-tomb">[deleted]</div>
       <!-- eslint-disable-next-line vue/no-v-html -->
       <div v-else-if="!editing" class="cn-body" v-html="rendered"></div>
+
+      <!-- A marked-up PDF copy attached to this comment (Phase 7.1). Mirrors the 3D
+           "🎯 View / ⬇ BCF" affordance pair: reshow the copy in the viewer, or
+           download it. -->
+      <div v-if="node.markup && !node.deleted && !node.redacted" class="cn-markup">
+        <button
+          class="cn-link"
+          :class="{ 'cn-link-on': isActiveMarkup }"
+          title="Reshow the marked-up copy in the viewer"
+          @click="node.markup && emit('show-markup', node.markup, node.id)"
+        >📄 {{ isActiveMarkup ? 'Viewing marked-up copy' : 'View marked-up copy' }}</button>
+        <button
+          class="cn-link"
+          :disabled="downloading"
+          title="Download the marked-up copy"
+          @click="downloadMarkup"
+        >⬇ Download</button>
+        <span v-if="dlError" class="cn-err">{{ dlError }}</span>
+      </div>
 
       <!-- edit-history (§15) -->
       <ul v-if="showHistory" class="cn-history">
@@ -88,9 +110,12 @@
       :max-chars="maxChars"
       :flashing="flashing"
       :mention-source="mentionSource"
+      :markup-provider="markupProvider"
+      :active-comment-id="activeCommentId"
       @posted="(c) => emit('posted', c)"
       @updated="(c) => emit('updated', c)"
       @deleted="(id) => emit('deleted', id)"
+      @show-markup="(m, id) => emit('show-markup', m, id)"
     />
   </div>
 </template>
@@ -103,9 +128,11 @@ import {
   discussionService,
   extractMentions,
   type Comment,
+  type CommentMarkup,
   type Revision,
   type MentionUser,
 } from '@/services/discussionService'
+import { fileService } from '@/services/fileService'
 
 export interface CommentTreeNode extends Comment {
   children: CommentTreeNode[]
@@ -120,11 +147,18 @@ const props = defineProps<{
   maxChars: number
   flashing: Set<string>
   mentionSource?: (q: string) => Promise<MentionUser[]>
+  // Phase 7.1: called right before a reply posts; returns a marked-up-PDF pointer to
+  // link to it (or null). Threaded down from the panel so replies attach markup too.
+  markupProvider?: () => Promise<CommentMarkup | null>
+  // The comment whose marked-up copy is currently being viewed — highlighted so the
+  // copy↔comment relationship is obvious.
+  activeCommentId?: string | null
 }>()
 const emit = defineEmits<{
   (e: 'posted', c: Comment): void
   (e: 'updated', c: Comment): void
   (e: 'deleted', id: string): void
+  (e: 'show-markup', markup: CommentMarkup, commentId: string): void
 }>()
 
 const replying = ref(false)
@@ -134,6 +168,11 @@ const editDraft = ref('')
 const showHistory = ref(false)
 const revisions = ref<Revision[]>([])
 const error = ref('')
+const downloading = ref(false)
+const dlError = ref('')
+
+// This comment's marked-up copy is the one currently on screen — highlight it.
+const isActiveMarkup = computed(() => !!props.node.markup && props.node.id === props.activeCommentId)
 
 // Cap the visual indent so deep trees stay readable (the data is unlimited depth).
 const indent = computed(() => (props.depth === 0 ? 0 : Math.min(props.depth, 6) * 16))
@@ -157,9 +196,12 @@ async function submitReply() {
   if (!body) return
   error.value = ''
   try {
+    // Capture + upload any current PDF markup and link it to this reply (Phase 7.1).
+    const markup = props.markupProvider ? await props.markupProvider() : null
     const c = await discussionService.reply(props.threadId, body, {
       parentCommentId: props.node.id,
       mentions: extractMentions(body),
+      markup: markup ?? undefined,
     })
     replyDraft.value = ''
     replying.value = false
@@ -214,6 +256,30 @@ async function toggleHistory() {
   }
 }
 
+// Download this comment's marked-up PDF copy (the hidden-child `markup` rendition)
+// with its original filename. Mirrors DocumentPreview's downloadOriginal.
+async function downloadMarkup() {
+  const m = props.node.markup
+  if (!m) return
+  downloading.value = true
+  dlError.value = ''
+  try {
+    const blob = await fileService.downloadFile(m.renditionUid)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = m.name || 'marked-up.pdf'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch {
+    dlError.value = 'Download failed.'
+  } finally {
+    downloading.value = false
+  }
+}
+
 function mentionError(e: unknown): string | null {
   const detail = (e as { response?: { data?: { detail?: { invalid_mentions?: string[] } } } })
     ?.response?.data?.detail
@@ -255,6 +321,38 @@ function mentionError(e: unknown): string | null {
   display: flex;
   gap: 10px;
   margin-top: 2px;
+}
+.cn-markup {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 3px 0;
+  padding: 3px 6px;
+  border-left: 2px solid var(--primary);
+  background: var(--bg);
+  border-radius: 4px;
+}
+/* The comment whose marked-up copy is currently displayed. Extra interior padding
+   keeps the text clear of the tint edge + the 3px left rail (base .cn-item padding
+   is 4px 0 2px, which would sit the text flush against the highlight). */
+.cn-item.markup-active {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--primary);
+  border-radius: 6px;
+  padding: 6px 10px 6px 12px;
+}
+.cn-link.cn-link-on {
+  font-weight: 600;
+  color: var(--primary);
+}
+.cn-chip {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  color: var(--primary);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
 }
 .cn-compose {
   display: flex;

@@ -56,12 +56,40 @@
 
       <!-- Document tab: the report preview (PDF / video / still image). -->
       <template v-if="activeTab === 'document'">
-      <!-- Inline PDF viewer — shown only after the user explicitly asks for it. -->
-      <div v-if="pdfUrl" class="dp-pdf">
-        <iframe :src="pdfUrl" title="Document" class="dp-frame" :class="{ 'dp-frame-full': fullWidth }"></iframe>
+      <!-- Inline PDF viewer (Phase 7.1) — PDF.js, replacing the old <iframe>. The
+           heavy library is dynamic-imported inside PdfViewer. For a user with WRITE
+           the markup toolbar is always shown (editable) so the tools are obvious;
+           reshowing a comment's marked-up copy loads that rendition read-only. -->
+      <div v-if="viewerSrc" class="dp-pdf">
+        <PdfViewer
+          ref="pdfViewerRef"
+          :key="markupView ? `markup:${markupView.renditionUid}` : `doc:${viewerNonce}`"
+          :src="viewerSrc"
+          :editable="canAnnotate"
+          :full-width="fullWidth"
+          @dirty="pdfDirty = $event"
+          @has-markup="pdfHasMarkup = $event"
+          @error="error = $event"
+        />
         <div class="dp-actions">
-          <button class="link" @click="downloadOriginal">⬇ Download original</button>
-          <button class="link" @click="openLocation">📂 Open file location</button>
+          <template v-if="markupView">
+            <span class="dp-markup-tag">📄 Marked-up copy{{ markupView.name ? ` — ${markupView.name}` : '' }}</span>
+            <button class="link" @click="closeMarkupView">← Back to document</button>
+            <button class="link" :disabled="markupDownloading" @click="downloadMarkupView">⬇ Download this copy</button>
+          </template>
+          <template v-else>
+            <!-- No separate save step: markup is uploaded + linked automatically when a
+                 comment is posted (attachMarkup). The markup persists after saving, so
+                 you can add more and attach it to a further comment. -->
+            <span v-if="canAnnotate && pdfDirty" class="dp-hint dp-hint-live">
+              ● Your markup will be saved with your next comment
+            </span>
+            <span v-else-if="canAnnotate" class="dp-hint">✎ Mark up with the toolbar; it saves with your comment</span>
+            <!-- Discard all markup and return to the clean original (guarded). -->
+            <button v-if="canAnnotate && pdfHasMarkup" class="link" @click="clearMarkup">↺ Return to original</button>
+            <button class="link" @click="downloadOriginal">⬇ Download original</button>
+            <button class="link" @click="openLocation">📂 Open file location</button>
+          </template>
         </div>
       </div>
 
@@ -144,9 +172,12 @@
           embedded
           :titlebar-target="titlebar"
           :pos="discussionPos"
+          :markup-provider="attachMarkup"
+          :active-comment-id="activeMarkupCommentId"
           :class="['dp-thread', { 'dp-thread-min': discLayout === 'collapsed' }]"
           @layout="discLayout = $event"
           @update:pos="setPos"
+          @show-markup="onShowMarkup"
         />
         <button v-else class="btn dp-discuss-btn" @click="discussionOpen = true">
           💬 Discussion
@@ -168,16 +199,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue'
 import {
   loadRenditionSet,
   renditionObjectUrl,
   renditionText,
   revokeRenditionUrl,
   previewImage,
+  createMarkupRendition,
   type RenditionSet,
 } from '@/services/renditions'
+import type { CommentMarkup } from '@/services/discussionService'
 import ShadowHtml from '@/components/ShadowHtml.vue'
+// The PDF.js viewer is a cheap component to import; it dynamic-imports the heavy
+// pdfjs-dist library internally, so the library loads only when a PDF is shown —
+// the same lazy posture as the xeokit 3D SDK (loaded inside Model3DViewer).
+import PdfViewer from '@/components/PdfViewer.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
 import ThreadOverlay from '@/components/ThreadOverlay.vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -224,6 +261,23 @@ const set = ref<RenditionSet>({})
 const previewUrl = ref('') // object URL for the still preview/poster image
 const pdfUrl = ref('') // object URL for the inline PDF (loaded on demand)
 const videoUrl = ref('') // object URL for the inline video clip (loaded on demand)
+
+// --- PDF markup (Phase 7.1) ---
+const pdfViewerRef = ref<{
+  saveBytes: () => Promise<Uint8Array>
+  hasEdits: () => boolean
+  markSaved: () => void
+} | null>(null)
+const pdfDirty = ref(false) // markup not yet attached to a comment (unsaved)
+const pdfHasMarkup = ref(false) // any markup on the live document (persists across a save)
+const viewerNonce = ref(0) // bump to remount the viewer (the "return to original" clear)
+const canWrite = ref(false) // WRITE on the file → may annotate + save
+// When set, we're reshowing a comment's saved marked-up copy (read-only) instead of
+// the live document; markupUrl is that rendition's object URL.
+const markupView = ref<CommentMarkup | null>(null)
+const markupUrl = ref('')
+const markupDownloading = ref(false)
+const activeMarkupCommentId = ref<string | null>(null) // the comment whose copy is shown
 const chatlogHtml = ref('') // chat provenance log HTML (fetched on demand)
 const activeTab = ref<'document' | 'chatlog'>('document') // report preview vs. provenance log
 const loading = ref(false)
@@ -254,6 +308,14 @@ const hasPreview = computed(() =>
 const openLabel = computed(() => (mediaKind.value === 'video' ? '▶ Preview 10 seconds' : 'Open document (PDF)'))
 const openHint = computed(() => (mediaKind.value === 'video' ? 'Play the video' : 'Open the full document'))
 
+// What the PDF.js viewer renders: a comment's marked-up copy (read-only) when
+// reshowing, else the live document.
+const viewerSrc = computed(() => (markupView.value ? markupUrl.value : pdfUrl.value))
+// Whether the markup toolbar is shown + editing enabled: on the full review surface,
+// for a writer. Applies to BOTH the live document and a reshown marked-up copy — the
+// user can add further markup to a saved copy and attach it to another comment.
+const canAnnotate = computed(() => !!props.fullWidth && canWrite.value)
+
 // Docking behaviour (orientation, minimize, draggable divider) is shared with the
 // 3D viewer via a composable; combined only on the full preview surface.
 const { discussionPos, discLayout, dragging, combinedActive, discStyle, setPos, startDrag } =
@@ -269,6 +331,15 @@ async function reload() {
   if (!props.uid) return
   loading.value = true
   error.value = ''
+  // Whether the user may annotate + save a marked-up copy (WRITE on the file). Only
+  // needed on the full review surface; best-effort (a failed check hides Annotate).
+  if (props.fullWidth) {
+    try {
+      canWrite.value = await fileService.checkPermission(props.uid, { permission: 'w' })
+    } catch {
+      canWrite.value = false
+    }
+  }
   try {
     set.value = await loadRenditionSet(props.uid)
     // The still image: the preview (documents/images) or a video's poster frame.
@@ -367,6 +438,112 @@ async function downloadOriginal() {
   }
 }
 
+// Save the current markup: read the edited bytes, write them as a `markup` rendition
+// (a hidden child of this file), then attach the pointer to the next comment via the
+// The markup provider handed to the discussion panel: called right before a comment
+// (root or reply) is posted. If the live document carries markup, write the edited
+// bytes as a `markup` rendition and return the pointer so it's linked to that
+// comment — no separate save step. Then clear the markup from the live document (so
+// the next comment starts fresh and navigating away no longer warns). Returns null
+// when there's nothing to attach. Throws propagate to the panel, which aborts the
+// post and shows the error, so a failed upload never posts an orphaned comment.
+async function attachMarkup(): Promise<CommentMarkup | null> {
+  const viewer = pdfViewerRef.value
+  // Captures whatever is on screen — the live document OR a reshown copy the user has
+  // marked up further — as a new rendition child of the source file.
+  if (!viewer || !props.uid || !viewer.hasEdits()) return null
+  const bytes = await viewer.saveBytes()
+  const { uid, name } = await createMarkupRendition(props.uid, auth.user || 'anon', bytes)
+  // The markup is now saved to the comment, but it STAYS on the live document so the
+  // user can keep adding to it and attach the cumulative state to a further comment.
+  // markSaved() just clears the "unsaved" flag (it does not remove the drawing).
+  viewer.markSaved()
+  return { renditionUid: uid, name }
+}
+
+// The "Return to original" action: discard ALL markup and reload the clean document.
+// Guarded — if there's unsaved markup, confirm before losing it.
+function clearMarkup() {
+  if (!confirmDiscard()) return
+  viewerNonce.value++ // remount → fresh clean load
+}
+
+// Called before any navigation that would lose unsaved markup (overlay close, viewing
+// a saved copy, returning to the original). Only prompts when markup is unsaved.
+function confirmDiscard(): boolean {
+  if (!canAnnotate.value || !pdfDirty.value) return true
+  return window.confirm(
+    'You have PDF markup that has not been added to a comment yet. Add a comment to save it, ' +
+      'or leave and discard the markup?',
+  )
+}
+defineExpose({ confirmDiscard })
+
+// Reshow a comment's saved marked-up copy read-only (from the panel's "View
+// marked-up copy" link). Loads the rendition into the same PDF.js viewer.
+async function onShowMarkup(markup: CommentMarkup, commentId: string) {
+  // Switching to a saved copy replaces the editable viewer; confirm first if there's
+  // unsaved markup, so the drawing isn't silently discarded.
+  if (!confirmDiscard()) return
+  closeMarkupUrl()
+  error.value = ''
+  try {
+    markupUrl.value = await renditionObjectUrl(markup.renditionUid, 'application/pdf')
+    markupView.value = markup
+    activeMarkupCommentId.value = commentId // highlight the source comment
+  } catch (e) {
+    markupView.value = null
+    activeMarkupCommentId.value = null
+    error.value = errorMessage(e, 'Failed to open the marked-up copy')
+  }
+}
+
+function closeMarkupView() {
+  // Guard: returning to the live document discards unsaved further-markup on the copy.
+  if (!confirmDiscard()) return
+  markupView.value = null
+  activeMarkupCommentId.value = null
+  closeMarkupUrl()
+}
+
+async function downloadMarkupView() {
+  const m = markupView.value
+  if (!m) return
+  markupDownloading.value = true
+  try {
+    const blob = await fileService.downloadFile(m.renditionUid)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = m.name || 'marked-up.pdf'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    error.value = errorMessage(e, 'Failed to download')
+  } finally {
+    markupDownloading.value = false
+  }
+}
+
+function closeMarkupUrl() {
+  if (markupUrl.value) {
+    revokeRenditionUrl(markupUrl.value)
+    markupUrl.value = ''
+  }
+}
+
+// Warn before leaving with unsaved markup (no beforeunload guard existed before).
+function beforeUnloadGuard(e: BeforeUnloadEvent) {
+  if (canAnnotate.value && pdfDirty.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+onMounted(() => window.addEventListener('beforeunload', beforeUnloadGuard))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnloadGuard))
+
 function closeMedia() {
   if (pdfUrl.value) {
     revokeRenditionUrl(pdfUrl.value)
@@ -376,6 +553,12 @@ function closeMedia() {
     revokeRenditionUrl(videoUrl.value)
     videoUrl.value = ''
   }
+  // Reset markup/annotate state when the media is torn down (file change / close).
+  markupView.value = null
+  activeMarkupCommentId.value = null
+  closeMarkupUrl()
+  pdfDirty.value = false
+  pdfHasMarkup.value = false
 }
 
 // Switch to the Chat log tab, fetching the provenance HTML on first view. The
@@ -489,6 +672,20 @@ function cleanup() {
 .dp-actions {
   display: flex;
   gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.dp-markup-tag {
+  font-size: 12px;
+  color: var(--primary);
+  font-weight: 600;
+}
+.dp-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.dp-save-markup {
+  font-weight: 600;
 }
 
 .dp-frame {

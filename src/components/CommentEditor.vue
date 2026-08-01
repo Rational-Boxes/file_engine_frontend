@@ -28,6 +28,13 @@
       <button type="button" title="Link" @click="insertLink()">🔗</button>
     </div>
     <div class="ce-area-wrap">
+      <!-- Stop key/clipboard events from bubbling to document/window. PDF.js's
+           annotation-editor UIManager installs GLOBAL keydown + copy/cut/paste
+           listeners whose Backspace/Delete/Cut handler only exempts
+           <input type=text|number> — NOT a <textarea> — so without this, editing a
+           comment while a PDF markup is selected deletes the markup and eats the
+           keystroke (the editor is always-on for writers). Native editing is the
+           default action, unaffected by stopPropagation. -->
       <textarea
         ref="area"
         class="ce-area"
@@ -36,7 +43,11 @@
         :maxlength="maxChars"
         rows="3"
         @input="onInput"
-        @keydown="onKeydown"
+        @keydown.stop="onKeydown"
+        @keyup.stop
+        @copy.stop
+        @cut.stop
+        @paste.stop
         @blur="hideMentions"
       ></textarea>
       <ul v-if="mentions.length" class="ce-mentions">
