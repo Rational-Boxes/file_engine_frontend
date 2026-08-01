@@ -1,0 +1,323 @@
+<!--
+  Copyright (C) 2026 James Hickman
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU Affero General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU Affero General Public License for more details.
+
+  You should have received a copy of the GNU Affero General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+
+<!--
+  Embedded PDF.js viewer (Phase 7.1). Replaces the naive <iframe> preview: we drive
+  the PDF.js engine ourselves so the SPA can (a) offer the AnnotationEditorLayer
+  markup tools and (b) read the edited bytes back via saveDocument() — which the
+  browser's own opaque viewer never exposes.
+
+  This whole component (and the heavy pdfjs-dist library it statically imports) is
+  lazy-loaded by DocumentPreview via defineAsyncComponent, so it stays out of the
+  main bundle and only loads when a PDF is opened — the same "load on demand" posture
+  as the xeokit 3D SDK.
+
+  Contract:
+    props   src (blob/object URL), editable (enable markup tools), fullWidth (sizing)
+    emits   ready | error(msg) | dirty(boolean, has unsaved markup)
+    exposes saveBytes(): Promise<Uint8Array>   — the edited PDF (annotations baked in)
+            hasEdits(): boolean
+            setMode(name)                        — switch the active markup tool
+-->
+<template>
+  <div class="pv" :class="{ 'pv-full': fullWidth }">
+    <!-- Markup toolbar — only in editable (annotate) mode. PDF.js ships no Save
+         button, so the embedder (DocumentPreview) wires Save; here we only switch
+         the AnnotationEditorLayer tool. -->
+    <div v-if="editable" class="pv-toolbar" role="toolbar" aria-label="Markup tools">
+      <button
+        v-for="t in TOOLS"
+        :key="t.name"
+        class="pv-tool"
+        :class="{ on: mode === t.name }"
+        :title="t.title"
+        type="button"
+        @click="setMode(t.name)"
+      >{{ t.icon }} {{ t.label }}</button>
+      <span class="pv-spacer"></span>
+      <span v-if="dirty" class="pv-dirty" title="Unsaved markup">● unsaved markup</span>
+    </div>
+
+    <!-- The scrollable viewport PDF.js renders pages into. The inner .pdfViewer div
+         is the element the library manages; do not touch its DOM. -->
+    <div ref="containerRef" class="pv-container" :class="{ 'pv-container-full': fullWidth }">
+      <div ref="viewerRef" class="pdfViewer"></div>
+    </div>
+
+    <p v-if="err" class="pv-err">{{ err }}</p>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
+
+// pdfjs-dist is heavy, so it is dynamic-imported on first render (see ensureLib):
+// the library, its viewer components, CSS, and worker land in their own chunk,
+// fetched only when a PDF is actually shown — the same lazy posture as the xeokit
+// 3D SDK. This component itself stays cheap to import statically.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type PdfLib = typeof import('pdfjs-dist')
+type ViewerLib = typeof import('pdfjs-dist/web/pdf_viewer.mjs')
+let lib: PdfLib | null = null
+let vlib: ViewerLib | null = null
+
+async function ensureLib(): Promise<void> {
+  if (lib && vlib) return
+  const [pdf, viewer, worker] = await Promise.all([
+    import('pdfjs-dist'),
+    import('pdfjs-dist/web/pdf_viewer.mjs'),
+    import('pdfjs-dist/build/pdf.worker.mjs?url'),
+  ])
+  await import('pdfjs-dist/web/pdf_viewer.css')
+  // Self-hosted worker URL (no CDN) — Vite fingerprints + serves it locally.
+  pdf.GlobalWorkerOptions.workerSrc = (worker as { default: string }).default
+  lib = pdf
+  vlib = viewer
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+type ToolName = 'none' | 'highlight' | 'text' | 'draw' | 'image' | 'signature'
+
+const props = defineProps<{
+  src: string
+  editable?: boolean
+  fullWidth?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'ready'): void
+  (e: 'error', message: string): void
+  (e: 'dirty', dirty: boolean): void
+}>()
+
+const TOOLS: { name: ToolName; label: string; title: string; icon: string }[] = [
+  { name: 'none', label: 'Select', title: 'Select / move', icon: '➤' },
+  { name: 'highlight', label: 'Highlight', title: 'Highlight text', icon: '▤' },
+  { name: 'text', label: 'Text', title: 'Add a text note', icon: 'T' },
+  { name: 'draw', label: 'Draw', title: 'Freehand ink', icon: '✎' },
+  { name: 'image', label: 'Image', title: 'Insert an image / stamp', icon: '🖼' },
+  { name: 'signature', label: 'Sign', title: 'Add a signature', icon: '✒' },
+]
+
+// Map our tool names to PDF.js AnnotationEditorType. Read the enum at runtime so we
+// never hard-code its numeric values; a member absent in this pdfjs version maps to
+// NONE (the tool button becomes a no-op rather than throwing).
+function editorType(name: ToolName): number {
+  const T = (lib?.AnnotationEditorType ?? {}) as unknown as Record<string, number>
+  const byName: Record<ToolName, number | undefined> = {
+    none: T.NONE,
+    highlight: T.HIGHLIGHT,
+    text: T.FREETEXT,
+    draw: T.INK,
+    image: T.STAMP,
+    signature: T.SIGNATURE,
+  }
+  return byName[name] ?? T.NONE ?? 0
+}
+
+const containerRef = ref<HTMLDivElement | null>(null)
+const viewerRef = ref<HTMLDivElement | null>(null)
+const mode = ref<ToolName>('none')
+const dirty = ref(false)
+const err = ref('')
+
+// pdfjs runtime objects held loosely — this is the external-library boundary.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let eventBus: InstanceType<ViewerLib['EventBus']> | null = null
+let linkService: InstanceType<ViewerLib['PDFLinkService']> | null = null
+let pdfViewer: InstanceType<ViewerLib['PDFViewer']> | null = null
+let pdfDoc: any = null
+let loadingTask: any = null
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+function updateDirty() {
+  // The annotation storage holds every unsaved editor edit; its size is the "dirty"
+  // signal (there is no explicit event carrying it).
+  const size: number = pdfDoc?.annotationStorage?.size ?? 0
+  const next = size > 0
+  if (next !== dirty.value) {
+    dirty.value = next
+    emit('dirty', next)
+  }
+}
+
+function buildViewer() {
+  const container = containerRef.value
+  const viewer = viewerRef.value
+  if (!container || !viewer || !vlib) return
+  eventBus = new vlib.EventBus()
+  linkService = new vlib.PDFLinkService({ eventBus })
+  pdfViewer = new vlib.PDFViewer({
+    container,
+    viewer,
+    eventBus,
+    linkService,
+    l10n: new vlib.GenericL10n('en-US'),
+    // Enabling the editor layer up front (in NONE mode) is what makes the markup
+    // tools available; a read-only viewer omits it entirely.
+    annotationEditorMode: props.editable ? editorType('none') : undefined,
+  })
+  linkService.setViewer(pdfViewer)
+  // Fit the page to the width of the pane once the first page is measured.
+  eventBus.on('pagesinit', () => {
+    if (pdfViewer) pdfViewer.currentScaleValue = 'page-width'
+  })
+  // Any editor change (add/move/delete a markup) may change the dirty state.
+  eventBus.on('annotationeditorstateschanged', updateDirty)
+}
+
+async function loadDoc() {
+  if (!props.src) return
+  err.value = ''
+  try {
+    await ensureLib()
+    if (!pdfViewer) buildViewer()
+    // Tear down a previous document before loading the next (src changed).
+    if (loadingTask) {
+      try { await loadingTask.destroy() } catch { /* already gone */ }
+      loadingTask = null
+    }
+    dirty.value = false
+    emit('dirty', false)
+    loadingTask = lib!.getDocument({ url: props.src })
+    pdfDoc = await loadingTask.promise
+    pdfViewer?.setDocument(pdfDoc)
+    linkService?.setDocument(pdfDoc, null)
+    emit('ready')
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Failed to render the PDF'
+    err.value = msg
+    emit('error', msg)
+  }
+}
+
+function setMode(name: ToolName) {
+  if (!props.editable || !pdfViewer) return
+  mode.value = name
+  try {
+    pdfViewer.annotationEditorMode = { mode: editorType(name) }
+  } catch {
+    /* editor layer not ready yet — ignore; the button reflects intent regardless */
+  }
+}
+
+// Produce the edited PDF bytes (annotations baked in). This is the byte round-trip
+// the native browser viewer never exposes — the caller PUTs these as a markup
+// rendition. Throws if no document is loaded.
+async function saveBytes(): Promise<Uint8Array> {
+  if (!pdfDoc) throw new Error('No PDF loaded')
+  return (await pdfDoc.saveDocument()) as Uint8Array
+}
+
+function destroy() {
+  try { pdfViewer?.cleanup?.() } catch { /* noop */ }
+  if (loadingTask) {
+    try { loadingTask.destroy() } catch { /* noop */ }
+    loadingTask = null
+  }
+  if (pdfDoc) {
+    try { pdfDoc.destroy() } catch { /* noop */ }
+    pdfDoc = null
+  }
+  pdfViewer = null
+  linkService = null
+  eventBus = null
+}
+
+onMounted(loadDoc)
+// Rebuild on a new document OR when toggling annotate mode (the AnnotationEditorLayer
+// is wired at load time, so enabling/disabling it requires a fresh viewer). A user
+// toggles annotate before drawing, so no in-progress edits are lost.
+watch(() => `${props.src}|${props.editable ? 1 : 0}`, () => { destroy(); loadDoc() })
+onBeforeUnmount(destroy)
+
+defineExpose({
+  saveBytes,
+  hasEdits: () => dirty.value,
+  setMode,
+})
+</script>
+
+<style scoped>
+.pv {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  gap: 6px;
+}
+.pv-full {
+  flex: 1 1 auto;
+}
+.pv-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+.pv-tool {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.pv-tool:hover {
+  background: var(--bg);
+}
+.pv-tool.on {
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+.pv-spacer {
+  flex: 1 1 auto;
+}
+.pv-dirty {
+  font-size: 12px;
+  color: var(--danger, #b00020);
+}
+.pv-container {
+  position: relative;
+  width: 100%;
+  height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+.pv-container-full {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.pv-err {
+  color: var(--danger, #b00020);
+  font-size: 12px;
+}
+/* PDF.js positions pages absolutely within .pdfViewer relative to the container. */
+.pv-container :deep(.pdfViewer) {
+  position: relative;
+}
+</style>

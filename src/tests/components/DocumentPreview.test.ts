@@ -15,6 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { h } from 'vue'
 
 const { loadRenditionSet, renditionObjectUrl, renditionText, revokeRenditionUrl } = vi.hoisted(() => ({
   loadRenditionSet: vi.fn(),
@@ -37,8 +38,11 @@ vi.mock('@/services/renditions', () => ({
   },
 }))
 vi.mock('@/services/searchService', () => ({ searchService: { generatePreview } }))
-const { downloadFile } = vi.hoisted(() => ({ downloadFile: vi.fn() }))
-vi.mock('@/services/fileService', () => ({ fileService: { downloadFile } }))
+const { downloadFile, checkPermission } = vi.hoisted(() => ({
+  downloadFile: vi.fn(),
+  checkPermission: vi.fn(),
+}))
+vi.mock('@/services/fileService', () => ({ fileService: { downloadFile, checkPermission } }))
 const { open, close } = vi.hoisted(() => ({ open: vi.fn(), close: vi.fn() }))
 vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open, close }) }))
 const { push } = vi.hoisted(() => ({ push: vi.fn() }))
@@ -48,6 +52,18 @@ vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ tenant: 'default' }) })
 // preview tests stay focused (and don't pull in the discussion service / WS).
 vi.mock('@/components/ThreadPanel.vue', () => ({ default: { name: 'ThreadPanel', render: () => null } }))
 vi.mock('@/components/ThreadOverlay.vue', () => ({ default: { name: 'ThreadOverlay', render: () => null } }))
+// The PDF.js viewer (Phase 7.1) dynamic-imports pdfjs internally; stub it and expose
+// its `src`/`editable` props so the preview tests can assert what the viewer is
+// pointed at without loading pdfjs.
+vi.mock('@/components/PdfViewer.vue', () => ({
+  default: {
+    name: 'PdfViewer',
+    props: ['src', 'editable', 'fullWidth'],
+    render(this: { src: string; editable: boolean }) {
+      return h('div', { class: 'pv-stub', 'data-src': this.src, 'data-editable': String(this.editable) })
+    },
+  },
+}))
 
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import ShadowHtml from '@/components/ShadowHtml.vue'
@@ -58,6 +74,7 @@ describe('DocumentPreview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     renditionObjectUrl.mockImplementation((uid: string) => Promise.resolve('blob:' + uid))
+    checkPermission.mockResolvedValue(false) // no WRITE by default → no Annotate affordance
   })
 
   it('shows the first-page preview image WITHOUT fetching the PDF on open', async () => {
@@ -119,9 +136,9 @@ describe('DocumentPreview', () => {
     await flushPromises()
 
     expect(renditionObjectUrl).toHaveBeenCalledWith('pdf1', 'application/pdf')
-    const frame = w.find('iframe.dp-frame-full')
-    expect(frame.exists()).toBe(true)
-    expect(frame.attributes('src')).toBe('blob:pdf1')
+    const viewer = w.find('.pv-stub')
+    expect(viewer.exists()).toBe(true)
+    expect(viewer.attributes('data-src')).toBe('blob:pdf1')
     expect(open).not.toHaveBeenCalled()
   })
 
@@ -158,7 +175,29 @@ describe('DocumentPreview', () => {
     await flushPromises()
 
     expect(renditionObjectUrl).toHaveBeenCalledWith('src-uid', 'application/pdf') // the source is the PDF
-    expect(w.find('iframe').attributes('src')).toBe('blob:src-uid')
+    expect(w.find('.pv-stub').attributes('data-src')).toBe('blob:src-uid') // PDF.js viewer, not an iframe
+  })
+
+  it('offers the Annotate affordance only with WRITE on the full review surface', async () => {
+    checkPermission.mockResolvedValue(true) // this user may write → may annotate
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
+    await flushPromises()
+
+    expect(checkPermission).toHaveBeenCalledWith('f1', { permission: 'w' })
+    const annotate = w.findAll('.link').find((b) => b.text().includes('Annotate'))
+    expect(annotate).toBeTruthy()
+    // The viewer starts read-only until Annotate is toggled.
+    expect(w.find('.pv-stub').attributes('data-editable')).toBe('false')
+  })
+
+  it('hides the Annotate affordance without WRITE', async () => {
+    checkPermission.mockResolvedValue(false)
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
+    await flushPromises()
+
+    expect(w.findAll('.link').find((b) => b.text().includes('Annotate'))).toBeFalsy()
   })
 
   it('offers no PDF action for a non-PDF without a pdf rendition (e.g. an image)', async () => {

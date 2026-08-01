@@ -18,6 +18,17 @@ import discussionClient from '@/services/discussionClient'
 // Typed client for the discussion service. The API speaks snake_case; we map to
 // camelCase at this boundary so the rest of the SPA stays idiomatic.
 
+// A marked-up-copy pointer attached to a comment (Phase 7.1). `renditionUid` is a
+// hidden-child `markup` PDF rendition of the thread's file; `name` is its filename
+// (for the download affordance); `page` is where the author was annotating. Opaque
+// to the discussion service — the frontend PDF viewer interprets it. Mirrors the way
+// a 3D thread anchor points at its snapshot rendition.
+export interface CommentMarkup {
+  renditionUid: string
+  name?: string
+  page?: number
+}
+
 export interface Comment {
   id: string
   threadId: string
@@ -31,6 +42,8 @@ export interface Comment {
   redactedBy?: string | null
   redactedReason?: string | null
   fileUid?: string
+  // Phase 7.1: an attached browser-annotated copy of the PDF, or null/undefined.
+  markup?: CommentMarkup | null
 }
 
 export interface Revision {
@@ -148,6 +161,20 @@ function toReview(r: Record<string, unknown>): ReviewRequest {
   }
 }
 
+// The stored JSONB markup shape is snake_case ({rendition_uid,name,page}); map it to
+// the camelCase CommentMarkup at this boundary (and back, for writes).
+function markupFromWire(m: unknown): CommentMarkup | null {
+  if (!m || typeof m !== 'object') return null
+  const r = m as Record<string, unknown>
+  const renditionUid = (r.rendition_uid as string) ?? (r.renditionUid as string)
+  if (!renditionUid) return null
+  return { renditionUid, name: (r.name as string) ?? undefined, page: (r.page as number) ?? undefined }
+}
+
+export function markupToWire(m: CommentMarkup): Record<string, unknown> {
+  return { rendition_uid: m.renditionUid, name: m.name, page: m.page }
+}
+
 function toComment(c: Record<string, unknown>): Comment {
   return {
     id: c.id as string,
@@ -162,6 +189,7 @@ function toComment(c: Record<string, unknown>): Comment {
     redactedBy: (c.redacted_by as string) ?? null,
     redactedReason: (c.redacted_reason as string) ?? null,
     fileUid: c.file_uid as string | undefined,
+    markup: markupFromWire(c.markup),
   }
 }
 
@@ -232,9 +260,14 @@ export const discussionService = {
       version?: string
       mentions?: string[]
       anchor?: ModelViewpointAnchor | null
+      markup?: CommentMarkup | null
     },
   ): Promise<Thread> {
-    const { data } = await discussionClient.post(`/files/${fileUid}/threads`, payload)
+    const { markup, ...rest } = payload
+    const { data } = await discussionClient.post(`/files/${fileUid}/threads`, {
+      ...rest,
+      ...(markup ? { markup: markupToWire(markup) } : {}),
+    })
     return toThread(data)
   },
 
@@ -246,12 +279,13 @@ export const discussionService = {
   async reply(
     threadId: string,
     body: string,
-    opts: { mentions?: string[]; parentCommentId?: string } = {},
+    opts: { mentions?: string[]; parentCommentId?: string; markup?: CommentMarkup | null } = {},
   ): Promise<Comment> {
     const { data } = await discussionClient.post(`/threads/${threadId}/comments`, {
       body,
       mentions: opts.mentions ?? [],
       parent_comment_id: opts.parentCommentId,
+      ...(opts.markup ? { markup: markupToWire(opts.markup) } : {}),
     })
     return toComment(data)
   },

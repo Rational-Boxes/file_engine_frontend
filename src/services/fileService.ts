@@ -115,6 +115,20 @@ export const fileService = {
     return (data.entries || []).map(toItem)
   },
 
+  // Create a rendition (a hidden child of `sourceUid`) and write its bytes. A
+  // rendition is just a child of a *file* UID (no special RPC — see
+  // convert_search_ai/renditions.py), so this is touch(sourceUid, name) + PUT
+  // content; the child inherits the source's ACL + cascade-delete. Used for the
+  // client-produced `markup` PDF (Phase 7.1). Requires WRITE on the source file.
+  // Returns the new child's uid.
+  async createRendition(sourceUid: string, name: string, content: Blob): Promise<string> {
+    const uid = await this.touch(sourceUid, name)
+    await apiClient.put(`/v1/files/${uid}/content`, content, {
+      headers: { 'Content-Type': 'application/octet-stream' },
+    })
+    return uid
+  },
+
   async makeDirectory(parentUid: string, name: string): Promise<string> {
     const { data } = await apiClient.post<{ uid: string }>(`/v1/dirs/${parentUid}`, { name })
     return data.uid

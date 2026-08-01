@@ -155,9 +155,11 @@
           :max-chars="maxChars"
           :flashing="flashing"
           :mention-source="mentionSource"
+          :pending-markup="pendingMarkup"
           @posted="onPosted"
           @updated="onUpdated"
           @deleted="onDeleted"
+          @show-markup="(m) => emit('show-markup', m)"
         />
       </article>
 
@@ -168,9 +170,14 @@
           <span>📍 3D view attached</span>
           <button type="button" class="tp-anchor-clear" title="Detach the 3D view" @click="clearPendingAnchor">✕</button>
         </div>
+        <!-- A marked-up PDF copy saved from the viewer, attached to the next comment (Phase 7.1). -->
+        <div v-if="pendingMarkup" class="tp-anchor-chip">
+          <span>📄 Marked-up copy attached</span>
+          <button type="button" class="tp-anchor-clear" title="Detach the marked-up copy" @click="clearPendingMarkup">✕</button>
+        </div>
         <CommentEditor
           v-model="newBody"
-          :placeholder="pendingAnchor ? 'Describe what you\'re pointing at…' : 'Write a comment…'"
+          :placeholder="pendingAnchor || pendingMarkup ? 'Describe what you\'re pointing at…' : 'Write a comment…'"
           submit-label="Post"
           :max-chars="maxChars"
           :mention-source="mentionSource"
@@ -238,6 +245,7 @@ import {
   type MentionUser,
   type ReviewRequest,
   type ModelViewpointAnchor,
+  type CommentMarkup,
 } from '@/services/discussionService'
 import bcfService from '@/services/bcfService'
 import { LiveSession, type LiveCommentEvent } from '@/services/discussionLive'
@@ -261,6 +269,8 @@ const emit = defineEmits<{
   (e: 'threads', threads: Thread[]): void
   // Restore an annotation thread's saved 3D view (host wires this to the viewer).
   (e: 'restore-view', threadId: string): void
+  // Reshow a comment's marked-up PDF copy (host loads the rendition read-only).
+  (e: 'show-markup', markup: CommentMarkup): void
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
@@ -280,6 +290,10 @@ const newBody = ref('')
 // A 3D view captured from the viewer, pending attachment to the next new thread
 // (§9). Set by the viewer's "Comment here"; rides along on open() then clears.
 const pendingAnchor = ref<ModelViewpointAnchor | null>(null)
+// A browser-annotated PDF copy (Phase 7.1) the host saved, pending attachment to the
+// next comment (root OR reply). Set by the PDF viewer's "Save markup to a comment"
+// (via a ref); rides along on open()/reply then clears.
+const pendingMarkup = ref<CommentMarkup | null>(null)
 const reviewOpen = ref(false)
 const reviewInput = ref('')
 const reviewMsg = ref('')
@@ -474,6 +488,16 @@ function clearPendingAnchor() {
   pendingAnchor.value = null
 }
 
+// Attach a saved marked-up PDF copy to the next comment. Called by the PDF viewer's
+// "Save markup to a comment" (via a ref); mirrors startAnnotation for 3D viewpoints.
+function startMarkupAttach(markup: CommentMarkup) {
+  pendingMarkup.value = markup
+  if (layout.value === 'collapsed') layout.value = props.pos === 'bottom' ? 'bottom' : 'right'
+}
+function clearPendingMarkup() {
+  pendingMarkup.value = null
+}
+
 // Download an anchored comment as a BCF (.bcfzip) via the BCF-XML export door, for
 // use outside the API (e.g. a desktop BCF Manager). Surfaces an inline error on
 // failure rather than throwing at the click handler.
@@ -493,7 +517,7 @@ function focusThread(threadId: string) {
     document.getElementById(`thread-${threadId}`)?.scrollIntoView({ block: 'center' })
   })
 }
-defineExpose({ startAnnotation, focusThread })
+defineExpose({ startAnnotation, startMarkupAttach, focusThread })
 
 async function open() {
   const body = newBody.value.trim()
@@ -505,10 +529,13 @@ async function open() {
       mentions: extractMentions(body),
       // A pending 3D viewpoint turns this thread into an anchored annotation (§9).
       anchor: pendingAnchor.value ?? undefined,
+      // A pending marked-up PDF copy attaches to the opening comment (Phase 7.1).
+      markup: pendingMarkup.value ?? undefined,
     })
     if (!threads.value.some((x) => x.id === t.id)) threads.value.unshift(t)
     newBody.value = ''
     pendingAnchor.value = null
+    pendingMarkup.value = null
   } catch (e: unknown) {
     const detail = (e as { response?: { data?: { detail?: { invalid_mentions?: string[] } } } })
       ?.response?.data?.detail
@@ -521,6 +548,8 @@ async function open() {
 // Handlers from CommentNode (reply/edit/delete happen there, results flow up here).
 function onPosted(c: Comment) {
   appendComment(c.threadId, c)
+  // A reply that consumed the pending marked-up copy clears the composer chip.
+  if (c.markup && pendingMarkup.value) pendingMarkup.value = null
 }
 function onUpdated(c: Comment) {
   const t = threadOf(c.threadId)
