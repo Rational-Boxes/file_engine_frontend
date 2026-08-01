@@ -110,7 +110,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'ready'): void
   (e: 'error', message: string): void
+  // Unsaved markup: markup added since load or since the last markSaved().
   (e: 'dirty', dirty: boolean): void
+  // Any markup present on the document (stays true after a save; false once cleared).
+  (e: 'has-markup', present: boolean): void
 }>()
 
 const TOOLS: { name: ToolName; label: string; title: string; icon: string }[] = [
@@ -141,7 +144,8 @@ function editorType(name: ToolName): number {
 const containerRef = ref<HTMLDivElement | null>(null)
 const viewerRef = ref<HTMLDivElement | null>(null)
 const mode = ref<ToolName>('none')
-const dirty = ref(false)
+const dirty = ref(false) // markup added since load / last save (the "unsaved" flag)
+const hasMarkup = ref(false) // any markup present (persists across a save)
 const err = ref('')
 
 // pdfjs runtime objects held loosely — this is the external-library boundary.
@@ -153,14 +157,33 @@ let pdfDoc: any = null
 let loadingTask: any = null
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-function updateDirty() {
-  // The annotation storage holds every unsaved editor edit; its size is the "dirty"
-  // signal (there is no explicit event carrying it).
-  const size: number = pdfDoc?.annotationStorage?.size ?? 0
-  const next = size > 0
-  if (next !== dirty.value) {
-    dirty.value = next
-    emit('dirty', next)
+// A markup edit landed (annotationStorage fired onSetModified). Mark it unsaved and
+// note that markup is now present. The distinction matters: markSaved() clears the
+// unsaved flag but the markup stays on the document (hasMarkup remains true), so the
+// user can keep adding to it and attach the cumulative state to another comment.
+function markDirty() {
+  if (!dirty.value) {
+    dirty.value = true
+    emit('dirty', true)
+  }
+  if (!hasMarkup.value) {
+    hasMarkup.value = true
+    emit('has-markup', true)
+  }
+}
+
+// The current markup has been captured/saved to a comment: reset the storage's
+// "modified" flag (which re-arms onSetModified for the next edit) WITHOUT removing
+// the annotations, so the drawing persists on screen.
+function markSaved() {
+  try {
+    pdfDoc?.annotationStorage?.resetModified?.()
+  } catch {
+    /* older storage without resetModified — dirty simply stays until reload */
+  }
+  if (dirty.value) {
+    dirty.value = false
+    emit('dirty', false)
   }
 }
 
@@ -185,10 +208,6 @@ function buildViewer() {
   eventBus.on('pagesinit', () => {
     if (pdfViewer) pdfViewer.currentScaleValue = 'page-width'
   })
-  // Editor focus/commit transitions (there is no dedicated "edits changed" event in
-  // this pdfjs; the canonical content signal is annotationStorage.onSetModified, set
-  // per-document in loadDoc).
-  eventBus.on('editingstateschanged', updateDirty)
 }
 
 async function loadDoc() {
@@ -203,7 +222,9 @@ async function loadDoc() {
       loadingTask = null
     }
     dirty.value = false
+    hasMarkup.value = false
     emit('dirty', false)
+    emit('has-markup', false)
     loadingTask = lib!.getDocument({ url: props.src })
     pdfDoc = await loadingTask.promise
     // The canonical "the user changed the markup" signal: annotationStorage fires
@@ -211,7 +232,7 @@ async function loadDoc() {
     // eventBus event for content in this pdfjs.)
     try {
       const storage = pdfDoc.annotationStorage
-      if (storage) storage.onSetModified = () => updateDirty()
+      if (storage) storage.onSetModified = markDirty
     } catch {
       /* storage not available — dirty falls back to editingstateschanged */
     }
@@ -267,7 +288,8 @@ onBeforeUnmount(destroy)
 
 defineExpose({
   saveBytes,
-  hasEdits: () => dirty.value,
+  hasEdits: () => dirty.value, // unsaved markup?
+  markSaved, // reset the unsaved flag but keep the drawing on screen
   setMode,
 })
 </script>

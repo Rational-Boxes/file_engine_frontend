@@ -68,6 +68,7 @@
           :editable="canAnnotate"
           :full-width="fullWidth"
           @dirty="pdfDirty = $event"
+          @has-markup="pdfHasMarkup = $event"
           @error="error = $event"
         />
         <div class="dp-actions">
@@ -77,12 +78,15 @@
             <button class="link" :disabled="markupDownloading" @click="downloadMarkupView">⬇ Download this copy</button>
           </template>
           <template v-else>
-            <!-- No separate save step: markup is uploaded + linked automatically when
-                 a comment is posted (see attachMarkup). This just tells the user. -->
+            <!-- No separate save step: markup is uploaded + linked automatically when a
+                 comment is posted (attachMarkup). The markup persists after saving, so
+                 you can add more and attach it to a further comment. -->
             <span v-if="canAnnotate && pdfDirty" class="dp-hint dp-hint-live">
               ● Your markup will be saved with your next comment
             </span>
             <span v-else-if="canAnnotate" class="dp-hint">✎ Mark up with the toolbar; it saves with your comment</span>
+            <!-- Discard all markup and return to the clean original (guarded). -->
+            <button v-if="canAnnotate && pdfHasMarkup" class="link" @click="clearMarkup">↺ Return to original</button>
             <button class="link" @click="downloadOriginal">⬇ Download original</button>
             <button class="link" @click="openLocation">📂 Open file location</button>
           </template>
@@ -258,9 +262,14 @@ const pdfUrl = ref('') // object URL for the inline PDF (loaded on demand)
 const videoUrl = ref('') // object URL for the inline video clip (loaded on demand)
 
 // --- PDF markup (Phase 7.1) ---
-const pdfViewerRef = ref<{ saveBytes: () => Promise<Uint8Array>; hasEdits: () => boolean } | null>(null)
-const pdfDirty = ref(false) // the viewer has markup not yet attached to a comment
-const viewerNonce = ref(0) // bump to remount the viewer (clear markup after it's saved)
+const pdfViewerRef = ref<{
+  saveBytes: () => Promise<Uint8Array>
+  hasEdits: () => boolean
+  markSaved: () => void
+} | null>(null)
+const pdfDirty = ref(false) // markup not yet attached to a comment (unsaved)
+const pdfHasMarkup = ref(false) // any markup on the live document (persists across a save)
+const viewerNonce = ref(0) // bump to remount the viewer (the "return to original" clear)
 const canWrite = ref(false) // WRITE on the file → may annotate + save
 // When set, we're reshowing a comment's saved marked-up copy (read-only) instead of
 // the live document; markupUrl is that rendition's object URL.
@@ -441,14 +450,22 @@ async function attachMarkup(): Promise<CommentMarkup | null> {
   if (!viewer || markupView.value || !props.uid || !viewer.hasEdits()) return null
   const bytes = await viewer.saveBytes()
   const { uid, name } = await createMarkupRendition(props.uid, auth.user || 'anon', bytes)
-  // The markup now belongs to the comment — reset the live document to a clean slate.
-  pdfDirty.value = false
-  viewerNonce.value++
+  // The markup is now saved to the comment, but it STAYS on the live document so the
+  // user can keep adding to it and attach the cumulative state to a further comment.
+  // markSaved() just clears the "unsaved" flag (it does not remove the drawing).
+  viewer.markSaved()
   return { renditionUid: uid, name }
 }
 
-// Called by the preview overlay before it closes: if there's markup that hasn't been
-// attached to a comment yet, ask before discarding it. Returns true if OK to close.
+// The "Return to original" action: discard ALL markup and reload the clean document.
+// Guarded — if there's unsaved markup, confirm before losing it.
+function clearMarkup() {
+  if (!confirmDiscard()) return
+  viewerNonce.value++ // remount → fresh clean load
+}
+
+// Called before any navigation that would lose unsaved markup (overlay close, viewing
+// a saved copy, returning to the original). Only prompts when markup is unsaved.
 function confirmDiscard(): boolean {
   if (!canAnnotate.value || !pdfDirty.value) return true
   return window.confirm(
@@ -531,6 +548,7 @@ function closeMedia() {
   markupView.value = null
   closeMarkupUrl()
   pdfDirty.value = false
+  pdfHasMarkup.value = false
 }
 
 // Switch to the Chat log tab, fetching the provenance HTML on first view. The
