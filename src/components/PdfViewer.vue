@@ -77,8 +77,13 @@ let vlib: ViewerLib | null = null
 
 async function ensureLib(): Promise<void> {
   if (lib && vlib) return
-  const [pdf, viewer, worker] = await Promise.all([
-    import('pdfjs-dist'),
+  // The prebuilt viewer components read the main library from `globalThis.pdfjsLib`
+  // at module-eval time (web/pdf_viewer.mjs: `const { AbortException, … } =
+  // globalThis.pdfjsLib`), so the main library MUST be imported and exposed on the
+  // global BEFORE the viewer module is imported — not in parallel.
+  const pdf = await import('pdfjs-dist')
+  ;(globalThis as unknown as { pdfjsLib?: unknown }).pdfjsLib = pdf
+  const [viewer, worker] = await Promise.all([
     import('pdfjs-dist/web/pdf_viewer.mjs'),
     import('pdfjs-dist/build/pdf.worker.mjs?url'),
   ])
