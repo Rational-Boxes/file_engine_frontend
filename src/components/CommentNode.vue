@@ -332,11 +332,14 @@ function mentionError(e: unknown): string | null {
   background: var(--bg);
   border-radius: 4px;
 }
-/* The comment whose marked-up copy is currently displayed. */
+/* The comment whose marked-up copy is currently displayed. Extra interior padding
+   keeps the text clear of the tint edge + the 3px left rail (base .cn-item padding
+   is 4px 0 2px, which would sit the text flush against the highlight). */
 .cn-item.markup-active {
   background: color-mix(in srgb, var(--primary) 12%, transparent);
   box-shadow: inset 3px 0 0 var(--primary);
   border-radius: 6px;
+  padding: 6px 10px 6px 12px;
 }
 .cn-link.cn-link-on {
   font-weight: 600;
