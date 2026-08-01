@@ -52,10 +52,13 @@
       <span v-if="dirty" class="pv-dirty" title="Unsaved markup">● unsaved markup</span>
     </div>
 
-    <!-- The scrollable viewport PDF.js renders pages into. The inner .pdfViewer div
-         is the element the library manages; do not touch its DOM. -->
-    <div ref="containerRef" class="pv-container" :class="{ 'pv-container-full': fullWidth }">
-      <div ref="viewerRef" class="pdfViewer"></div>
+    <!-- PDF.js requires its `container` (pv-container) to be absolutely positioned
+         inside a positioned box (pv-stage) with a resolved height; the inner
+         .pdfViewer div is the element the library manages — do not touch its DOM. -->
+    <div class="pv-stage" :class="{ 'pv-stage-full': fullWidth }">
+      <div ref="containerRef" class="pv-container">
+        <div ref="viewerRef" class="pdfViewer"></div>
+      </div>
     </div>
 
     <p v-if="err" class="pv-err">{{ err }}</p>
@@ -303,19 +306,27 @@ defineExpose({
   font-size: 12px;
   color: var(--danger, #b00020);
 }
-.pv-container {
+/* The positioned box the absolutely-positioned container fills. Owns the frame
+   chrome (border/background) and the resolved height PDF.js needs to lay out. */
+.pv-stage {
   position: relative;
   width: 100%;
   height: 70vh;
-  overflow: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
+  overflow: hidden;
 }
-.pv-container-full {
+.pv-stage-full {
   height: auto;
   flex: 1 1 auto;
   min-height: 0;
+}
+/* PDF.js requires this (its `container`) to be absolutely positioned. */
+.pv-container {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
 }
 .pv-err {
   color: var(--danger, #b00020);
