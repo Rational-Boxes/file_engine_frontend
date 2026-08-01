@@ -82,7 +82,6 @@
 
       <!-- inline reply -->
       <div v-if="replying" class="cn-compose">
-        <div v-if="pendingMarkup" class="cn-chip">📄 Marked-up copy will attach to this reply</div>
         <CommentEditor
           v-model="replyDraft"
           placeholder="Write a reply…"
@@ -107,7 +106,7 @@
       :max-chars="maxChars"
       :flashing="flashing"
       :mention-source="mentionSource"
-      :pending-markup="pendingMarkup"
+      :markup-provider="markupProvider"
       @posted="(c) => emit('posted', c)"
       @updated="(c) => emit('updated', c)"
       @deleted="(id) => emit('deleted', id)"
@@ -143,8 +142,9 @@ const props = defineProps<{
   maxChars: number
   flashing: Set<string>
   mentionSource?: (q: string) => Promise<MentionUser[]>
-  // A saved marked-up PDF copy pending attachment to the next reply (Phase 7.1).
-  pendingMarkup?: CommentMarkup | null
+  // Phase 7.1: called right before a reply posts; returns a marked-up-PDF pointer to
+  // link to it (or null). Threaded down from the panel so replies attach markup too.
+  markupProvider?: () => Promise<CommentMarkup | null>
 }>()
 const emit = defineEmits<{
   (e: 'posted', c: Comment): void
@@ -185,11 +185,12 @@ async function submitReply() {
   if (!body) return
   error.value = ''
   try {
+    // Capture + upload any current PDF markup and link it to this reply (Phase 7.1).
+    const markup = props.markupProvider ? await props.markupProvider() : null
     const c = await discussionService.reply(props.threadId, body, {
       parentCommentId: props.node.id,
       mentions: extractMentions(body),
-      // Attach the pending marked-up copy, if one was saved (Phase 7.1).
-      markup: props.pendingMarkup ?? undefined,
+      markup: markup ?? undefined,
     })
     replyDraft.value = ''
     replying.value = false

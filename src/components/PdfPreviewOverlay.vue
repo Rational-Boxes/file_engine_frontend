@@ -17,17 +17,17 @@
 
 <template>
   <Teleport to="body">
-    <div v-if="preview.isOpen" class="ov-backdrop" @click.self="preview.close()">
+    <div v-if="preview.isOpen" class="ov-backdrop" @click.self="requestClose">
       <div class="ov-panel" role="dialog" aria-modal="true" aria-label="Document preview">
         <header class="ov-head">
           <h1 class="ov-title" :title="title">{{ title }}</h1>
           <div id="ov-titlebar" class="ov-slot"></div>
-          <button class="ov-x" aria-label="Close preview" @click="preview.close()">✕</button>
+          <button class="ov-x" aria-label="Close preview" @click="requestClose">✕</button>
         </header>
 
         <div class="ov-body">
           <p v-if="error" class="ov-err">{{ error }}</p>
-          <DocumentPreview :uid="preview.uid" :name="name" full-width titlebar="#ov-titlebar" />
+          <DocumentPreview ref="docRef" :uid="preview.uid" :name="name" full-width titlebar="#ov-titlebar" />
         </div>
       </div>
     </div>
@@ -44,8 +44,15 @@ const preview = usePreviewStore()
 
 const name = ref('')
 const error = ref('')
+// The embedded DocumentPreview vetoes close when there's unsaved PDF markup (Phase 7.1).
+const docRef = ref<{ confirmDiscard: () => boolean } | null>(null)
 
 const title = computed(() => name.value || preview.name || preview.uid)
+
+// Close the overlay, but first let the preview confirm discarding unsaved markup.
+function requestClose() {
+  if (docRef.value?.confirmDiscard?.() ?? true) preview.close()
+}
 
 // Resolve the title whenever the previewed file changes.
 watch(
@@ -71,7 +78,7 @@ watch(
 function onKey(e: KeyboardEvent) {
   if (e.key !== 'Escape' || e.defaultPrevented || !preview.isOpen) return
   e.preventDefault()
-  preview.close()
+  requestClose()
 }
 onMounted(() => window.addEventListener('keydown', onKey, true))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))

@@ -187,8 +187,8 @@ describe('DocumentPreview', () => {
     expect(checkPermission).toHaveBeenCalledWith('f1', { permission: 'w' })
     // The viewer is editable (its markup toolbar is always shown for a writer).
     expect(w.find('.pv-stub').attributes('data-editable')).toBe('true')
-    // A hint points at the toolbar until there's markup to save.
-    expect(w.text()).toContain('mark up this PDF')
+    // A hint explains markup auto-saves with the comment (no separate save step).
+    expect(w.text().toLowerCase()).toContain('saves with your comment')
   })
 
   it('keeps the viewer read-only (no markup tools) without WRITE', async () => {
@@ -198,7 +198,7 @@ describe('DocumentPreview', () => {
     await flushPromises()
 
     expect(w.find('.pv-stub').attributes('data-editable')).toBe('false')
-    expect(w.text()).not.toContain('mark up this PDF')
+    expect(w.text().toLowerCase()).not.toContain('saves with your comment')
   })
 
   it('offers no PDF action for a non-PDF without a pdf rendition (e.g. an image)', async () => {

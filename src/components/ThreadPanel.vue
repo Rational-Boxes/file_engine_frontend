@@ -155,7 +155,7 @@
           :max-chars="maxChars"
           :flashing="flashing"
           :mention-source="mentionSource"
-          :pending-markup="pendingMarkup"
+          :markup-provider="markupProvider"
           @posted="onPosted"
           @updated="onUpdated"
           @deleted="onDeleted"
@@ -170,14 +170,9 @@
           <span>📍 3D view attached</span>
           <button type="button" class="tp-anchor-clear" title="Detach the 3D view" @click="clearPendingAnchor">✕</button>
         </div>
-        <!-- A marked-up PDF copy saved from the viewer, attached to the next comment (Phase 7.1). -->
-        <div v-if="pendingMarkup" class="tp-anchor-chip">
-          <span>📄 Marked-up copy attached</span>
-          <button type="button" class="tp-anchor-clear" title="Detach the marked-up copy" @click="clearPendingMarkup">✕</button>
-        </div>
         <CommentEditor
           v-model="newBody"
-          :placeholder="pendingAnchor || pendingMarkup ? 'Describe what you\'re pointing at…' : 'Write a comment…'"
+          :placeholder="pendingAnchor ? 'Describe what you\'re pointing at…' : 'Write a comment…'"
           submit-label="Post"
           :max-chars="maxChars"
           :mention-source="mentionSource"
@@ -260,6 +255,10 @@ const props = defineProps<{
   titlebarTarget?: string // CSS selector of the window's title-bar slot for the minimized chip
   pos?: 'side' | 'bottom' // parent-owned dock orientation, shown in the header
   hideDock?: boolean // parent owns the dock/minimize controls (e.g. the 3D viewer header)
+  // Phase 7.1: called right before a comment is posted; returns a marked-up-PDF
+  // pointer to link to it (or null). The host (DocumentPreview) captures + uploads
+  // the current PDF markup here, so no separate "save markup" step is needed.
+  markupProvider?: () => Promise<CommentMarkup | null>
 }>()
 const emit = defineEmits<{
   (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void
@@ -290,10 +289,6 @@ const newBody = ref('')
 // A 3D view captured from the viewer, pending attachment to the next new thread
 // (§9). Set by the viewer's "Comment here"; rides along on open() then clears.
 const pendingAnchor = ref<ModelViewpointAnchor | null>(null)
-// A browser-annotated PDF copy (Phase 7.1) the host saved, pending attachment to the
-// next comment (root OR reply). Set by the PDF viewer's "Save markup to a comment"
-// (via a ref); rides along on open()/reply then clears.
-const pendingMarkup = ref<CommentMarkup | null>(null)
 const reviewOpen = ref(false)
 const reviewInput = ref('')
 const reviewMsg = ref('')
@@ -488,16 +483,6 @@ function clearPendingAnchor() {
   pendingAnchor.value = null
 }
 
-// Attach a saved marked-up PDF copy to the next comment. Called by the PDF viewer's
-// "Save markup to a comment" (via a ref); mirrors startAnnotation for 3D viewpoints.
-function startMarkupAttach(markup: CommentMarkup) {
-  pendingMarkup.value = markup
-  if (layout.value === 'collapsed') layout.value = props.pos === 'bottom' ? 'bottom' : 'right'
-}
-function clearPendingMarkup() {
-  pendingMarkup.value = null
-}
-
 // Download an anchored comment as a BCF (.bcfzip) via the BCF-XML export door, for
 // use outside the API (e.g. a desktop BCF Manager). Surfaces an inline error on
 // failure rather than throwing at the click handler.
@@ -517,25 +502,26 @@ function focusThread(threadId: string) {
     document.getElementById(`thread-${threadId}`)?.scrollIntoView({ block: 'center' })
   })
 }
-defineExpose({ startAnnotation, startMarkupAttach, focusThread })
+defineExpose({ startAnnotation, focusThread })
 
 async function open() {
   const body = newBody.value.trim()
   if (!body) return
   error.value = ''
   try {
+    // Capture + upload any current PDF markup and link it to this comment (Phase
+    // 7.1). Runs before the post; a failure aborts (no orphaned comment).
+    const markup = props.markupProvider ? await props.markupProvider() : null
     const t = await discussionService.openThread(props.fileUid, {
       body,
       mentions: extractMentions(body),
       // A pending 3D viewpoint turns this thread into an anchored annotation (§9).
       anchor: pendingAnchor.value ?? undefined,
-      // A pending marked-up PDF copy attaches to the opening comment (Phase 7.1).
-      markup: pendingMarkup.value ?? undefined,
+      markup: markup ?? undefined,
     })
     if (!threads.value.some((x) => x.id === t.id)) threads.value.unshift(t)
     newBody.value = ''
     pendingAnchor.value = null
-    pendingMarkup.value = null
   } catch (e: unknown) {
     const detail = (e as { response?: { data?: { detail?: { invalid_mentions?: string[] } } } })
       ?.response?.data?.detail
@@ -548,8 +534,6 @@ async function open() {
 // Handlers from CommentNode (reply/edit/delete happen there, results flow up here).
 function onPosted(c: Comment) {
   appendComment(c.threadId, c)
-  // A reply that consumed the pending marked-up copy clears the composer chip.
-  if (c.markup && pendingMarkup.value) pendingMarkup.value = null
 }
 function onUpdated(c: Comment) {
   const t = threadOf(c.threadId)

@@ -63,7 +63,7 @@
       <div v-if="viewerSrc" class="dp-pdf">
         <PdfViewer
           ref="pdfViewerRef"
-          :key="markupView ? `markup:${markupView.renditionUid}` : 'doc'"
+          :key="markupView ? `markup:${markupView.renditionUid}` : `doc:${viewerNonce}`"
           :src="viewerSrc"
           :editable="canAnnotate"
           :full-width="fullWidth"
@@ -77,15 +77,12 @@
             <button class="link" :disabled="markupDownloading" @click="downloadMarkupView">⬇ Download this copy</button>
           </template>
           <template v-else>
-            <!-- The markup toolbar (in PdfViewer) is always visible for a writer;
-                 Save appears once there's markup to save. -->
-            <button
-              v-if="canAnnotate && pdfDirty"
-              class="link dp-save-markup"
-              :disabled="markupSaving"
-              @click="saveMarkup"
-            >💬 {{ markupSaving ? 'Saving…' : 'Save markup to a comment' }}</button>
-            <span v-else-if="canAnnotate" class="dp-hint">✎ Use the toolbar above to mark up this PDF</span>
+            <!-- No separate save step: markup is uploaded + linked automatically when
+                 a comment is posted (see attachMarkup). This just tells the user. -->
+            <span v-if="canAnnotate && pdfDirty" class="dp-hint dp-hint-live">
+              ● Your markup will be saved with your next comment
+            </span>
+            <span v-else-if="canAnnotate" class="dp-hint">✎ Mark up with the toolbar; it saves with your comment</span>
             <button class="link" @click="downloadOriginal">⬇ Download original</button>
             <button class="link" @click="openLocation">📂 Open file location</button>
           </template>
@@ -165,13 +162,13 @@
       <section v-if="fullWidth" class="dp-discussion" :style="discStyle">
         <ThreadPanel
           v-if="hasPreview"
-          ref="threadPanelRef"
           :file-uid="uid"
           :focus-thread="focusThread"
           :focus-comment="focusComment"
           embedded
           :titlebar-target="titlebar"
           :pos="discussionPos"
+          :markup-provider="attachMarkup"
           :class="['dp-thread', { 'dp-thread-min': discLayout === 'collapsed' }]"
           @layout="discLayout = $event"
           @update:pos="setPos"
@@ -262,9 +259,8 @@ const videoUrl = ref('') // object URL for the inline video clip (loaded on dema
 
 // --- PDF markup (Phase 7.1) ---
 const pdfViewerRef = ref<{ saveBytes: () => Promise<Uint8Array>; hasEdits: () => boolean } | null>(null)
-const threadPanelRef = ref<{ startMarkupAttach: (m: CommentMarkup) => void } | null>(null)
-const pdfDirty = ref(false) // the viewer has unsaved markup
-const markupSaving = ref(false)
+const pdfDirty = ref(false) // the viewer has markup not yet attached to a comment
+const viewerNonce = ref(0) // bump to remount the viewer (clear markup after it's saved)
 const canWrite = ref(false) // WRITE on the file → may annotate + save
 // When set, we're reshowing a comment's saved marked-up copy (read-only) instead of
 // the live document; markupUrl is that rendition's object URL.
@@ -433,28 +429,41 @@ async function downloadOriginal() {
 
 // Save the current markup: read the edited bytes, write them as a `markup` rendition
 // (a hidden child of this file), then attach the pointer to the next comment via the
-// discussion panel — exactly how a 3D "Comment here" attaches a viewpoint.
-async function saveMarkup() {
+// The markup provider handed to the discussion panel: called right before a comment
+// (root or reply) is posted. If the live document carries markup, write the edited
+// bytes as a `markup` rendition and return the pointer so it's linked to that
+// comment — no separate save step. Then clear the markup from the live document (so
+// the next comment starts fresh and navigating away no longer warns). Returns null
+// when there's nothing to attach. Throws propagate to the panel, which aborts the
+// post and shows the error, so a failed upload never posts an orphaned comment.
+async function attachMarkup(): Promise<CommentMarkup | null> {
   const viewer = pdfViewerRef.value
-  const panel = threadPanelRef.value
-  if (!viewer || !panel || !props.uid) return
-  markupSaving.value = true
-  error.value = ''
-  try {
-    const bytes = await viewer.saveBytes()
-    const { uid, name } = await createMarkupRendition(props.uid, auth.user || 'anon', bytes)
-    panel.startMarkupAttach({ renditionUid: uid, name })
-    pdfDirty.value = false
-  } catch (e) {
-    error.value = errorMessage(e, 'Failed to save the marked-up copy')
-  } finally {
-    markupSaving.value = false
-  }
+  if (!viewer || markupView.value || !props.uid || !viewer.hasEdits()) return null
+  const bytes = await viewer.saveBytes()
+  const { uid, name } = await createMarkupRendition(props.uid, auth.user || 'anon', bytes)
+  // The markup now belongs to the comment — reset the live document to a clean slate.
+  pdfDirty.value = false
+  viewerNonce.value++
+  return { renditionUid: uid, name }
 }
+
+// Called by the preview overlay before it closes: if there's markup that hasn't been
+// attached to a comment yet, ask before discarding it. Returns true if OK to close.
+function confirmDiscard(): boolean {
+  if (!canAnnotate.value || !pdfDirty.value) return true
+  return window.confirm(
+    'You have PDF markup that has not been added to a comment yet. Add a comment to save it, ' +
+      'or leave and discard the markup?',
+  )
+}
+defineExpose({ confirmDiscard })
 
 // Reshow a comment's saved marked-up copy read-only (from the panel's "View
 // marked-up copy" link). Loads the rendition into the same PDF.js viewer.
 async function onShowMarkup(markup: CommentMarkup) {
+  // Switching to a saved copy replaces the editable viewer; confirm first if there's
+  // unsaved markup, so the drawing isn't silently discarded.
+  if (!confirmDiscard()) return
   closeMarkupUrl()
   error.value = ''
   try {
