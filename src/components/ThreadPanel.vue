@@ -156,10 +156,11 @@
           :flashing="flashing"
           :mention-source="mentionSource"
           :markup-provider="markupProvider"
+          :active-comment-id="activeCommentId"
           @posted="onPosted"
           @updated="onUpdated"
           @deleted="onDeleted"
-          @show-markup="(m) => emit('show-markup', m)"
+          @show-markup="(m, id) => emit('show-markup', m, id)"
         />
       </article>
 
@@ -259,6 +260,8 @@ const props = defineProps<{
   // pointer to link to it (or null). The host (DocumentPreview) captures + uploads
   // the current PDF markup here, so no separate "save markup" step is needed.
   markupProvider?: () => Promise<CommentMarkup | null>
+  // The comment whose marked-up copy is currently being viewed (highlighted).
+  activeCommentId?: string | null
 }>()
 const emit = defineEmits<{
   (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void
@@ -268,8 +271,8 @@ const emit = defineEmits<{
   (e: 'threads', threads: Thread[]): void
   // Restore an annotation thread's saved 3D view (host wires this to the viewer).
   (e: 'restore-view', threadId: string): void
-  // Reshow a comment's marked-up PDF copy (host loads the rendition read-only).
-  (e: 'show-markup', markup: CommentMarkup): void
+  // Reshow a comment's marked-up PDF copy (host loads the rendition + highlights it).
+  (e: 'show-markup', markup: CommentMarkup, commentId: string): void
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'

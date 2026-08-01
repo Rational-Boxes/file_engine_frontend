@@ -173,6 +173,7 @@
           :titlebar-target="titlebar"
           :pos="discussionPos"
           :markup-provider="attachMarkup"
+          :active-comment-id="activeMarkupCommentId"
           :class="['dp-thread', { 'dp-thread-min': discLayout === 'collapsed' }]"
           @layout="discLayout = $event"
           @update:pos="setPos"
@@ -276,6 +277,7 @@ const canWrite = ref(false) // WRITE on the file → may annotate + save
 const markupView = ref<CommentMarkup | null>(null)
 const markupUrl = ref('')
 const markupDownloading = ref(false)
+const activeMarkupCommentId = ref<string | null>(null) // the comment whose copy is shown
 const chatlogHtml = ref('') // chat provenance log HTML (fetched on demand)
 const activeTab = ref<'document' | 'chatlog'>('document') // report preview vs. provenance log
 const loading = ref(false)
@@ -479,7 +481,7 @@ defineExpose({ confirmDiscard })
 
 // Reshow a comment's saved marked-up copy read-only (from the panel's "View
 // marked-up copy" link). Loads the rendition into the same PDF.js viewer.
-async function onShowMarkup(markup: CommentMarkup) {
+async function onShowMarkup(markup: CommentMarkup, commentId: string) {
   // Switching to a saved copy replaces the editable viewer; confirm first if there's
   // unsaved markup, so the drawing isn't silently discarded.
   if (!confirmDiscard()) return
@@ -488,8 +490,10 @@ async function onShowMarkup(markup: CommentMarkup) {
   try {
     markupUrl.value = await renditionObjectUrl(markup.renditionUid, 'application/pdf')
     markupView.value = markup
+    activeMarkupCommentId.value = commentId // highlight the source comment
   } catch (e) {
     markupView.value = null
+    activeMarkupCommentId.value = null
     error.value = errorMessage(e, 'Failed to open the marked-up copy')
   }
 }
@@ -498,6 +502,7 @@ function closeMarkupView() {
   // Guard: returning to the live document discards unsaved further-markup on the copy.
   if (!confirmDiscard()) return
   markupView.value = null
+  activeMarkupCommentId.value = null
   closeMarkupUrl()
 }
 
@@ -550,6 +555,7 @@ function closeMedia() {
   }
   // Reset markup/annotate state when the media is torn down (file change / close).
   markupView.value = null
+  activeMarkupCommentId.value = null
   closeMarkupUrl()
   pdfDirty.value = false
   pdfHasMarkup.value = false

@@ -17,7 +17,10 @@
 
 <template>
   <div class="cn" :style="{ marginLeft: indent + 'px' }">
-    <div class="cn-item" :class="{ flash: flashing.has(node.id), mine: node.author === me }">
+    <div
+      class="cn-item"
+      :class="{ flash: flashing.has(node.id), mine: node.author === me, 'markup-active': isActiveMarkup }"
+    >
       <div class="cn-meta">
         <span class="cn-author">{{ node.author }}</span>
         <time :title="node.createdAt">{{ ago(node.createdAt) }}</time>
@@ -39,9 +42,10 @@
       <div v-if="node.markup && !node.deleted && !node.redacted" class="cn-markup">
         <button
           class="cn-link"
+          :class="{ 'cn-link-on': isActiveMarkup }"
           title="Reshow the marked-up copy in the viewer"
-          @click="node.markup && emit('show-markup', node.markup)"
-        >📄 View marked-up copy</button>
+          @click="node.markup && emit('show-markup', node.markup, node.id)"
+        >📄 {{ isActiveMarkup ? 'Viewing marked-up copy' : 'View marked-up copy' }}</button>
         <button
           class="cn-link"
           :disabled="downloading"
@@ -107,10 +111,11 @@
       :flashing="flashing"
       :mention-source="mentionSource"
       :markup-provider="markupProvider"
+      :active-comment-id="activeCommentId"
       @posted="(c) => emit('posted', c)"
       @updated="(c) => emit('updated', c)"
       @deleted="(id) => emit('deleted', id)"
-      @show-markup="(m) => emit('show-markup', m)"
+      @show-markup="(m, id) => emit('show-markup', m, id)"
     />
   </div>
 </template>
@@ -145,12 +150,15 @@ const props = defineProps<{
   // Phase 7.1: called right before a reply posts; returns a marked-up-PDF pointer to
   // link to it (or null). Threaded down from the panel so replies attach markup too.
   markupProvider?: () => Promise<CommentMarkup | null>
+  // The comment whose marked-up copy is currently being viewed — highlighted so the
+  // copy↔comment relationship is obvious.
+  activeCommentId?: string | null
 }>()
 const emit = defineEmits<{
   (e: 'posted', c: Comment): void
   (e: 'updated', c: Comment): void
   (e: 'deleted', id: string): void
-  (e: 'show-markup', markup: CommentMarkup): void
+  (e: 'show-markup', markup: CommentMarkup, commentId: string): void
 }>()
 
 const replying = ref(false)
@@ -162,6 +170,9 @@ const revisions = ref<Revision[]>([])
 const error = ref('')
 const downloading = ref(false)
 const dlError = ref('')
+
+// This comment's marked-up copy is the one currently on screen — highlight it.
+const isActiveMarkup = computed(() => !!props.node.markup && props.node.id === props.activeCommentId)
 
 // Cap the visual indent so deep trees stay readable (the data is unlimited depth).
 const indent = computed(() => (props.depth === 0 ? 0 : Math.min(props.depth, 6) * 16))
@@ -320,6 +331,16 @@ function mentionError(e: unknown): string | null {
   border-left: 2px solid var(--primary);
   background: var(--bg);
   border-radius: 4px;
+}
+/* The comment whose marked-up copy is currently displayed. */
+.cn-item.markup-active {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--primary);
+  border-radius: 6px;
+}
+.cn-link.cn-link-on {
+  font-weight: 600;
+  color: var(--primary);
 }
 .cn-chip {
   align-self: flex-start;
