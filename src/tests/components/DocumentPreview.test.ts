@@ -178,26 +178,27 @@ describe('DocumentPreview', () => {
     expect(w.find('.pv-stub').attributes('data-src')).toBe('blob:src-uid') // PDF.js viewer, not an iframe
   })
 
-  it('offers the Annotate affordance only with WRITE on the full review surface', async () => {
-    checkPermission.mockResolvedValue(true) // this user may write → may annotate
+  it('shows the markup toolbar (editable viewer) only with WRITE on the full review surface', async () => {
+    checkPermission.mockResolvedValue(true) // this user may write → markup tools are shown
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
     await flushPromises()
 
     expect(checkPermission).toHaveBeenCalledWith('f1', { permission: 'w' })
-    const annotate = w.findAll('.link').find((b) => b.text().includes('Annotate'))
-    expect(annotate).toBeTruthy()
-    // The viewer starts read-only until Annotate is toggled.
-    expect(w.find('.pv-stub').attributes('data-editable')).toBe('false')
+    // The viewer is editable (its markup toolbar is always shown for a writer).
+    expect(w.find('.pv-stub').attributes('data-editable')).toBe('true')
+    // A hint points at the toolbar until there's markup to save.
+    expect(w.text()).toContain('mark up this PDF')
   })
 
-  it('hides the Annotate affordance without WRITE', async () => {
+  it('keeps the viewer read-only (no markup tools) without WRITE', async () => {
     checkPermission.mockResolvedValue(false)
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
     await flushPromises()
 
-    expect(w.findAll('.link').find((b) => b.text().includes('Annotate'))).toBeFalsy()
+    expect(w.find('.pv-stub').attributes('data-editable')).toBe('false')
+    expect(w.text()).not.toContain('mark up this PDF')
   })
 
   it('offers no PDF action for a non-PDF without a pdf rendition (e.g. an image)', async () => {

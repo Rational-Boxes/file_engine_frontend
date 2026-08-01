@@ -56,16 +56,16 @@
 
       <!-- Document tab: the report preview (PDF / video / still image). -->
       <template v-if="activeTab === 'document'">
-      <!-- Inline PDF viewer (Phase 7.1) — PDF.js, replacing the old <iframe>. Lazy
-           (defineAsyncComponent) so the heavy library stays out of the main bundle.
-           In annotate mode it exposes markup tools + edited bytes; reshowing a
-           comment's marked-up copy loads that rendition read-only. -->
+      <!-- Inline PDF viewer (Phase 7.1) — PDF.js, replacing the old <iframe>. The
+           heavy library is dynamic-imported inside PdfViewer. For a user with WRITE
+           the markup toolbar is always shown (editable) so the tools are obvious;
+           reshowing a comment's marked-up copy loads that rendition read-only. -->
       <div v-if="viewerSrc" class="dp-pdf">
         <PdfViewer
           ref="pdfViewerRef"
           :key="markupView ? `markup:${markupView.renditionUid}` : 'doc'"
           :src="viewerSrc"
-          :editable="annotateActive"
+          :editable="canAnnotate"
           :full-width="fullWidth"
           @dirty="pdfDirty = $event"
           @error="error = $event"
@@ -77,15 +77,15 @@
             <button class="link" :disabled="markupDownloading" @click="downloadMarkupView">⬇ Download this copy</button>
           </template>
           <template v-else>
-            <button v-if="canAnnotate" class="link" @click="toggleAnnotate">
-              {{ annotating ? '✓ Done annotating' : '✎ Annotate' }}
-            </button>
+            <!-- The markup toolbar (in PdfViewer) is always visible for a writer;
+                 Save appears once there's markup to save. -->
             <button
-              v-if="annotating && pdfDirty"
-              class="link"
+              v-if="canAnnotate && pdfDirty"
+              class="link dp-save-markup"
               :disabled="markupSaving"
               @click="saveMarkup"
             >💬 {{ markupSaving ? 'Saving…' : 'Save markup to a comment' }}</button>
+            <span v-else-if="canAnnotate" class="dp-hint">✎ Use the toolbar above to mark up this PDF</span>
             <button class="link" @click="downloadOriginal">⬇ Download original</button>
             <button class="link" @click="openLocation">📂 Open file location</button>
           </template>
@@ -263,7 +263,6 @@ const videoUrl = ref('') // object URL for the inline video clip (loaded on dema
 // --- PDF markup (Phase 7.1) ---
 const pdfViewerRef = ref<{ saveBytes: () => Promise<Uint8Array>; hasEdits: () => boolean } | null>(null)
 const threadPanelRef = ref<{ startMarkupAttach: (m: CommentMarkup) => void } | null>(null)
-const annotating = ref(false) // annotate mode on the document view
 const pdfDirty = ref(false) // the viewer has unsaved markup
 const markupSaving = ref(false)
 const canWrite = ref(false) // WRITE on the file → may annotate + save
@@ -305,10 +304,9 @@ const openHint = computed(() => (mediaKind.value === 'video' ? 'Play the video' 
 // What the PDF.js viewer renders: a comment's marked-up copy (read-only) when
 // reshowing, else the live document.
 const viewerSrc = computed(() => (markupView.value ? markupUrl.value : pdfUrl.value))
-// Editing is only active on the live document, never while reshowing a saved copy.
-const annotateActive = computed(() => annotating.value && !markupView.value)
-// The Annotate affordance: only on the full review surface, for a writer, on the
-// live document (the discussion panel — where the markup attaches — lives here too).
+// Whether the markup toolbar is shown + editing enabled: on the full review surface,
+// for a writer, on the live document (never while reshowing a saved copy). The
+// discussion panel — where a saved markup attaches — lives on this surface too.
 const canAnnotate = computed(() => !!props.fullWidth && canWrite.value && !markupView.value)
 
 // Docking behaviour (orientation, minimize, draggable divider) is shared with the
@@ -433,12 +431,6 @@ async function downloadOriginal() {
   }
 }
 
-// Toggle annotate mode. Leaving it with unsaved edits keeps them in the viewer until
-// the tab is closed (guarded by beforeunload); the user can re-enter to save.
-function toggleAnnotate() {
-  annotating.value = !annotating.value
-}
-
 // Save the current markup: read the edited bytes, write them as a `markup` rendition
 // (a hidden child of this file), then attach the pointer to the next comment via the
 // discussion panel — exactly how a 3D "Comment here" attaches a viewpoint.
@@ -452,7 +444,6 @@ async function saveMarkup() {
     const bytes = await viewer.saveBytes()
     const { uid, name } = await createMarkupRendition(props.uid, auth.user || 'anon', bytes)
     panel.startMarkupAttach({ renditionUid: uid, name })
-    annotating.value = false // the copy is now attached to the composer; exit edit mode
     pdfDirty.value = false
   } catch (e) {
     error.value = errorMessage(e, 'Failed to save the marked-up copy')
@@ -464,7 +455,6 @@ async function saveMarkup() {
 // Reshow a comment's saved marked-up copy read-only (from the panel's "View
 // marked-up copy" link). Loads the rendition into the same PDF.js viewer.
 async function onShowMarkup(markup: CommentMarkup) {
-  annotating.value = false
   closeMarkupUrl()
   error.value = ''
   try {
@@ -511,7 +501,7 @@ function closeMarkupUrl() {
 
 // Warn before leaving with unsaved markup (no beforeunload guard existed before).
 function beforeUnloadGuard(e: BeforeUnloadEvent) {
-  if (annotateActive.value && pdfDirty.value) {
+  if (canAnnotate.value && pdfDirty.value) {
     e.preventDefault()
     e.returnValue = ''
   }
@@ -531,7 +521,6 @@ function closeMedia() {
   // Reset markup/annotate state when the media is torn down (file change / close).
   markupView.value = null
   closeMarkupUrl()
-  annotating.value = false
   pdfDirty.value = false
 }
 
@@ -652,6 +641,13 @@ function cleanup() {
 .dp-markup-tag {
   font-size: 12px;
   color: var(--primary);
+  font-weight: 600;
+}
+.dp-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.dp-save-markup {
   font-weight: 600;
 }
 

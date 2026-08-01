@@ -39,6 +39,7 @@
          button, so the embedder (DocumentPreview) wires Save; here we only switch
          the AnnotationEditorLayer tool. -->
     <div v-if="editable" class="pv-toolbar" role="toolbar" aria-label="Markup tools">
+      <span class="pv-toolbar-label">✎ Markup</span>
       <button
         v-for="t in TOOLS"
         :key="t.name"
@@ -276,10 +277,16 @@ defineExpose({
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  padding: 4px;
-  border: 1px solid var(--border);
+  padding: 5px 6px;
+  border: 1px solid var(--primary);
   border-radius: 8px;
   background: var(--card);
+}
+.pv-toolbar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  margin-right: 4px;
 }
 .pv-tool {
   appearance: none;
