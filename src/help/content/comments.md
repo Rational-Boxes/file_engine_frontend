@@ -2,9 +2,9 @@
 id: comments
 title: Comments & discussions
 category: Collaboration
-keywords: [comment, discussion, thread, reply, mention, review, collaborate, real-time, live, presence, viewers, concurrent]
+keywords: [comment, discussion, thread, reply, mention, review, collaborate, real-time, live, presence, viewers, concurrent, markup, annotate, pdf, marked-up copy]
 order: 1
-related: [getting-started]
+related: [getting-started, pdf-markup, cad-bim]
 ---
 
 Comments let you have a conversation attached directly to a file, so feedback lives
@@ -79,6 +79,12 @@ comment shows a **🎯 View** link that jumps everyone back to the exact camera 
 section cuts, and highlighted element the author was looking at, and a **⬇ BCF**
 link that downloads it as a standard **`.bcfzip`** (BCF 2.1) file for use in desktop
 BIM tools. See [viewing CAD & BIM models](#cad-bim) for how to create them.
+
+On a **PDF or document** you can **mark up the page** — highlight, draw, add notes —
+and post a comment to attach the marked-up copy to it. That comment then carries a
+**📄 View marked-up copy** link (which shows the copy and highlights the comment) and
+a **⬇ Download** link. The original document is never changed. See
+[previewing & marking up PDFs](#pdf-markup) for the full workflow.
 
 ## Who can comment
 
