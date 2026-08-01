@@ -185,8 +185,10 @@ function buildViewer() {
   eventBus.on('pagesinit', () => {
     if (pdfViewer) pdfViewer.currentScaleValue = 'page-width'
   })
-  // Any editor change (add/move/delete a markup) may change the dirty state.
-  eventBus.on('annotationeditorstateschanged', updateDirty)
+  // Editor focus/commit transitions (there is no dedicated "edits changed" event in
+  // this pdfjs; the canonical content signal is annotationStorage.onSetModified, set
+  // per-document in loadDoc).
+  eventBus.on('editingstateschanged', updateDirty)
 }
 
 async function loadDoc() {
@@ -204,6 +206,15 @@ async function loadDoc() {
     emit('dirty', false)
     loadingTask = lib!.getDocument({ url: props.src })
     pdfDoc = await loadingTask.promise
+    // The canonical "the user changed the markup" signal: annotationStorage fires
+    // onSetModified when an editor edit lands. (There is no annotationeditor*changed
+    // eventBus event for content in this pdfjs.)
+    try {
+      const storage = pdfDoc.annotationStorage
+      if (storage) storage.onSetModified = () => updateDirty()
+    } catch {
+      /* storage not available — dirty falls back to editingstateschanged */
+    }
     pdfViewer?.setDocument(pdfDoc)
     linkService?.setDocument(pdfDoc, null)
     emit('ready')
