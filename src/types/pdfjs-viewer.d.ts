@@ -34,6 +34,9 @@ declare module 'pdfjs-dist/web/pdf_viewer.mjs' {
     constructor(opts: any)
     setDocument(doc: any): void
     currentScaleValue: string
+    currentScale: number
+    increaseScale(options?: any): void
+    decreaseScale(options?: any): void
     get annotationEditorMode(): { mode: number }
     set annotationEditorMode(value: { mode: number; editId?: string | null })
     cleanup(): void

@@ -38,22 +38,31 @@
     <!-- Markup toolbar — only in editable (annotate) mode. PDF.js ships no Save
          button, so the embedder (DocumentPreview) wires Save; here we only switch
          the AnnotationEditorLayer tool. -->
-    <div v-if="editable" class="pv-toolbar" role="toolbar" aria-label="Markup tools">
-      <span class="pv-toolbar-label">✎ Markup</span>
-      <button
-        v-for="t in TOOLS"
-        :key="t.name"
-        class="pv-tool"
-        :class="{ on: mode === t.name }"
-        :title="t.title"
-        type="button"
-        @click="setMode(t.name)"
-      >{{ t.icon }} {{ t.label }}</button>
-      <span class="pv-sep" aria-hidden="true"></span>
-      <button class="pv-tool" title="Undo (Ctrl+Z)" type="button" @click="undo">↶ Undo</button>
-      <button class="pv-tool" title="Redo (Ctrl+Y)" type="button" @click="redo">↷ Redo</button>
+    <div class="pv-toolbar" role="toolbar" aria-label="PDF tools">
+      <!-- Markup tools + undo/redo: only for a user who can change the file. -->
+      <template v-if="editable">
+        <span class="pv-toolbar-label">✎ Markup</span>
+        <button
+          v-for="t in TOOLS"
+          :key="t.name"
+          class="pv-tool"
+          :class="{ on: mode === t.name }"
+          :title="t.title"
+          type="button"
+          @click="setMode(t.name)"
+        >{{ t.icon }} {{ t.label }}</button>
+        <span class="pv-sep" aria-hidden="true"></span>
+        <button class="pv-tool" title="Undo (Ctrl+Z)" type="button" @click="undo">↶ Undo</button>
+        <button class="pv-tool" title="Redo (Ctrl+Y)" type="button" @click="redo">↷ Redo</button>
+        <span class="pv-sep" aria-hidden="true"></span>
+      </template>
+      <!-- Zoom: available whether or not you can mark up. The middle button shows the
+           current zoom and resets to the default fit-to-width. -->
+      <button class="pv-tool" title="Zoom out" type="button" @click="zoomOut">🔍−</button>
+      <button class="pv-tool pv-zoom-pct" title="Reset zoom (fit to width)" type="button" @click="resetZoom">{{ zoomPct }}%</button>
+      <button class="pv-tool" title="Zoom in" type="button" @click="zoomIn">🔍+</button>
       <span class="pv-spacer"></span>
-      <span v-if="dirty" class="pv-dirty" title="Unsaved markup">● unsaved markup</span>
+      <span v-if="editable && dirty" class="pv-dirty" title="Unsaved markup">● unsaved markup</span>
     </div>
 
     <!-- PDF.js requires its `container` (pv-container) to be absolutely positioned
@@ -149,6 +158,7 @@ const viewerRef = ref<HTMLDivElement | null>(null)
 const mode = ref<ToolName>('none')
 const dirty = ref(false) // markup added since load / last save (the "unsaved" flag)
 const hasMarkup = ref(false) // any markup present (persists across a save)
+const zoomPct = ref(100) // current zoom %, kept in sync via the scalechanging event
 const err = ref('')
 
 // pdfjs runtime objects held loosely — this is the external-library boundary.
@@ -211,6 +221,11 @@ function buildViewer() {
   eventBus.on('pagesinit', () => {
     if (pdfViewer) pdfViewer.currentScaleValue = 'page-width'
   })
+  // Keep the zoom readout in sync with the actual scale (zoom buttons, fit, Ctrl+wheel).
+  eventBus.on('scalechanging', (e: { scale?: number }) => {
+    const s = typeof e?.scale === 'number' ? e.scale : pdfViewer?.currentScale
+    if (typeof s === 'number') zoomPct.value = Math.round(s * 100)
+  })
 }
 
 async function loadDoc() {
@@ -266,6 +281,22 @@ function editingAction(name: 'undo' | 'redo') {
 }
 const undo = () => editingAction('undo')
 const redo = () => editingAction('redo')
+
+// Zoom controls. increaseScale/decreaseScale step through pdfjs's scale presets;
+// resetZoom returns to the default fit-to-width (the initial view).
+const zoomIn = () => {
+  try { pdfViewer?.increaseScale() } catch { /* not ready */ }
+}
+const zoomOut = () => {
+  try { pdfViewer?.decreaseScale() } catch { /* not ready */ }
+}
+const resetZoom = () => {
+  try {
+    if (pdfViewer) pdfViewer.currentScaleValue = 'page-width'
+  } catch {
+    /* not ready */
+  }
+}
 
 // Produce the edited PDF bytes (annotations baked in). This is the byte round-trip
 // the native browser viewer never exposes — the caller PUTs these as a markup
@@ -355,6 +386,11 @@ defineExpose({
   align-self: stretch;
   margin: 2px 4px;
   background: var(--border);
+}
+.pv-zoom-pct {
+  min-width: 3.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .pv-spacer {
   flex: 1 1 auto;
