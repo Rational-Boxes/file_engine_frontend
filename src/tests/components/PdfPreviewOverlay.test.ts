@@ -62,8 +62,20 @@ describe('PdfPreviewOverlay', () => {
     store.open('f1', 'report.pdf')
     await flushPromises()
 
-    await w.find('.ov-x').trigger('click')
+    await w.find('button[aria-label="Close preview"]').trigger('click')
     expect(store.isOpen).toBe(false)
     expect(w.find('.ov-backdrop').exists()).toBe(false)
+  })
+
+  it('toggles maximize / restore', async () => {
+    const w = mountOverlay()
+    usePreviewStore().open('f1', 'report.pdf')
+    await flushPromises()
+
+    expect(w.find('.ov-panel-max').exists()).toBe(false) // windowed by default
+    await w.find('button[aria-label="Maximize preview"]').trigger('click')
+    expect(w.find('.ov-panel-max').exists()).toBe(true) // fills the viewport
+    await w.find('button[aria-label="Restore preview"]').trigger('click')
+    expect(w.find('.ov-panel-max').exists()).toBe(false) // back to windowed
   })
 })
