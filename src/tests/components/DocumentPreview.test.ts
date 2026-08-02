@@ -209,6 +209,24 @@ describe('DocumentPreview', () => {
     expect(w.find('img.dp-img').exists()).toBe(true)
   })
 
+  it('an image preview offers Download original + Open file location (consistent with PDF/video)', async () => {
+    downloadFile.mockResolvedValue(new Blob(['img']))
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:dl')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'photo.png', fullWidth: true } })
+    await flushPromises()
+
+    const dl = w.findAll('.link').find((b) => b.text().includes('Download original'))
+    const loc = w.findAll('.link').find((b) => b.text().includes('Open file location'))
+    expect(dl).toBeTruthy()
+    expect(loc).toBeTruthy()
+    await dl!.trigger('click')
+    expect(downloadFile).toHaveBeenCalledWith('f1')
+    await loc!.trigger('click')
+    expect(push).toHaveBeenCalledWith({ name: 'FileBrowser', query: { file: 'f1', tenant: 'default' } })
+  })
+
   it('for a video in the drawer: shows the poster + a "Play video" action that raises the overlay', async () => {
     // A video emits poster (PNG) + preview (MP4 clip); the still is the poster.
     loadRenditionSet.mockResolvedValue({

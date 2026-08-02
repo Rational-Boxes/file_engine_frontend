@@ -138,6 +138,13 @@
         >
           {{ opening ? 'Opening…' : openLabel }}
         </button>
+
+        <!-- Same file actions as the PDF/video views, so an image preview is
+             consistent: get the source file, or jump to it in the browser. -->
+        <div v-if="previewUrl" class="dp-actions">
+          <button class="link" @click="downloadOriginal">⬇ Download original</button>
+          <button class="link" @click="openLocation">📂 Open file location</button>
+        </div>
       </template>
       </template>
 
