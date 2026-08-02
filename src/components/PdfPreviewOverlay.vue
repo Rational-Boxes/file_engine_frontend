@@ -17,12 +17,18 @@
 
 <template>
   <Teleport to="body">
-    <div v-if="preview.isOpen" class="ov-backdrop" @click.self="requestClose">
-      <div class="ov-panel" role="dialog" aria-modal="true" aria-label="Document preview">
+    <div v-if="preview.isOpen" class="ov-backdrop" :class="{ 'ov-max': maximized }" @click.self="requestClose">
+      <div class="ov-panel" :class="{ 'ov-panel-max': maximized }" role="dialog" aria-modal="true" aria-label="Document preview">
         <header class="ov-head">
           <h1 class="ov-title" :title="title">{{ title }}</h1>
           <div id="ov-titlebar" class="ov-slot"></div>
-          <button class="ov-x" aria-label="Close preview" @click="requestClose">✕</button>
+          <button
+            class="ov-btn"
+            :aria-label="maximized ? 'Restore preview' : 'Maximize preview'"
+            :title="maximized ? 'Restore' : 'Maximize'"
+            @click="maximized = !maximized"
+          >{{ maximized ? '🗗' : '⛶' }}</button>
+          <button class="ov-btn" aria-label="Close preview" @click="requestClose">✕</button>
         </header>
 
         <div class="ov-body">
@@ -44,6 +50,7 @@ const preview = usePreviewStore()
 
 const name = ref('')
 const error = ref('')
+const maximized = ref(false) // Maximize/Restore: fill the viewport vs. the windowed modal
 // The embedded DocumentPreview vetoes close when there's unsaved PDF markup (Phase 7.1).
 const docRef = ref<{ confirmDiscard: () => boolean } | null>(null)
 
@@ -107,6 +114,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   overflow: hidden;
 }
 
+/* Maximized: fill the whole viewport (no margin, radius, or width cap). The panel
+   already stretches to the backdrop height, so dropping the padding fills it. */
+.ov-backdrop.ov-max {
+  padding: 0;
+}
+.ov-panel.ov-panel-max {
+  width: 100vw;
+  max-width: none;
+  border-radius: 0;
+}
+
 .ov-head {
   display: flex;
   align-items: center;
@@ -133,12 +151,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   flex: 0 0 auto;
 }
 
-.ov-x {
+.ov-btn {
   border: none;
   background: none;
   font-size: 18px;
   color: var(--muted);
   line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.ov-btn:hover {
+  color: var(--fg);
+  background: var(--bg);
 }
 
 .ov-body {
