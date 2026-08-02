@@ -16,8 +16,10 @@
 -->
 
 <template>
+  <!-- No main navigation here: the editor is a focused, full-height surface, so we
+       hide AppNav to give ONLYOFFICE the whole viewport. The local "← Back" bar is
+       the way out. -->
   <div class="oo-view">
-    <AppNav />
     <main class="oo-main">
       <header class="oo-bar">
         <button class="link" @click="back">← Back</button>
@@ -35,7 +37,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AppNav from '@/components/AppNav.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
 import { onlyofficeService, errorMessage } from '@/services/onlyofficeService'
 
