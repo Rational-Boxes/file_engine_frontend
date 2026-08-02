@@ -171,6 +171,32 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   overflow: auto;
 }
 
+/* Maximized: DocumentPreview's full-width layouts pin their height to a fixed
+   calc(100vh - …) tuned for the windowed modal (and the full-page view). Maximized
+   has less chrome, so that under-fills and leaves a strip of empty space below —
+   most visible with the discussion docked to the bottom. Here we make the body fill
+   the panel and hand that height down so the preview + docked discussion fill it
+   exactly. Scoped to the maximized panel; the windowed modal is unchanged. */
+.ov-panel-max .ov-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ov-panel-max :deep(.doc-preview) {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  align-items: stretch;
+}
+.ov-panel-max :deep(.dp-combined.dp-fit-bottom),
+.ov-panel-max :deep(.dp-combined.dp-side-by-side),
+.ov-panel-max :deep(.dp-combined.dp-full-min) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto; /* override the fixed calc(100vh - 140px) — fill the flex space instead */
+}
+
 .ov-err {
   color: var(--danger);
   font-size: 13px;
