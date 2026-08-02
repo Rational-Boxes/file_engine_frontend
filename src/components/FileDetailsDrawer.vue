@@ -441,7 +441,10 @@ async function removeMeta(key: string) {
   color: var(--danger);
 }
 
-.edit-btn {
+/* Compound `.btn.edit-btn` so the accent background wins over the later `.btn`
+   rule (equal specificity + source order would otherwise leave the .btn light-card
+   background under the white text — unreadable in light mode). */
+.btn.edit-btn {
   margin-top: 14px;
   width: 100%;
   text-align: center;
@@ -449,7 +452,7 @@ async function removeMeta(key: string) {
   color: #fff;
   border-color: var(--primary);
 }
-.edit-btn:hover:not(:disabled) {
+.btn.edit-btn:hover:not(:disabled) {
   filter: brightness(1.05);
   background: var(--primary);
 }
