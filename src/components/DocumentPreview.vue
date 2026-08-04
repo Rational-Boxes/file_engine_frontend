@@ -132,8 +132,10 @@
           <p v-if="genError" class="dp-err">{{ genError }}</p>
         </template>
 
+        <!-- Inline embed/play button for a PDF/video only. A plain image has no inline
+             view — its thumbnail (above) opens the overlay on click instead. -->
         <button
-          v-if="previewUrl && canOpen"
+          v-if="previewUrl && mediaKind"
           class="btn"
           :class="{ 'btn-end': mediaKind === 'video' }"
           :disabled="opening"
@@ -310,13 +312,23 @@ const videoRef = computed(() => {
 const mediaKind = computed<'pdf' | 'video' | null>(() =>
   canOpenPdf.value ? 'pdf' : videoRef.value ? 'video' : null,
 )
-const canOpen = computed(() => mediaKind.value !== null)
+// Whether the still is clickable-to-open. A PDF/video always is (inline player, or the
+// overlay from the drawer). A plain image (mediaKind null) has nothing to embed, but in
+// the drawer its thumbnail should still open the full preview overlay; on the full-width
+// surface the image is already shown full size, so it stays inert.
+const canOpen = computed(() => mediaKind.value !== null || (!props.fullWidth && !!previewUrl.value))
 // Whether a document preview is actually on screen (vs. the "no preview" state).
 const hasPreview = computed(() =>
   !!(previewUrl.value || pdfUrl.value || videoUrl.value || set.value.chatlog),
 )
 const openLabel = computed(() => (mediaKind.value === 'video' ? '▶ Preview 10 seconds' : 'Open document (PDF)'))
-const openHint = computed(() => (mediaKind.value === 'video' ? 'Play the video' : 'Open the full document'))
+const openHint = computed(() =>
+  mediaKind.value === 'video'
+    ? 'Play the video'
+    : mediaKind.value === 'pdf'
+      ? 'Open the full document'
+      : 'Open the full preview',
+)
 
 // What the PDF.js viewer renders: a comment's marked-up copy (read-only) when
 // reshowing, else the live document.
