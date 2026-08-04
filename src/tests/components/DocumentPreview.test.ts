@@ -349,6 +349,54 @@ describe('DocumentPreview', () => {
     slot.remove()
   })
 
+  it('shows a mini-map navigator whenever the image is larger than the viewport, and dragging it pans the pane', async () => {
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'photo.png', fullWidth: true } })
+    await flushPromises()
+
+    // Load the image with a known natural size (2:1 aspect).
+    const imgEl = w.find('img.dp-img').element as HTMLImageElement
+    Object.defineProperty(imgEl, 'naturalWidth', { value: 2000, configurable: true })
+    Object.defineProperty(imgEl, 'naturalHeight', { value: 1000, configurable: true })
+    await w.find('img.dp-img').trigger('load')
+    await flushPromises()
+
+    // With no overflow (jsdom reports 0 sizes) there is nothing to pan → no navigator.
+    expect(w.find('.dp-nav').exists()).toBe(false)
+
+    // jsdom has no layout, so stub the scroll pane to report the image overflowing it.
+    const paneEl = w.find('.dp-img-pane').element as HTMLElement
+    let sl = 0
+    let st = 0
+    Object.defineProperties(paneEl, {
+      clientWidth: { value: 800, configurable: true },
+      clientHeight: { value: 600, configurable: true },
+      scrollWidth: { value: 4000, configurable: true },
+      scrollHeight: { value: 2000, configurable: true },
+      scrollLeft: { get: () => sl, set: (v) => (sl = v), configurable: true },
+      scrollTop: { get: () => st, set: (v) => (st = v), configurable: true },
+    })
+
+    // The rule is "larger than the viewport", NOT "zoomed past 1:1": a scroll (which
+    // re-reads the metrics) is enough to reveal the navigator, no zoom needed.
+    await w.find('.dp-img-pane').trigger('scroll')
+    await flushPromises()
+    const nav = w.find('.dp-nav')
+    expect(nav.exists()).toBe(true)
+
+    // Dragging the mini-map recentres the pane's viewport on the drag point.
+    const thumbEl = w.find('.dp-nav-thumb').element as HTMLElement
+    thumbEl.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 168, height: 84, right: 168, bottom: 84, x: 0, y: 0, toJSON() {} }) as DOMRect
+    await nav.trigger('pointerdown', { clientX: 168, clientY: 84, pointerId: 1 })
+
+    // Bottom-right of the map → scrolled toward the far corner (from 0,0).
+    expect(sl).toBeGreaterThan(0)
+    expect(st).toBeGreaterThan(0)
+
+    w.unmount()
+  })
+
   it('for a video in the drawer: shows the poster + a "Play video" action that raises the overlay', async () => {
     // A video emits poster (PNG) + preview (MP4 clip); the still is the poster.
     loadRenditionSet.mockResolvedValue({
