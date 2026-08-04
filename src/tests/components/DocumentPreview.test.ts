@@ -59,6 +59,15 @@ vi.mock('@/components/PdfViewer.vue', () => ({
   default: {
     name: 'PdfViewer',
     props: ['src', 'editable', 'fullWidth'],
+    emits: ['ready', 'error', 'dirty', 'has-markup', 'download'],
+    // Stand in for the exposed viewer API the preview calls when baking markup into a
+    // download. hasEdits stays false; tests drive "markup present" via the has-markup
+    // emit (→ pdfHasMarkup), the same signal the real viewer sends.
+    methods: {
+      saveBytes: () => Promise.resolve(new Uint8Array([1, 2, 3])),
+      hasEdits: () => false,
+      markSaved: () => {},
+    },
     render(this: { src: string; editable: boolean }) {
       return h('div', { class: 'pv-stub', 'data-src': this.src, 'data-editable': String(this.editable) })
     },
@@ -155,6 +164,51 @@ describe('DocumentPreview', () => {
     expect(dl).toBeTruthy()
     await dl!.trigger('click')
     expect(downloadFile).toHaveBeenCalledWith('f1') // fetches the original source bytes
+  })
+
+  it('the PdfViewer toolbar download downloads the on-screen PDF rendition (no re-fetch)', async () => {
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:dl')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
+    await flushPromises()
+
+    // The toolbar's ⬇ button lives in PdfViewer; it emits `download` for the embedder.
+    w.findComponent({ name: 'PdfViewer' }).vm.$emit('download')
+    await flushPromises()
+
+    // Downloads the already-loaded PDF object URL — no second fetch, no source download.
+    expect(click).toHaveBeenCalled()
+    expect(downloadFile).not.toHaveBeenCalled()
+    // The source file ("Download original") stays a separate action for the Office doc.
+    expect(w.findAll('.link').find((b) => b.text().includes('Download original'))).toBeTruthy()
+    click.mockRestore()
+  })
+
+  it('the toolbar download bakes in markup when the PDF is marked up (the marked-up version)', async () => {
+    checkPermission.mockResolvedValue(true) // writer → markup tools available
+    const createURL = vi.fn(() => 'blob:marked')
+    globalThis.URL.createObjectURL = createURL
+    globalThis.URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
+    await flushPromises()
+
+    // The viewer reports markup present (the same signal the real PDF.js viewer emits).
+    const viewer = w.findComponent({ name: 'PdfViewer' })
+    viewer.vm.$emit('has-markup', true)
+    await flushPromises()
+    viewer.vm.$emit('download')
+    await flushPromises()
+
+    // Baked the on-screen bytes (viewer.saveBytes) into a fresh blob — not the plain
+    // rendition object URL — and never re-fetched the source file.
+    expect(createURL).toHaveBeenCalled()
+    expect(click).toHaveBeenCalled()
+    expect(downloadFile).not.toHaveBeenCalled()
+    click.mockRestore()
   })
 
   it('the modal "Open file location" deep-links to the file (and closes the overlay)', async () => {

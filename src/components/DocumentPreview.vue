@@ -69,6 +69,7 @@
           :full-width="fullWidth"
           @dirty="pdfDirty = $event"
           @has-markup="pdfHasMarkup = $event"
+          @download="downloadPdf"
           @error="error = $event"
         />
         <div class="dp-actions">
@@ -87,6 +88,8 @@
             <span v-else-if="canAnnotate" class="dp-hint">✎ Mark up with the toolbar; it saves with your comment</span>
             <!-- Discard all markup and return to the clean original (guarded). -->
             <button v-if="canAnnotate && pdfHasMarkup" class="link" @click="clearMarkup">↺ Return to original</button>
+            <!-- The source file itself (for an Office doc that's the .docx/.xlsx). The
+                 PDF being viewed is downloaded from the toolbar's ⬇ button instead. -->
             <button class="link" @click="downloadOriginal">⬇ Download original</button>
             <button class="link" @click="openLocation">📂 Open file location</button>
           </template>
@@ -426,6 +429,45 @@ function openLocation() {
   const query: Record<string, string> = { file: props.uid }
   if (auth.tenant) query.tenant = auth.tenant // UIDs are tenant-scoped
   router.push({ name: 'FileBrowser', query })
+}
+
+// Handles the PdfViewer toolbar's ⬇ download (the affordance the native browser PDF
+// viewer has and the embedded one lacked). Downloads the PDF the viewer is showing —
+// any file with a PDF preview, a native PDF or an Office doc's generated `pdf` rendition
+// alike (which downloadOriginal does NOT give: that returns the source .docx/.xlsx).
+// When the user has marked the
+// document up, the download is the marked-up version (annotations baked in via the
+// viewer's saveBytes); with no markup it's the plain preview rendition, reusing the
+// object URL already loaded into the viewer (viewerSrc) so there's no second fetch. For
+// a reshown marked-up copy, viewerSrc already IS that copy, so its bytes come straight
+// through (plus any further markup the user layered on).
+async function downloadPdf() {
+  if (!viewerSrc.value) return
+  const base = props.name || props.uid
+  const filename = /\.pdf$/i.test(base) ? base : `${base.replace(/\.[^./\\]+$/, '')}.pdf`
+  // Any markup on the live document (a fresh drawing, or further edits on a copy) means
+  // the on-screen PDF differs from the loaded rendition — bake the annotations in.
+  const marked = (pdfViewerRef.value?.hasEdits?.() ?? false) || pdfHasMarkup.value
+  let href = viewerSrc.value
+  let revoke = false
+  try {
+    if (marked && pdfViewerRef.value) {
+      const bytes = await pdfViewerRef.value.saveBytes()
+      href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+      revoke = true
+    }
+    const a = document.createElement('a')
+    a.href = href
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  } catch (e) {
+    error.value = errorMessage(e, 'Failed to download')
+  } finally {
+    // Only the baked-markup blob is ours to revoke; viewerSrc stays live for the viewer.
+    if (revoke) URL.revokeObjectURL(href)
+  }
 }
 
 // Download the original source file (with its real filename).
