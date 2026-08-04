@@ -114,15 +114,69 @@
 
       <!-- Lightweight still preview image (PDF/video not fetched yet). -->
       <template v-else>
-        <img
-          v-if="previewUrl"
-          :src="previewUrl"
-          class="dp-img"
-          :class="{ clickable: canOpen }"
-          alt="Preview"
-          :title="canOpen ? openHint : ''"
-          @click="canOpen && openMedia()"
-        />
+        <!-- Image zoom (overlay only): a slider + 1:1 (actual-size) reset, teleported
+             into the modal's title-bar slot. A zoomed image overflows the pane, which
+             scrolls to pan around it. Shown only while the still image is the media.
+             (Placed before the v-if/v-else image pair so it doesn't split them.) -->
+        <Teleport v-if="titlebar && showImage" :to="titlebar">
+          <div class="dp-imgzoom" role="group" aria-label="Image zoom">
+            <input
+              class="dp-imgzoom-range"
+              type="range"
+              min="10"
+              max="400"
+              step="5"
+              v-model.number="imgZoom"
+              aria-label="Zoom"
+              :title="`Zoom ${imgZoom}%`"
+            />
+            <span class="dp-imgzoom-pct">{{ imgZoom }}%</span>
+            <button class="dp-imgzoom-reset" type="button" title="Actual size (1:1)" @click="resetImgZoom">1:1</button>
+          </div>
+        </Teleport>
+        <template v-if="previewUrl">
+          <!-- Overlay: a dedicated scroll pane so a zoomed image can be panned, plus a
+               mini-map navigator. The pane holds ONLY the image, so its scroll metrics
+               map cleanly onto the navigator's viewport box. -->
+          <div v-if="fullWidth" class="dp-img-frame">
+            <div ref="imgPaneRef" class="dp-img-pane" @scroll="syncNav">
+              <img :src="previewUrl" class="dp-img" :style="imgStyle" alt="Preview" @load="onImgLoad" />
+            </div>
+            <!-- Mini-map: shown whenever the image is larger than the viewport. The box
+                 marks the portion in view; click or drag it to pan. Pinned to the pane's
+                 top-left (outside the scrolling content), so it stays put as you pan. -->
+            <div
+              v-if="showNavigator"
+              class="dp-nav"
+              title="Drag to pan"
+              @pointerdown="startNavDrag"
+              @pointermove="onNavMove"
+              @pointerup="endNavDrag"
+              @pointercancel="endNavDrag"
+            >
+              <img
+                ref="navThumbRef"
+                :src="previewUrl"
+                class="dp-nav-thumb"
+                :style="navThumbStyle"
+                alt=""
+                aria-hidden="true"
+              />
+              <div class="dp-nav-box" :style="navBoxStyle"></div>
+            </div>
+          </div>
+          <!-- Drawer: a clickable thumbnail that opens the overlay (unchanged). -->
+          <img
+            v-else
+            :src="previewUrl"
+            class="dp-img"
+            :class="{ clickable: canOpen }"
+            alt="Preview"
+            :title="canOpen ? openHint : ''"
+            @load="onImgLoad"
+            @click="canOpen && openMedia()"
+          />
+        </template>
         <!-- No rendition yet: ask CSAI to (re)generate the preview on demand. -->
         <template v-else>
           <p class="dp-muted">{{ generating ? 'Generating preview…' : 'No preview available yet.' }}</p>
@@ -211,7 +265,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, onMounted, nextTick } from 'vue'
 import {
   loadRenditionSet,
   renditionObjectUrl,
@@ -273,6 +327,33 @@ const set = ref<RenditionSet>({})
 const previewUrl = ref('') // object URL for the still preview/poster image
 const pdfUrl = ref('') // object URL for the inline PDF (loaded on demand)
 const videoUrl = ref('') // object URL for the inline video clip (loaded on demand)
+
+// --- Image zoom + navigator (overlay only) ---
+// imgZoom is a percentage of the image's natural size; 100 = 1:1 (actual pixels). The
+// title-bar slider drives it and the "1:1" button resets to 100. A zoomed image is
+// sized explicitly (see imgStyle) so it overflows its scroll pane, which pans.
+const imgZoom = ref(100)
+const imgNaturalW = ref(0) // natural pixel width of the loaded image (0 until it loads)
+const imgNaturalH = ref(0) // natural pixel height (for the navigator's aspect ratio)
+const imgPaneRef = ref<HTMLElement | null>(null) // the scrolling pane around the image
+const navThumbRef = ref<HTMLElement | null>(null) // the mini-map thumbnail element
+// Live scroll metrics of the pane, refreshed on scroll / zoom; drives the navigator box.
+const paneMetrics = ref({ left: 0, top: 0, cw: 0, ch: 0, sw: 0, sh: 0 })
+const NAV_MAX = 168 // px — the mini-map's longer side
+
+// Read the pane's current scroll position/size so the navigator can mirror it.
+function syncNav() {
+  const el = imgPaneRef.value
+  if (!el) return
+  paneMetrics.value = {
+    left: el.scrollLeft,
+    top: el.scrollTop,
+    cw: el.clientWidth,
+    ch: el.clientHeight,
+    sw: el.scrollWidth,
+    sh: el.scrollHeight,
+  }
+}
 
 // --- PDF markup (Phase 7.1) ---
 const pdfViewerRef = ref<{
@@ -338,6 +419,60 @@ const viewerSrc = computed(() => (markupView.value ? markupUrl.value : pdfUrl.va
 // user can add further markup to a saved copy and attach it to another comment.
 const canAnnotate = computed(() => !!props.fullWidth && canWrite.value)
 
+// The still image is the shown media (on the document tab, no PDF/video open) on the
+// overlay — gates the title-bar zoom controls and the explicit zoom sizing.
+const showImage = computed(
+  () =>
+    !!props.fullWidth &&
+    activeTab.value === 'document' &&
+    !viewerSrc.value &&
+    !videoUrl.value &&
+    !!previewUrl.value,
+)
+// While an image is shown on the overlay, size it explicitly so zoom is exact (width =
+// natural × zoom, 1:1 at 100%) and the pane scrolls to pan. Left unset otherwise, so the
+// drawer thumbnail keeps its fit-to-pane CSS (max-width:100%, object-fit).
+const imgStyle = computed(() => {
+  if (!showImage.value || !imgNaturalW.value) return undefined
+  return {
+    width: `${Math.round((imgNaturalW.value * imgZoom.value) / 100)}px`,
+    maxWidth: 'none',
+    maxHeight: 'none',
+    height: 'auto',
+    objectFit: 'unset' as const,
+  }
+})
+
+// The mini-map navigator shows whenever the image is larger than the viewport (its pane
+// overflows in either axis) — i.e. whenever there is something to pan. This includes a
+// tall image at fit-to-width that overflows vertically, not just images zoomed past 1:1.
+const showNavigator = computed(
+  () =>
+    showImage.value &&
+    (paneMetrics.value.sw > paneMetrics.value.cw + 1 || paneMetrics.value.sh > paneMetrics.value.ch + 1),
+)
+// The mini-map thumbnail's rendered size: the image's aspect ratio bounded to NAV_MAX on
+// its longer side (computed from natural dims so we needn't measure the DOM node).
+const navThumb = computed(() => {
+  const w = imgNaturalW.value
+  const h = imgNaturalH.value
+  if (!w || !h) return { w: 0, h: 0 }
+  return w >= h ? { w: NAV_MAX, h: Math.round((NAV_MAX * h) / w) } : { w: Math.round((NAV_MAX * w) / h), h: NAV_MAX }
+})
+const navThumbStyle = computed(() => ({ width: `${navThumb.value.w}px`, height: `${navThumb.value.h}px` }))
+// The viewport box: the visible fraction of the image, mapped onto the thumbnail.
+const navBoxStyle = computed(() => {
+  const p = paneMetrics.value
+  const t = navThumb.value
+  if (!p.sw || !p.sh || !t.w || !t.h) return {}
+  return {
+    left: `${(p.left / p.sw) * t.w}px`,
+    top: `${(p.top / p.sh) * t.h}px`,
+    width: `${(p.cw / p.sw) * t.w}px`,
+    height: `${(p.ch / p.sh) * t.h}px`,
+  }
+})
+
 // Docking behaviour (orientation, minimize, draggable divider) is shared with the
 // 3D viewer via a composable; combined only on the full preview surface.
 const { discussionPos, discLayout, dragging, combinedActive, discStyle, setPos, startDrag } =
@@ -346,10 +481,22 @@ const { discussionPos, discLayout, dragging, combinedActive, discStyle, setPos, 
 watch(() => props.uid, reload, { immediate: true })
 onBeforeUnmount(cleanup)
 
+// After a zoom change (or a new image), the pane's scrollable size changes once the new
+// width lays out — re-measure so the navigator box tracks it. Also reset the natural
+// height alongside the width on a new file.
+watch([imgZoom, imgNaturalW, showImage], async () => {
+  await nextTick()
+  syncNav()
+})
+
 async function reload() {
   cleanup()
   set.value = {}
   activeTab.value = 'document'
+  // A new file re-fits on the next image load; clear so no stale zoom flashes first.
+  imgNaturalW.value = 0
+  imgNaturalH.value = 0
+  imgZoom.value = 100
   if (!props.uid) return
   loading.value = true
   error.value = ''
@@ -418,6 +565,56 @@ async function openMedia() {
       opening.value = false
     }
   }
+}
+
+// On (re)load of the still image, record its natural width and default the zoom to
+// fit-to-width — but never upscale a small image past 1:1 — measuring the pane from the
+// image's container. The "1:1" button then jumps to actual pixels.
+function onImgLoad(e: Event) {
+  const el = e.target as HTMLImageElement
+  imgNaturalW.value = el.naturalWidth || 0
+  imgNaturalH.value = el.naturalHeight || 0
+  const paneW = el.parentElement?.clientWidth || el.clientWidth || 0
+  imgZoom.value =
+    imgNaturalW.value && paneW
+      ? Math.min(100, Math.max(10, Math.round((paneW / imgNaturalW.value) * 100)))
+      : 100
+}
+
+// Reset the image to 1:1 (actual pixel size).
+function resetImgZoom() {
+  imgZoom.value = 100
+}
+
+// --- Navigator drag: click or drag the mini-map to recentre the pane's viewport. ---
+let navDragging = false
+
+// Scroll the pane so the point (clientX, clientY) within the thumbnail becomes the centre
+// of the visible area. Clamping to valid scroll range is left to the browser.
+function navMoveTo(clientX: number, clientY: number) {
+  const el = imgPaneRef.value
+  const thumb = navThumbRef.value
+  if (!el || !thumb) return
+  const r = thumb.getBoundingClientRect()
+  if (!r.width || !r.height) return
+  const fx = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
+  const fy = Math.min(1, Math.max(0, (clientY - r.top) / r.height))
+  el.scrollLeft = fx * el.scrollWidth - el.clientWidth / 2
+  el.scrollTop = fy * el.scrollHeight - el.clientHeight / 2
+  syncNav()
+}
+function startNavDrag(e: PointerEvent) {
+  navDragging = true
+  ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+  navMoveTo(e.clientX, e.clientY)
+  e.preventDefault()
+}
+function onNavMove(e: PointerEvent) {
+  if (navDragging) navMoveTo(e.clientX, e.clientY)
+}
+function endNavDrag(e: PointerEvent) {
+  navDragging = false
+  ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
 }
 
 // Ask CSAI to (re)generate this file's renditions, then reload to show them.
@@ -605,6 +802,11 @@ function beforeUnloadGuard(e: BeforeUnloadEvent) {
 onMounted(() => window.addEventListener('beforeunload', beforeUnloadGuard))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnloadGuard))
 
+// The pane resizes with the window (and the discussion splitter), which changes what
+// fraction of the image is visible — keep the navigator box in sync.
+onMounted(() => window.addEventListener('resize', syncNav))
+onBeforeUnmount(() => window.removeEventListener('resize', syncNav))
+
 function closeMedia() {
   if (pdfUrl.value) {
     revokeRenditionUrl(pdfUrl.value)
@@ -721,6 +923,98 @@ function cleanup() {
 
 .dp-img.clickable {
   cursor: pointer;
+}
+
+/* Image zoom controls, teleported into the modal title-bar slot (#ov-titlebar). They
+   still carry this component's scoped style id, so these rules apply after the move. */
+.dp-imgzoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dp-imgzoom-range {
+  width: 130px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+.dp-imgzoom-pct {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 3.2em;
+  text-align: right;
+}
+.dp-imgzoom-reset {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dp-imgzoom-reset:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Overlay image: a frame that clips + a pane that scrolls (so a zoomed image pans). The
+   frame is position:relative so the navigator can pin to it, outside the scroll flow.
+   Base rules are inert; the overlay layouts below turn on the fill/clip/scroll. */
+.dp-img-frame {
+  position: relative;
+  width: 100%;
+}
+.dp-img-pane .dp-img {
+  display: block;
+}
+.dp-side-by-side .dp-img-frame,
+.dp-fit-bottom .dp-img-frame,
+.dp-full-min .dp-img-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-self: stretch;
+  overflow: hidden;
+}
+.dp-side-by-side .dp-img-pane,
+.dp-fit-bottom .dp-img-pane,
+.dp-full-min .dp-img-pane {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+/* Mini-map navigator: pinned to the pane's top-left, above the scrolling image. */
+.dp-nav {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  padding: 3px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  cursor: crosshair;
+  line-height: 0;
+  touch-action: none; /* pointer-drag to pan, not a scroll gesture */
+}
+.dp-nav-thumb {
+  display: block;
+  border-radius: 3px;
+  opacity: 0.95;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* The viewport rectangle — the portion of the image currently in view. Clicks pass
+   through to the navigator (which recentres), so the box itself is not a pointer target. */
+.dp-nav-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  pointer-events: none;
 }
 
 .dp-pdf {
