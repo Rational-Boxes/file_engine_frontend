@@ -457,14 +457,20 @@ async function resolveMyReview(r: ReviewRequest, outcome: 'approved' | 'changes'
   }
 }
 
+// Deep-link focus after load: a ?comment= scrolls to and flashes that comment; a
+// ?thread= scrolls to that thread. The thread branch was previously missing — the
+// focusThread prop was declared and passed but never acted on (it only gated opening
+// the panel in the host), which is also what name-collided with the method below.
 function focusDeepLink() {
-  const id = props.focusComment
-  if (!id) return
-  requestAnimationFrame(() => {
-    const el = document.getElementById(`comment-${id}`)
-    el?.scrollIntoView({ block: 'center' })
-    markFlash(id)
-  })
+  if (props.focusComment) {
+    const id = props.focusComment
+    requestAnimationFrame(() => {
+      document.getElementById(`comment-${id}`)?.scrollIntoView({ block: 'center' })
+      markFlash(id)
+    })
+  } else if (props.focusThread) {
+    scrollToThread(props.focusThread)
+  }
 }
 
 function markFlash(commentId: string) {
@@ -497,15 +503,17 @@ async function downloadBcf(t: Thread) {
   }
 }
 
-// Scroll a thread into view (and open the panel if collapsed) — used when an
-// in-scene 3D annotation marker is clicked (§9).
-function focusThread(threadId: string) {
+// Scroll a thread into view (opening the panel if collapsed). Used by a ?thread=
+// deep-link (focusDeepLink) and, via the exposed method, when an in-scene 3D
+// annotation marker is clicked (§9). Named distinctly from the focusThread prop to
+// avoid the props/exposed name collision (vue/no-dupe-keys).
+function scrollToThread(threadId: string) {
   if (layout.value === 'collapsed') layout.value = props.pos === 'bottom' ? 'bottom' : 'right'
   requestAnimationFrame(() => {
     document.getElementById(`thread-${threadId}`)?.scrollIntoView({ block: 'center' })
   })
 }
-defineExpose({ startAnnotation, focusThread })
+defineExpose({ startAnnotation, scrollToThread })
 
 async function open() {
   const body = newBody.value.trim()

@@ -612,7 +612,7 @@ function restoreThreadView(threadId: string, objectId?: string) {
     else anchorMiss.value = true
   }
   discMin.value = false
-  threadPanelRef.value?.focusThread(threadId)
+  threadPanelRef.value?.scrollToThread(threadId)
 }
 
 function _q(v: unknown): string | undefined {
@@ -638,7 +638,7 @@ function onRestoreView(threadId: string) {
 // A marker was clicked: the viewer already restored the viewpoint; focus the thread.
 function onAnnotationActivate(threadId: string) {
   discMin.value = false
-  threadPanelRef.value?.focusThread(threadId)
+  threadPanelRef.value?.scrollToThread(threadId)
 }
 
 // Retry the deep-link when the viewer becomes ready or the target changes; reset

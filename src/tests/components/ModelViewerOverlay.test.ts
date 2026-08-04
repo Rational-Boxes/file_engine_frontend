@@ -42,7 +42,7 @@ const hh = vi.hoisted(() => ({
   editSectionPlane: vi.fn(),
   clearXRay: vi.fn(),
   // ThreadPanel exposed methods.
-  focusThread: vi.fn(),
+  scrollToThread: vi.fn(),
   startAnnotation: vi.fn(),
 }))
 
@@ -91,7 +91,7 @@ vi.mock('@/components/ThreadPanel.vue', () => ({
     props: ['fileUid', 'embedded', 'hideDock', 'pos'],
     emits: ['threads', 'restore-view', 'count', 'layout', 'update:pos'],
     setup(_, { expose }) {
-      expose({ focusThread: hh.focusThread, startAnnotation: hh.startAnnotation })
+      expose({ scrollToThread: hh.scrollToThread, startAnnotation: hh.startAnnotation })
       return () => createEl('div', { class: 'tp-stub' })
     },
   }),
@@ -287,7 +287,7 @@ describe('ModelViewerOverlay', () => {
     await flushPromises()
     expect(hh.setViewpoint).toHaveBeenCalledWith({ vp: 7 })
     expect(hh.highlightObjects).toHaveBeenCalledWith(['wall-9'])
-    expect(hh.focusThread).toHaveBeenCalledWith('t1')
+    expect(hh.scrollToThread).toHaveBeenCalledWith('t1')
   })
 
   it('restore-view from the panel replays that thread’s viewpoint', async () => {
@@ -303,7 +303,7 @@ describe('ModelViewerOverlay', () => {
     expect(hh.setViewpoint).toHaveBeenCalledWith({ vp: 2 })
     expect(hh.highlightObjects).toHaveBeenCalledWith(['obj-42']) // tagged object selected
     expect(hh.renderMeasurements).toHaveBeenCalledWith(measures) // measurements re-drawn
-    expect(hh.focusThread).toHaveBeenCalledWith('t2')
+    expect(hh.scrollToThread).toHaveBeenCalledWith('t2')
   })
 
   it('flags a drifted anchor: restores the view but does not select a missing element', async () => {
@@ -331,7 +331,7 @@ describe('ModelViewerOverlay', () => {
     await flushPromises()
     w.findComponent({ name: 'Model3DViewer' }).vm.$emit('annotation-activate', 't3')
     await flushPromises()
-    expect(hh.focusThread).toHaveBeenCalledWith('t3')
+    expect(hh.scrollToThread).toHaveBeenCalledWith('t3')
   })
 
   it('right-click object → context menu → comment on object opens the composer', async () => {
