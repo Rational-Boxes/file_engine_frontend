@@ -255,12 +255,18 @@ describe('DocumentPreview', () => {
     expect(w.text().toLowerCase()).not.toContain('saves with your comment')
   })
 
-  it('offers no PDF action for a non-PDF without a pdf rendition (e.g. an image)', async () => {
+  it('an image in the drawer has no inline Open button, but its thumbnail opens the overlay on click', async () => {
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'photo.png' } })
     await flushPromises()
+    // Nothing to embed inline for an image, so no embed/play button…
     expect(w.find('.btn').exists()).toBe(false)
-    expect(w.find('img.dp-img').exists()).toBe(true)
+    // …but the still is a clickable thumbnail that raises the full preview overlay.
+    const img = w.find('img.dp-img')
+    expect(img.exists()).toBe(true)
+    expect(img.classes()).toContain('clickable')
+    await img.trigger('click')
+    expect(open).toHaveBeenCalledWith('f1', 'photo.png') // overlay, not a route change
   })
 
   it('an image preview offers Download original + Open file location (consistent with PDF/video)', async () => {
@@ -270,6 +276,10 @@ describe('DocumentPreview', () => {
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'photo.png', fullWidth: true } })
     await flushPromises()
+
+    // On the overlay the image is already full size — the thumbnail-open affordance is
+    // drawer-only, so here it is inert (no re-open loop).
+    expect(w.find('img.dp-img').classes()).not.toContain('clickable')
 
     const dl = w.findAll('.link').find((b) => b.text().includes('Download original'))
     const loc = w.findAll('.link').find((b) => b.text().includes('Open file location'))
