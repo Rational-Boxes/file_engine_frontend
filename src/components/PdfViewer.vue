@@ -28,7 +28,7 @@
 
   Contract:
     props   src (blob/object URL), editable (enable markup tools), fullWidth (sizing)
-    emits   ready | error(msg) | dirty(boolean, has unsaved markup)
+    emits   ready | error(msg) | dirty(boolean, has unsaved markup) | download (toolbar)
     exposes saveBytes(): Promise<Uint8Array>   — the edited PDF (annotations baked in)
             hasEdits(): boolean
             setMode(name)                        — switch the active markup tool
@@ -63,6 +63,10 @@
       <button class="pv-tool" title="Zoom in" type="button" @click="zoomIn">🔍+</button>
       <span class="pv-spacer"></span>
       <span v-if="editable && dirty" class="pv-dirty" title="Unsaved markup">● unsaved markup</span>
+      <!-- Download: the browser's native PDF viewer has one in its toolbar; the embedded
+           viewer must supply its own. We only signal intent — the embedder (which knows
+           the file's name and can bake in markup via saveBytes) performs the download. -->
+      <button class="pv-tool pv-download" title="Download PDF" type="button" @click="$emit('download')">⬇ Download</button>
     </div>
 
     <!-- PDF.js requires its `container` (pv-container) to be absolutely positioned
@@ -126,6 +130,9 @@ const emit = defineEmits<{
   (e: 'dirty', dirty: boolean): void
   // Any markup present on the document (stays true after a save; false once cleared).
   (e: 'has-markup', present: boolean): void
+  // Toolbar download pressed. We don't download here (we lack the filename and the
+  // markup-vs-original decision); the embedder handles it, baking in markup if present.
+  (e: 'download'): void
 }>()
 
 const TOOLS: { name: ToolName; label: string; title: string; icon: string }[] = [
@@ -391,6 +398,11 @@ defineExpose({
   min-width: 3.5em;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+/* A discrete action (not a toggle), so give it a standing outline for discoverability
+   — this is the toolbar affordance the native browser PDF viewer has and we lacked. */
+.pv-download {
+  border-color: var(--border);
 }
 .pv-spacer {
   flex: 1 1 auto;
