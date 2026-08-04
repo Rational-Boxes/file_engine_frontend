@@ -397,6 +397,45 @@ describe('DocumentPreview', () => {
     w.unmount()
   })
 
+  it('offers a full-screen toggle in the image controls that full-screens the frame and relocates the controls', async () => {
+    const slot = document.createElement('div')
+    slot.id = 'ov-titlebar'
+    document.body.appendChild(slot)
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
+    const w = mount(DocumentPreview, {
+      props: { uid: 'f1', name: 'photo.png', fullWidth: true, titlebar: '#ov-titlebar' },
+    })
+    await flushPromises()
+
+    // Windowed: the controls (incl. the ⛶ button) live in the title-bar slot, not the frame.
+    const fsBtn = slot.querySelector('.dp-imgzoom-fs') as HTMLButtonElement
+    expect(fsBtn).toBeTruthy()
+    expect(fsBtn.getAttribute('title')).toBe('Full screen')
+    expect(w.find('.dp-img-frame .dp-imgzoom-fs').exists()).toBe(false)
+
+    // Clicking requests full-screen on the image frame (jsdom lacks the API — stub it).
+    const frame = w.find('.dp-img-frame').element
+    const req = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(frame, 'requestFullscreen', { value: req, configurable: true })
+    fsBtn.click()
+    await flushPromises()
+    expect(req).toHaveBeenCalled()
+
+    // The browser enters full-screen → fullscreenchange: the controls relocate INTO the
+    // frame (title bar is off-screen) and the toggle flips to "Exit full screen".
+    Object.defineProperty(document, 'fullscreenElement', { value: frame, configurable: true })
+    document.dispatchEvent(new Event('fullscreenchange'))
+    await flushPromises()
+    const relocated = w.find('.dp-img-frame .dp-imgzoom-fs')
+    expect(relocated.exists()).toBe(true)
+    expect(relocated.attributes('title')).toBe('Exit full screen')
+
+    Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true })
+    document.dispatchEvent(new Event('fullscreenchange'))
+    w.unmount()
+    slot.remove()
+  })
+
   it('for a video in the drawer: shows the poster + a "Play video" action that raises the overlay', async () => {
     // A video emits poster (PNG) + preview (MP4 clip); the still is the poster.
     loadRenditionSet.mockResolvedValue({

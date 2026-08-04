@@ -114,11 +114,12 @@
 
       <!-- Lightweight still preview image (PDF/video not fetched yet). -->
       <template v-else>
-        <!-- Image zoom (overlay only): a slider + 1:1 (actual-size) reset, teleported
-             into the modal's title-bar slot. A zoomed image overflows the pane, which
-             scrolls to pan around it. Shown only while the still image is the media.
-             (Placed before the v-if/v-else image pair so it doesn't split them.) -->
-        <Teleport v-if="titlebar && showImage" :to="titlebar">
+        <!-- Image controls (overlay only): zoom slider + 1:1 reset + a full-screen
+             toggle. Normally teleported into the modal's title-bar slot; while the frame
+             is full-screen the title bar is off-screen, so they relocate into an in-frame
+             slot instead (fsSlotRef) so zoom/1:1/exit stay usable. Placed before the
+             v-if/v-else image pair so it doesn't split them. -->
+        <Teleport v-if="titlebar && showImage" :to="isFullscreen ? fsSlotRef : titlebar">
           <div class="dp-imgzoom" role="group" aria-label="Image zoom">
             <input
               class="dp-imgzoom-range"
@@ -132,13 +133,22 @@
             />
             <span class="dp-imgzoom-pct">{{ imgZoom }}%</span>
             <button class="dp-imgzoom-reset" type="button" title="Actual size (1:1)" @click="resetImgZoom">1:1</button>
+            <button
+              class="dp-imgzoom-reset dp-imgzoom-fs"
+              type="button"
+              :title="isFullscreen ? 'Exit full screen' : 'Full screen'"
+              :aria-pressed="isFullscreen"
+              @click="toggleFullscreen"
+            >
+              {{ isFullscreen ? '🗗' : '⛶' }}
+            </button>
           </div>
         </Teleport>
         <template v-if="previewUrl">
           <!-- Overlay: a dedicated scroll pane so a zoomed image can be panned, plus a
                mini-map navigator. The pane holds ONLY the image, so its scroll metrics
                map cleanly onto the navigator's viewport box. -->
-          <div v-if="fullWidth" class="dp-img-frame">
+          <div v-if="fullWidth" ref="imgFrameRef" class="dp-img-frame">
             <div ref="imgPaneRef" class="dp-img-pane" @scroll="syncNav">
               <img :src="previewUrl" class="dp-img" :style="imgStyle" alt="Preview" @load="onImgLoad" />
             </div>
@@ -164,6 +174,9 @@
               />
               <div class="dp-nav-box" :style="navBoxStyle"></div>
             </div>
+            <!-- Where the image controls relocate while the frame is full-screen (the
+                 title-bar slot is off-screen then). Empty + hidden until full-screen. -->
+            <div ref="fsSlotRef" class="dp-fs-slot"></div>
           </div>
           <!-- Drawer: a clickable thumbnail that opens the overlay (unchanged). -->
           <img
@@ -337,6 +350,9 @@ const imgNaturalW = ref(0) // natural pixel width of the loaded image (0 until i
 const imgNaturalH = ref(0) // natural pixel height (for the navigator's aspect ratio)
 const imgPaneRef = ref<HTMLElement | null>(null) // the scrolling pane around the image
 const navThumbRef = ref<HTMLElement | null>(null) // the mini-map thumbnail element
+const imgFrameRef = ref<HTMLElement | null>(null) // the frame we put into full-screen
+const fsSlotRef = ref<HTMLElement | null>(null) // in-frame slot the controls relocate to
+const isFullscreen = ref(false) // is OUR image frame the current full-screen element?
 // Live scroll metrics of the pane, refreshed on scroll / zoom; drives the navigator box.
 const paneMetrics = ref({ left: 0, top: 0, cw: 0, ch: 0, sw: 0, sh: 0 })
 const NAV_MAX = 168 // px — the mini-map's longer side
@@ -586,6 +602,27 @@ function resetImgZoom() {
   imgZoom.value = 100
 }
 
+// Toggle the browser's full-screen on the image frame (immersive, image-only). The
+// controls relocate into the frame while full-screen (see the Teleport target). Guarded
+// — full-screen can be blocked by policy; ignore the rejection.
+async function toggleFullscreen() {
+  const el = imgFrameRef.value
+  if (!el) return
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen()
+    else await el.requestFullscreen()
+  } catch {
+    /* full-screen unavailable / denied — leave state as-is */
+  }
+}
+
+// Track whether OUR frame is the full-screen element (covers Esc / the OS exiting it,
+// not just our button). The pane resizes on the transition, so re-sync the navigator.
+function onFullscreenChange() {
+  isFullscreen.value = !!imgFrameRef.value && document.fullscreenElement === imgFrameRef.value
+  nextTick(syncNav)
+}
+
 // --- Navigator drag: click or drag the mini-map to recentre the pane's viewport. ---
 let navDragging = false
 
@@ -807,6 +844,10 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnloadGua
 onMounted(() => window.addEventListener('resize', syncNav))
 onBeforeUnmount(() => window.removeEventListener('resize', syncNav))
 
+// Sync the full-screen flag on any full-screen transition (button, Esc, or the OS).
+onMounted(() => document.addEventListener('fullscreenchange', onFullscreenChange))
+onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscreenChange))
+
 function closeMedia() {
   if (pdfUrl.value) {
     revokeRenditionUrl(pdfUrl.value)
@@ -1015,6 +1056,37 @@ function cleanup() {
   border: 2px solid var(--primary);
   background: color-mix(in srgb, var(--primary) 18%, transparent);
   pointer-events: none;
+}
+
+/* Full-screen: the frame fills the screen on a dark backdrop; the pane still scrolls
+   (so a zoomed image pans) and the navigator + relocated controls overlay it. */
+.dp-img-frame:fullscreen {
+  width: 100%;
+  height: 100%;
+  background: #0b0b0c;
+}
+.dp-img-frame:fullscreen .dp-img-pane {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+/* The in-frame slot the image controls relocate into while full-screen. Empty and
+   hidden otherwise (the controls live in the title bar then). */
+.dp-fs-slot {
+  display: none;
+}
+.dp-img-frame:fullscreen .dp-fs-slot {
+  display: flex;
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 5px 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .dp-pdf {
