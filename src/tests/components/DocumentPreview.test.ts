@@ -291,6 +291,64 @@ describe('DocumentPreview', () => {
     expect(push).toHaveBeenCalledWith({ name: 'FileBrowser', query: { file: 'f1', tenant: 'default' } })
   })
 
+  it('shows a title-bar zoom slider + 1:1 reset for an image on the overlay; the slider scales it and 1:1 resets to actual size', async () => {
+    const slot = document.createElement('div')
+    slot.id = 'ov-titlebar'
+    document.body.appendChild(slot)
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
+    const w = mount(DocumentPreview, {
+      props: { uid: 'f1', name: 'photo.png', fullWidth: true, titlebar: '#ov-titlebar' },
+    })
+    await flushPromises()
+
+    // The zoom controls are teleported into the modal's title-bar slot.
+    const range = slot.querySelector('input.dp-imgzoom-range') as HTMLInputElement
+    const reset = slot.querySelector('.dp-imgzoom-reset') as HTMLButtonElement
+    const pct = slot.querySelector('.dp-imgzoom-pct') as HTMLElement
+    expect(range).toBeTruthy()
+    expect(reset).toBeTruthy()
+
+    // Simulate the image loading with a known natural width (jsdom has no decoder/layout,
+    // so no pane width → the default zoom is 1:1 and the image is sized to natural width).
+    const img = w.find('img.dp-img')
+    Object.defineProperty(img.element, 'naturalWidth', { value: 800, configurable: true })
+    await img.trigger('load')
+    expect(w.find('img.dp-img').attributes('style')).toContain('width: 800px')
+    expect(pct.textContent).toContain('100%')
+
+    // The slider zooms: 200% doubles the rendered width (the pane scrolls to pan).
+    range.value = '200'
+    range.dispatchEvent(new Event('input'))
+    await flushPromises()
+    expect(w.find('img.dp-img').attributes('style')).toContain('width: 1600px')
+    expect(pct.textContent).toContain('200%')
+
+    // "1:1" resets to actual pixels.
+    reset.click()
+    await flushPromises()
+    expect(w.find('img.dp-img').attributes('style')).toContain('width: 800px')
+    expect(pct.textContent).toContain('100%')
+
+    w.unmount()
+    slot.remove()
+  })
+
+  it('shows no zoom controls when the shown media is not a still image (e.g. a PDF on the overlay)', async () => {
+    const slot = document.createElement('div')
+    slot.id = 'ov-titlebar'
+    document.body.appendChild(slot)
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
+    const w = mount(DocumentPreview, {
+      props: { uid: 'f1', name: 'report.docx', fullWidth: true, titlebar: '#ov-titlebar' },
+    })
+    await flushPromises()
+
+    // The PDF viewer is the shown media (viewerSrc set), so the still-image zoom is absent.
+    expect(slot.querySelector('.dp-imgzoom')).toBeNull()
+    w.unmount()
+    slot.remove()
+  })
+
   it('for a video in the drawer: shows the poster + a "Play video" action that raises the overlay', async () => {
     // A video emits poster (PNG) + preview (MP4 clip); the still is the poster.
     loadRenditionSet.mockResolvedValue({

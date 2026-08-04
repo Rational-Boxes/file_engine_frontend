@@ -114,13 +114,35 @@
 
       <!-- Lightweight still preview image (PDF/video not fetched yet). -->
       <template v-else>
+        <!-- Image zoom (overlay only): a slider + 1:1 (actual-size) reset, teleported
+             into the modal's title-bar slot. A zoomed image overflows the pane, which
+             scrolls to pan around it. Shown only while the still image is the media.
+             (Placed before the v-if/v-else image pair so it doesn't split them.) -->
+        <Teleport v-if="titlebar && showImage" :to="titlebar">
+          <div class="dp-imgzoom" role="group" aria-label="Image zoom">
+            <input
+              class="dp-imgzoom-range"
+              type="range"
+              min="10"
+              max="400"
+              step="5"
+              v-model.number="imgZoom"
+              aria-label="Zoom"
+              :title="`Zoom ${imgZoom}%`"
+            />
+            <span class="dp-imgzoom-pct">{{ imgZoom }}%</span>
+            <button class="dp-imgzoom-reset" type="button" title="Actual size (1:1)" @click="resetImgZoom">1:1</button>
+          </div>
+        </Teleport>
         <img
           v-if="previewUrl"
           :src="previewUrl"
           class="dp-img"
           :class="{ clickable: canOpen }"
+          :style="imgStyle"
           alt="Preview"
           :title="canOpen ? openHint : ''"
+          @load="onImgLoad"
           @click="canOpen && openMedia()"
         />
         <!-- No rendition yet: ask CSAI to (re)generate the preview on demand. -->
@@ -274,6 +296,13 @@ const previewUrl = ref('') // object URL for the still preview/poster image
 const pdfUrl = ref('') // object URL for the inline PDF (loaded on demand)
 const videoUrl = ref('') // object URL for the inline video clip (loaded on demand)
 
+// --- Image zoom (overlay only) ---
+// imgZoom is a percentage of the image's natural size; 100 = 1:1 (actual pixels). The
+// title-bar slider drives it and the "1:1" button resets to 100. A zoomed image is
+// sized explicitly (see imgStyle) so it overflows the pane, which scrolls to pan.
+const imgZoom = ref(100)
+const imgNaturalW = ref(0) // natural pixel width of the loaded image (0 until it loads)
+
 // --- PDF markup (Phase 7.1) ---
 const pdfViewerRef = ref<{
   saveBytes: () => Promise<Uint8Array>
@@ -338,6 +367,33 @@ const viewerSrc = computed(() => (markupView.value ? markupUrl.value : pdfUrl.va
 // user can add further markup to a saved copy and attach it to another comment.
 const canAnnotate = computed(() => !!props.fullWidth && canWrite.value)
 
+// The still image is the shown media (on the document tab, no PDF/video open) on the
+// overlay — gates the title-bar zoom controls and the explicit zoom sizing.
+const showImage = computed(
+  () =>
+    !!props.fullWidth &&
+    activeTab.value === 'document' &&
+    !viewerSrc.value &&
+    !videoUrl.value &&
+    !!previewUrl.value,
+)
+// While an image is shown on the overlay, size it explicitly so zoom is exact (width =
+// natural × zoom, 1:1 at 100%) and the pane scrolls to pan. Left unset otherwise, so the
+// drawer thumbnail keeps its fit-to-pane CSS (max-width:100%, object-fit).
+const imgStyle = computed(() => {
+  if (!showImage.value || !imgNaturalW.value) return undefined
+  return {
+    width: `${Math.round((imgNaturalW.value * imgZoom.value) / 100)}px`,
+    maxWidth: 'none',
+    maxHeight: 'none',
+    height: 'auto',
+    objectFit: 'unset' as const,
+    // The image is a flex child of the scrolling .dp-main (column); keep it from being
+    // shrunk to fit so it can overflow and the pane scrolls to pan.
+    flexShrink: 0,
+  }
+})
+
 // Docking behaviour (orientation, minimize, draggable divider) is shared with the
 // 3D viewer via a composable; combined only on the full preview surface.
 const { discussionPos, discLayout, dragging, combinedActive, discStyle, setPos, startDrag } =
@@ -350,6 +406,9 @@ async function reload() {
   cleanup()
   set.value = {}
   activeTab.value = 'document'
+  // A new file re-fits on the next image load; clear so no stale zoom flashes first.
+  imgNaturalW.value = 0
+  imgZoom.value = 100
   if (!props.uid) return
   loading.value = true
   error.value = ''
@@ -418,6 +477,24 @@ async function openMedia() {
       opening.value = false
     }
   }
+}
+
+// On (re)load of the still image, record its natural width and default the zoom to
+// fit-to-width — but never upscale a small image past 1:1 — measuring the pane from the
+// image's container. The "1:1" button then jumps to actual pixels.
+function onImgLoad(e: Event) {
+  const el = e.target as HTMLImageElement
+  imgNaturalW.value = el.naturalWidth || 0
+  const paneW = el.parentElement?.clientWidth || el.clientWidth || 0
+  imgZoom.value =
+    imgNaturalW.value && paneW
+      ? Math.min(100, Math.max(10, Math.round((paneW / imgNaturalW.value) * 100)))
+      : 100
+}
+
+// Reset the image to 1:1 (actual pixel size).
+function resetImgZoom() {
+  imgZoom.value = 100
 }
 
 // Ask CSAI to (re)generate this file's renditions, then reload to show them.
@@ -721,6 +798,40 @@ function cleanup() {
 
 .dp-img.clickable {
   cursor: pointer;
+}
+
+/* Image zoom controls, teleported into the modal title-bar slot (#ov-titlebar). They
+   still carry this component's scoped style id, so these rules apply after the move. */
+.dp-imgzoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dp-imgzoom-range {
+  width: 130px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+.dp-imgzoom-pct {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 3.2em;
+  text-align: right;
+}
+.dp-imgzoom-reset {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dp-imgzoom-reset:hover {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .dp-pdf {
