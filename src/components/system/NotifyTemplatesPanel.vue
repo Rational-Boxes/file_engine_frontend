@@ -87,18 +87,22 @@
 import { computed, onMounted, ref } from 'vue'
 import { folderActionsService } from '@/services/folderActionsService'
 import { useAuthStore } from '@/stores/auth'
+import { useFolderActionsStore } from '@/stores/folderActions'
 import { errorMessage } from '@/services/apiClient'
 import type { NotifyTemplateSummary, NotifyTemplate } from '@/types/folderActions'
 
 const auth = useAuthStore()
 const isAdmin = computed(() => auth.hasAccessLevel('admin'))
+// Single source shared with the notify binding editor's template dropdown, so a
+// create/delete here reflects there live (no reload).
+const fa = useFolderActionsStore()
 
 const error = ref('')
 const busy = ref(false)
 const loaded = ref(false)
 const saveNotice = ref('')
 
-const templates = ref<NotifyTemplateSummary[]>([])
+const templates = computed(() => fa.notifyTemplates)
 const selectedId = ref<string | null>(null)
 // Working copy of the selected template — edits stay local until Save.
 const draft = ref<NotifyTemplate | null>(null)
@@ -125,7 +129,8 @@ function wrap(fn: () => Promise<void>) {
 async function loadTemplates() {
   loaded.value = false
   try {
-    templates.value = await folderActionsService.listNotifyTemplates()
+    // Refresh the shared store — updates this list AND the binding editor dropdown.
+    await fa.refreshNotifyTemplates()
   } catch (e) {
     error.value = errorMessage(e, 'Could not load notification templates')
   } finally {

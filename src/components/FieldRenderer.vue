@@ -191,13 +191,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import PrincipalPicker from '@/components/PrincipalPicker.vue'
 import FolderBrowser from '@/components/FolderBrowser.vue'
 import { folderActionsService } from '@/services/folderActionsService'
+import { useFolderActionsStore } from '@/stores/folderActions'
 import { encodePrincipal } from '@/types'
 import type { Principal } from '@/types'
 import type { FieldDescriptor, FieldOption } from '@/types/folderActions'
+
+// Notify templates live in a shared store so they stay in sync with the System >
+// Email templates editor without a reload.
+const faStore = useFolderActionsStore()
 
 // Enables recursive self-reference (`<FieldRenderer>`) for `group` fields.
 defineOptions({ name: 'FieldRenderer' })
@@ -294,7 +299,10 @@ function onPrincipal(key: string, p: Principal) {
 // --- options_source resolution ---
 // classifier_sets are fetched once and cached; event_catalog uses the prop.
 const classifierOptions = ref<FieldOption[]>([])
-const notifyTemplateOptions = ref<FieldOption[]>([])
+// Reactive from the shared store — reflects templates added/removed elsewhere live.
+const notifyTemplateOptions = computed<FieldOption[]>(() =>
+  faStore.notifyTemplates.map((t) => ({ value: t.id, label: t.name })),
+)
 function optionsFor(f: FieldDescriptor): FieldOption[] {
   switch (f.options_source) {
     case 'classifier_sets':
@@ -316,25 +324,30 @@ function anyFieldNeeds(fields: FieldDescriptor[], source: string): boolean {
   )
 }
 
-onMounted(async () => {
-  if (anyFieldNeeds(props.fields, 'classifier_sets')) {
-    try {
-      const sets = await folderActionsService.listClassifierSets()
-      classifierOptions.value = sets.map((s) => ({ value: s.id, label: s.name }))
-    } catch {
-      // Non-fatal: leave the select empty rather than blocking the form.
-      classifierOptions.value = []
+// Resolve dynamic option sources whenever the field set changes (e.g. the binding
+// editor switches action type) — not just on first mount, so the right options load
+// for the currently-selected action. Each source is fetched at most once (cached).
+let loadedClassifiers = false
+watch(
+  () => props.fields,
+  async () => {
+    if (!loadedClassifiers && anyFieldNeeds(props.fields, 'classifier_sets')) {
+      loadedClassifiers = true
+      try {
+        const sets = await folderActionsService.listClassifierSets()
+        classifierOptions.value = sets.map((s) => ({ value: s.id, label: s.name }))
+      } catch {
+        loadedClassifiers = false // allow a retry on the next change
+        classifierOptions.value = []
+      }
     }
-  }
-  if (anyFieldNeeds(props.fields, 'notify_templates')) {
-    try {
-      const tpls = await folderActionsService.listNotifyTemplates()
-      notifyTemplateOptions.value = tpls.map((t) => ({ value: t.id, label: t.name }))
-    } catch {
-      notifyTemplateOptions.value = []
+    if (anyFieldNeeds(props.fields, 'notify_templates')) {
+      // Store dedupes the fetch; options are a reactive computed off the store.
+      faStore.ensureNotifyTemplates()
     }
-  }
-})
+  },
+  { immediate: true },
+)
 
 // --- group rows ---
 function updateRow(key: string, i: number, row: Record<string, unknown>) {
