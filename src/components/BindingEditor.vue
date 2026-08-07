@@ -59,6 +59,30 @@
           </label>
         </div>
 
+        <!-- MIME-type filter (binding-level; applies to any action) -->
+        <div class="be-field">
+          <label class="be-label">MIME types <span class="be-muted">(optional filter)</span></label>
+          <p class="be-help">
+            Only apply this action to files whose content-sniffed MIME type matches.
+            Exact types (application/pdf) or trailing wildcards (image/*). Empty = all types.
+          </p>
+          <div v-if="mimeTypes.length" class="be-tags">
+            <span v-for="(m, i) in mimeTypes" :key="m + ':' + i" class="be-tag">
+              {{ m }}
+              <button type="button" class="be-tag-x" @click="removeMime(i)" aria-label="Remove">×</button>
+            </span>
+          </div>
+          <div class="be-tag-add">
+            <input
+              class="be-input"
+              v-model="mimeDraft"
+              placeholder="e.g. application/pdf or image/*"
+              @keydown.enter.prevent="addMime"
+            />
+            <button type="button" class="btn" :disabled="!mimeDraft.trim()" @click="addMime">Add</button>
+          </div>
+        </div>
+
         <!-- Config (generic form) -->
         <div v-if="selectedType && selectedType.fields.length" class="be-field">
           <label class="be-label">Configuration</label>
@@ -164,6 +188,8 @@ const emit = defineEmits<{
 const actionType = ref('')
 const onEvents = ref<string[]>([])
 const recursive = ref(false)
+const mimeTypes = ref<string[]>([])
+const mimeDraft = ref('')
 const config = ref<Record<string, unknown>>({})
 const routes = ref<SorterRoute[]>([])
 const error = ref('')
@@ -188,14 +214,17 @@ watch(
     routes.value = []
     for (const k of Object.keys(routeLabels)) delete routeLabels[Number(k)]
 
+    mimeDraft.value = ''
     if (props.binding) {
       actionType.value = props.binding.action_type
       onEvents.value = clone(props.binding.on_events || [])
+      mimeTypes.value = clone(props.binding.mime_types || [])
       config.value = clone(props.binding.config || {})
       recursive.value = !!props.binding.recursive
     } else {
       actionType.value = props.actionTypes[0]?.type_name || ''
       onEvents.value = []
+      mimeTypes.value = []
       config.value = {}
       recursive.value = false
     }
@@ -211,6 +240,15 @@ watch(
   },
   { immediate: true },
 )
+
+function addMime() {
+  const v = mimeDraft.value.trim().toLowerCase()
+  if (v && !mimeTypes.value.includes(v)) mimeTypes.value = [...mimeTypes.value, v]
+  mimeDraft.value = ''
+}
+function removeMime(i: number) {
+  mimeTypes.value = mimeTypes.value.filter((_, idx) => idx !== i)
+}
 
 function toggleEvent(ev: string) {
   onEvents.value = onEvents.value.includes(ev)
@@ -264,6 +302,7 @@ async function save() {
     if (props.binding) {
       await folderActionsService.updateBinding(props.binding.id, {
         on_events: onEvents.value,
+        mime_types: mimeTypes.value,
         config: config.value,
         recursive: recursive.value,
       })
@@ -271,6 +310,7 @@ async function save() {
       const created = await folderActionsService.createBinding(props.folderUid, {
         action_type: actionType.value,
         on_events: onEvents.value,
+        mime_types: mimeTypes.value,
         config: config.value,
         recursive: recursive.value,
       })
@@ -359,6 +399,41 @@ function onKeydown(e: KeyboardEvent) {
   border-radius: 8px;
   padding: 8px;
   background: var(--bg);
+}
+.be-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.be-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 0.85em;
+}
+.be-tag-x {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1.1em;
+  line-height: 1;
+  padding: 0 2px;
+}
+.be-tag-x:hover {
+  color: var(--danger);
+}
+.be-tag-add {
+  display: flex;
+  gap: 8px;
+}
+.be-tag-add .be-input {
+  flex: 1;
 }
 .be-check {
   display: flex;

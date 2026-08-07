@@ -58,6 +58,7 @@ export interface ActionBinding {
   recursive: boolean
   action_type: string
   on_events: string[]
+  mime_types: string[]
   config: Record<string, unknown>
   enabled: boolean
   created_by: string
@@ -68,6 +69,7 @@ export interface ActionBinding {
 export interface BindingCreate {
   action_type: string
   on_events: string[]
+  mime_types?: string[]
   config: Record<string, unknown>
   recursive?: boolean
 }
@@ -75,6 +77,7 @@ export interface BindingCreate {
 export interface BindingUpdate {
   action_type?: string
   on_events?: string[]
+  mime_types?: string[]
   config?: Record<string, unknown>
   recursive?: boolean
   enabled?: boolean
