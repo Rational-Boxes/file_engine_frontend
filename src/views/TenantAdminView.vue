@@ -18,7 +18,7 @@
 <template>
   <div class="tadmin">
     <AppNav />
-    <main class="content" :class="{ wide: tab === 'Audit' || tab === 'Security' || tab === 'Events' }">
+    <main class="content">
       <h1>Tenant administration</h1>
       <nav class="tabs">
         <button v-for="t in TABS" :key="t" :class="{ active: tab === t }" @click="tab = t">{{ t }}</button>
@@ -90,212 +90,19 @@
         <!-- Per-tenant WebDAV session TTL (PROPOSAL §14.10) -->
         <WebDavSessionTtlEditor />
       </section>
-
-      <!-- ============ AUDIT ============ -->
-      <section v-if="tab === 'Audit'" class="panel">
-        <div class="audit-head">
-          <h2>Audit log</h2>
-          <span v-if="chain || chainBusy" class="chain" :class="chainClass">
-            <template v-if="chainBusy">verifying chain…</template>
-            <template v-else-if="chain?.ok">✓ chain verified ({{ chain.checked }} rows)</template>
-            <template v-else>✕ chain broken at seq {{ chain?.first_broken_seq }}</template>
-          </span>
-          <button class="link" :disabled="chainBusy" @click="verifyChain">re-verify</button>
-        </div>
-
-        <div class="filters">
-          <input v-model="auditFilters.actor" placeholder="actor" @keyup.enter="searchAudit" />
-          <select v-model="auditFilters.category">
-            <option value="">any category</option>
-            <option v-for="c in AUDIT_CATEGORIES" :key="c" :value="c">{{ c }}</option>
-          </select>
-          <input v-model="auditFilters.action" placeholder="action" @keyup.enter="searchAudit" />
-          <select v-model="auditFilters.outcome">
-            <option value="">any outcome</option>
-            <option v-for="o in AUDIT_OUTCOMES" :key="o" :value="o">{{ o }}</option>
-          </select>
-          <input v-model="auditFilters.target_uid" placeholder="target uid" @keyup.enter="searchAudit" />
-          <input v-model="auditFilters.from" type="datetime-local" title="from" />
-          <input v-model="auditFilters.to" type="datetime-local" title="to" />
-        </div>
-        <div class="row">
-          <button class="btn" :disabled="busy" @click="searchAudit">Search</button>
-          <button class="btn ghost" :disabled="busy" @click="resetAudit">Reset</button>
-          <button class="btn ghost" :class="{ active: auditFilters.outcome === 'denied' }" :disabled="busy" @click="deniedOnly">Denied only</button>
-          <button class="btn ghost" :disabled="busy || !auditRows.length" @click="exportAudit">Export NDJSON</button>
-        </div>
-
-        <div class="audit-table">
-          <table>
-            <thead>
-              <tr><th>time</th><th>category</th><th>action</th><th>outcome</th><th>actor</th><th>target</th><th>from</th></tr>
-            </thead>
-            <tbody>
-              <template v-for="r in auditRows" :key="r.seq">
-                <tr class="arow" :class="r.outcome" @click="selectRow(r)">
-                  <td class="ts">{{ fmtTs(r.ts) }}</td>
-                  <td><span class="badge">{{ r.category }}</span></td>
-                  <td>{{ r.action }}</td>
-                  <td><span class="oc" :class="r.outcome">{{ r.outcome }}</span></td>
-                  <td class="actor">{{ r.actor }}</td>
-                  <td class="tgt">
-                    <span class="tname" :title="r.target_name || r.target_uid || ''">{{ r.target_name || r.target_uid || '—' }}</span>
-                    <span v-if="r.target_name && r.target_uid" class="tuid" :title="r.target_uid">{{ r.target_uid }}</span>
-                  </td>
-                  <td class="muted">{{ r.source_addr || r.source_iface || '—' }}</td>
-                </tr>
-                <tr v-if="selectedRow?.seq === r.seq" class="detail">
-                  <td colspan="7">
-                    <dl>
-                      <div><dt>seq</dt><dd>{{ r.seq }}</dd></div>
-                      <div><dt>target</dt><dd><span v-if="r.target_name">{{ r.target_name }} · </span>{{ r.target_uid || '—' }} <span class="muted">{{ r.target_type }}</span></dd></div>
-                      <div><dt>roles</dt><dd>{{ r.actor_roles.join(', ') || '—' }}</dd></div>
-                      <div><dt>source</dt><dd>{{ r.source_iface || '—' }} {{ r.source_addr || '' }}</dd></div>
-                      <div v-if="r.request_id"><dt>request id</dt><dd>{{ r.request_id }}</dd></div>
-                      <div v-if="r.detail" class="detail-json"><dt>detail</dt><dd><pre>{{ JSON.stringify(r.detail, null, 2) }}</pre></dd></div>
-                    </dl>
-                  </td>
-                </tr>
-              </template>
-              <tr v-if="auditLoaded && !auditRows.length"><td colspan="7" class="muted empty">No audit entries match.</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="pager">
-          <button class="link" :disabled="auditPage === 0 || busy" @click="prevAuditPage">← prev</button>
-          <span class="muted">page {{ auditPage + 1 }} · {{ auditRows.length }} rows</span>
-          <button class="link" :disabled="auditRows.length < auditPageSize || busy" @click="nextAuditPage">next →</button>
-        </div>
-      </section>
-
-      <!-- ============ SECURITY ============ -->
-      <section v-if="tab === 'Security'" class="panel">
-        <h2>Incidents</h2>
-        <div class="audit-table">
-          <table>
-            <thead><tr><th>time</th><th>rule</th><th>severity</th><th>actor</th><th>count</th><th>action</th><th>status</th><th></th></tr></thead>
-            <tbody>
-              <tr v-for="i in incidents" :key="i.id">
-                <td class="ts">{{ fmtTs(i.ts) }}</td>
-                <td>{{ i.rule_id }}</td>
-                <td><span class="sev" :class="i.severity">{{ i.severity }}</span></td>
-                <td class="actor"><button class="link" @click="auditForActor(i.actor)">{{ i.actor || i.group_key }}</button></td>
-                <td>{{ i.match_count }}</td>
-                <td>{{ i.action_taken }}<span v-if="i.dry_run" class="muted"> (dry-run)</span></td>
-                <td><span class="badge">{{ i.status }}</span></td>
-                <td><button v-if="i.status === 'open'" class="link" @click="ackIncident(i.id)">ack</button></td>
-              </tr>
-              <tr v-if="securityLoaded && !incidents.length"><td colspan="8" class="muted empty">No incidents.</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="rules-head">
-          <h2>Rules</h2>
-          <button class="btn" @click="newRule">New rule</button>
-        </div>
-        <ul class="list">
-          <li v-for="r in rules" :key="r.id">
-            <span class="grow"><strong>{{ r.id }}</strong> <span class="muted">{{ r.description }}</span></span>
-            <span class="sev" :class="r.severity">{{ r.severity }}</span>
-            <span class="badge">{{ r.response }}<span v-if="r.dry_run"> · dry-run</span></span>
-            <label class="chk"><input type="checkbox" :checked="r.enabled" @change="toggleRuleEnabled(r)" /> on</label>
-            <button class="link" @click="editRule(r)">Edit</button>
-            <button class="link danger" @click="removeRule(r.id)">Delete</button>
-          </li>
-          <li v-if="securityLoaded && !rules.length" class="muted">No rules configured.</li>
-        </ul>
-
-        <Teleport to="body">
-        <div v-if="editing" class="rule-modal-backdrop" @click.self="cancelEdit">
-          <div class="rule-modal" :class="{ raw: rawMode }" role="dialog" aria-modal="true" :aria-label="editing.id ? 'Edit rule' : 'New rule'">
-          <header class="rule-modal-head">
-            <h3>{{ editing.id ? 'Edit rule' : 'New rule' }}</h3>
-            <button class="link" @click="toggleRaw">{{ rawMode ? 'Guided form' : 'Raw DSL' }}</button>
-            <button class="rule-modal-x" aria-label="Close" @click="cancelEdit">✕</button>
-          </header>
-          <div class="rule-modal-body">
-          <div v-if="!rawMode" class="grid2">
-            <label>id<input v-model="editing.id" placeholder="rule_id" /></label>
-            <label>description<input v-model="editing.description" /></label>
-            <label>category
-              <select v-model="editing.category"><option v-for="c in AUDIT_CATEGORIES" :key="c" :value="c">{{ c }}</option></select>
-            </label>
-            <label>action<input v-model="editing.action" placeholder="any" /></label>
-            <label>outcome
-              <select v-model="editing.outcome"><option value="">any</option><option v-for="o in AUDIT_OUTCOMES" :key="o" :value="o">{{ o }}</option></select>
-            </label>
-            <label>group by
-              <select v-model="editing.group_by"><option v-for="g in GROUP_BYS" :key="g" :value="g">{{ g }}</option></select>
-            </label>
-            <label>window (s)<input v-model.number="editing.window_s" type="number" /></label>
-            <label>threshold<input v-model.number="editing.threshold" type="number" /></label>
-            <label>then action<input v-model="editing.then_action" placeholder="sequence seal, e.g. login_success" /></label>
-            <label>severity
-              <select v-model="editing.severity"><option v-for="s in SEVERITIES" :key="s" :value="s">{{ s }}</option></select>
-            </label>
-            <label>response
-              <select v-model="editing.response"><option v-for="rr in RESPONSES" :key="rr" :value="rr">{{ rr }}</option></select>
-            </label>
-            <label class="chk">dry-run<input type="checkbox" v-model="editing.dry_run" /></label>
-          </div>
-          <textarea v-else v-model="rawText" class="raw-dsl" rows="14" spellcheck="false"></textarea>
-          </div>
-          <footer class="rule-modal-foot">
-            <button class="btn" :disabled="busy" @click="saveRule">Save</button>
-            <button class="btn ghost" :disabled="busy" @click="validateEditing">Validate against history</button>
-            <button class="link" @click="cancelEdit">Cancel</button>
-            <span v-if="validateResult" class="ok">would fire {{ validateResult.would_fire }}× over {{ validateResult.events_examined }} recent events</span>
-          </footer>
-          </div>
-        </div>
-        </Teleport>
-      </section>
-
-      <!-- ============ EVENTS ============ -->
-      <section v-if="tab === 'Events'" class="panel">
-        <div class="audit-head">
-          <h2>Live activity</h2>
-          <span class="muted">tenant-wide · auto-refresh 5s</span>
-          <button class="link" @click="toggleEventsPause">{{ eventsPaused ? 'Resume' : 'Pause' }}</button>
-        </div>
-        <div class="audit-table">
-          <table>
-            <thead><tr><th>time</th><th>category</th><th>action</th><th>outcome</th><th>actor</th><th>target</th></tr></thead>
-            <tbody>
-              <tr v-for="r in visibleEvents" :key="r.seq" class="arow" :class="r.outcome">
-                <td class="ts">{{ fmtTs(r.ts) }}</td>
-                <td><span class="badge">{{ r.category }}</span></td>
-                <td>{{ r.action }}</td>
-                <td><span class="oc" :class="r.outcome">{{ r.outcome }}</span></td>
-                <td class="actor">{{ r.actor }}</td>
-                <td class="tgt">{{ r.target_name || r.target_uid || '—' }}</td>
-              </tr>
-              <tr v-if="!visibleEvents.length"><td colspan="6" class="muted empty">Waiting for activity…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import TwoFactorPolicyEditor from '@/components/TwoFactorPolicyEditor.vue'
 import WebDavSessionTtlEditor from '@/components/WebDavSessionTtlEditor.vue'
 import { ldapAdminService, type Role, type UserSummary } from '@/services/ldapAdminService'
-import { auditService, type AuditRow, type ChainResult } from '@/services/auditService'
-import { securityService, type Incident, type SecurityRule } from '@/services/securityService'
-import { onBeforeUnmount } from 'vue'
-import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
 
-const auth = useAuthStore()
-
-const TABS = ['Users', 'Roles', 'Audit', 'Security', 'Events'] as const
+const TABS = ['Users', 'Roles'] as const
 const tab = ref<(typeof TABS)[number]>('Users')
 const error = ref('')
 const busy = ref(false)
@@ -313,40 +120,6 @@ const newRole = ref('')
 const selectedRole = ref('')
 const members = ref<string[]>([])
 const newMember = ref('')
-
-// audit
-const AUDIT_CATEGORIES = ['access', 'mutate', 'permission', 'user', 'auth', 'admin']
-const AUDIT_OUTCOMES = ['ok', 'denied', 'error']
-const auditFilters = reactive({ actor: '', target_uid: '', category: '', action: '', outcome: '', from: '', to: '' })
-const auditRows = ref<AuditRow[]>([])
-const auditPage = ref(0)
-const auditPageSize = ref(50)
-const auditLoaded = ref(false)
-const selectedRow = ref<AuditRow | null>(null)
-const chain = ref<ChainResult | null>(null)
-const chainBusy = ref(false)
-
-// security
-const SEVERITIES = ['info', 'warn', 'serious', 'critical']
-const RESPONSES = ['flag', 'alert', 'auto_disable']
-const GROUP_BYS = ['actor', 'source_addr', 'tenant']
-const incidents = ref<Incident[]>([])
-const rules = ref<SecurityRule[]>([])
-const securityLoaded = ref(false)
-const editing = ref<SecurityRule | null>(null)
-const rawMode = ref(false)
-const rawText = ref('')
-const validateResult = ref<{ would_fire: number; events_examined: number } | null>(null)
-
-// events (live poll of recent activity)
-const eventFeed = ref<AuditRow[]>([])
-// Hide the current user's own audit_read entries from the live feed: polling the
-// audit log to build this feed generates them, so they are self-referential noise.
-const visibleEvents = computed(() =>
-  eventFeed.value.filter((r) => !(r.action === 'audit_read' && r.actor === auth.user)),
-)
-const eventsPaused = ref(false)
-let eventsTimer: ReturnType<typeof setInterval> | undefined
 
 onMounted(async () => {
   await loadRoles()
@@ -414,223 +187,18 @@ const removeMember = (uid: string) => wrap(async () => {
   members.value = await ldapAdminService.listMembers(selectedRole.value)
   await loadRoles()
 })()
-
-// --- audit ---
-const loadAudit = wrap(async () => {
-  const res = await auditService.query({
-    tenant: auth.tenant ?? '', ...auditFilters,
-    page: auditPage.value, page_size: auditPageSize.value,
-  })
-  auditRows.value = res.rows
-  selectedRow.value = null
-})
-function searchAudit() {
-  auditPage.value = 0
-  loadAudit()
-}
-function resetAudit() {
-  Object.assign(auditFilters, { actor: '', target_uid: '', category: '', action: '', outcome: '', from: '', to: '' })
-  searchAudit()
-}
-function deniedOnly() {
-  auditFilters.outcome = auditFilters.outcome === 'denied' ? '' : 'denied'
-  searchAudit()
-}
-function nextAuditPage() {
-  if (auditRows.value.length === auditPageSize.value) {
-    auditPage.value++
-    loadAudit()
-  }
-}
-function prevAuditPage() {
-  if (auditPage.value > 0) {
-    auditPage.value--
-    loadAudit()
-  }
-}
-function selectRow(r: AuditRow) {
-  selectedRow.value = selectedRow.value?.seq === r.seq ? null : r
-}
-const exportAudit = wrap(async () => {
-  const blob = await auditService.exportNdjson({ tenant: auth.tenant ?? '', ...auditFilters })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `audit-${auth.tenant}-${new Date().toISOString().slice(0, 10)}.ndjson`
-  a.click()
-  URL.revokeObjectURL(url)
-})
-async function verifyChain() {
-  chainBusy.value = true
-  try {
-    chain.value = await auditService.verify(auth.tenant ?? '')
-  } catch (e) {
-    chain.value = null
-    error.value = errorMessage(e, 'Chain verification failed')
-  } finally {
-    chainBusy.value = false
-  }
-}
-
-const chainClass = computed(() => (chain.value ? (chain.value.ok ? 'ok' : 'bad') : ''))
-function fmtTs(ts: string) {
-  const d = new Date(ts)
-  return isNaN(d.getTime()) ? ts : d.toLocaleString()
-}
-
-// --- security ---
-function blankRule(): SecurityRule {
-  return {
-    id: '', description: '', category: 'auth', group_by: 'actor', window_s: 300, threshold: 5,
-    action: '', outcome: '', then_action: '', severity: 'warn', response: 'flag',
-    dry_run: false, cooldown_s: 300, enabled: true,
-  }
-}
-const loadSecurity = wrap(async () => {
-  const t = auth.tenant ?? ''
-  incidents.value = await securityService.incidents(t)
-  rules.value = (await securityService.rules(t)).effective
-})
-const ackIncident = (id: number) => wrap(async () => {
-  await securityService.setIncidentStatus(id, 'acknowledged', auth.tenant ?? '')
-  incidents.value = await securityService.incidents(auth.tenant ?? '')
-})()
-function newRule() {
-  editing.value = blankRule()
-  rawMode.value = false
-  rawText.value = ''
-  validateResult.value = null
-}
-function editRule(r: SecurityRule) {
-  editing.value = { ...r }
-  rawText.value = JSON.stringify(r, null, 2)
-  rawMode.value = false
-  validateResult.value = null
-}
-function cancelEdit() {
-  editing.value = null
-  validateResult.value = null
-}
-// Close the rule editor modal on Escape.
-function onRuleModalKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && editing.value) {
-    e.preventDefault()
-    cancelEdit()
-  }
-}
-onMounted(() => window.addEventListener('keydown', onRuleModalKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onRuleModalKey))
-function toggleRaw() {
-  if (!editing.value) return
-  if (!rawMode.value) rawText.value = JSON.stringify(editing.value, null, 2)
-  else {
-    try {
-      editing.value = { ...editing.value, ...JSON.parse(rawText.value) }
-    } catch {
-      error.value = 'Invalid JSON'
-      return
-    }
-  }
-  rawMode.value = !rawMode.value
-}
-function currentRule(): SecurityRule | null {
-  if (!editing.value) return null
-  if (!rawMode.value) return editing.value
-  try {
-    return { ...editing.value, ...JSON.parse(rawText.value) }
-  } catch {
-    error.value = 'Invalid JSON'
-    return null
-  }
-}
-const saveRule = wrap(async () => {
-  const r = currentRule()
-  if (!r || !r.id) {
-    error.value = 'A rule id is required'
-    return
-  }
-  await securityService.saveRule(r, auth.tenant ?? '')
-  editing.value = null
-  await loadSecurity()
-})
-const removeRule = (id: string) => wrap(async () => {
-  await securityService.deleteRule(id, auth.tenant ?? '')
-  await loadSecurity()
-})()
-const toggleRuleEnabled = (r: SecurityRule) => wrap(async () => {
-  await securityService.saveRule({ ...r, enabled: !r.enabled }, auth.tenant ?? '')
-  await loadSecurity()
-})()
-const validateEditing = wrap(async () => {
-  const r = currentRule()
-  if (!r) return
-  validateResult.value = await securityService.validate(r, auth.tenant ?? '')
-})
-// Jump from an incident to its evidence in the Audit tab.
-function auditForActor(actor: string | null) {
-  if (!actor) return
-  resetAudit()
-  auditFilters.actor = actor
-  tab.value = 'Audit'
-  if (!auditLoaded.value) auditLoaded.value = true
-  searchAudit()
-}
-
-// --- events (live poll) ---
-async function refreshEvents() {
-  if (eventsPaused.value) return
-  try {
-    eventFeed.value = (await auditService.query({ tenant: auth.tenant ?? '', page: 0, page_size: 30 })).rows
-  } catch {
-    /* keep the last feed on a transient error */
-  }
-}
-function startEventsPoll() {
-  refreshEvents()
-  if (!eventsTimer) eventsTimer = setInterval(refreshEvents, 5000)
-}
-function stopEventsPoll() {
-  if (eventsTimer) {
-    clearInterval(eventsTimer)
-    eventsTimer = undefined
-  }
-}
-function toggleEventsPause() {
-  eventsPaused.value = !eventsPaused.value
-  if (!eventsPaused.value) refreshEvents()
-}
-onBeforeUnmount(stopEventsPoll)
-
-// Lazy-load each tab's data the first time it is opened; poll only while on Events.
-watch(tab, (t) => {
-  if (t === 'Audit' && !auditLoaded.value) {
-    auditLoaded.value = true
-    loadAudit()
-    verifyChain()
-  }
-  if (t === 'Security' && !securityLoaded.value) {
-    securityLoaded.value = true
-    loadSecurity()
-  }
-  if (t === 'Events') startEventsPoll()
-  else stopEventsPoll()
-})
 </script>
 
 <style scoped>
 .content { max-width: 780px; margin: 0 auto; padding: 20px 18px; }
-/* The log/table tabs (Audit, Security, Events) use a wide multi-column table,
-   so they get the full viewport width; the form tabs stay narrow for reading. */
-.content.wide { max-width: none; }
-.tabs, .subtabs { display: flex; gap: 6px; margin: 12px 0; border-bottom: 1px solid var(--border); }
-.tabs button, .subtabs button { border: none; background: none; padding: 8px 12px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
-.tabs button.active, .subtabs button.active { color: var(--fg); border-bottom-color: var(--primary); }
+.tabs { display: flex; gap: 6px; margin: 12px 0; border-bottom: 1px solid var(--border); }
+.tabs button { border: none; background: none; padding: 8px 12px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+.tabs button.active { color: var(--fg); border-bottom-color: var(--primary); }
 .panel { display: flex; flex-direction: column; gap: 10px; }
 h2 { font-size: 15px; margin: 12px 0 2px; }
 h3 { font-size: 14px; margin: 8px 0 2px; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
-input, textarea { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; flex: 1; min-width: 160px; font-family: inherit; }
-textarea { min-height: 160px; }
+input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; flex: 1; min-width: 160px; font-family: inherit; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .roles-pick, .chk { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; align-items: center; }
 .list { list-style: none; padding: 0; margin: 4px 0; }
@@ -640,7 +208,6 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .rolename { border: none; background: none; cursor: pointer; font: inherit; }
 .muted { color: var(--muted); font-size: 12px; }
 .badge { font-size: 10px; background: #dbeafe; color: #1e40af; padding: 1px 6px; border-radius: 999px; }
-.dot { color: var(--primary); margin-left: 4px; }
 .btn { padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--primary); color: #fff; font-size: 13px; cursor: pointer; flex: 0 0 auto; }
 .btn.ghost { background: var(--card); color: var(--fg); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -648,83 +215,4 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .link.danger { color: #b00020; }
 .ok { color: #15803d; font-size: 13px; align-self: center; }
 .err { color: #b00020; font-size: 13px; }
-.preview { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 8px; }
-.preview-subj { font-weight: 600; margin-bottom: 6px; }
-
-/* --- audit console --- */
-.audit-head { display: flex; align-items: center; gap: 10px; }
-.audit-head h2 { margin: 0; flex: 0 0 auto; }
-.chain { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
-.chain.ok { color: #15803d; border-color: #86efac; background: #f0fdf4; }
-.chain.bad { color: #b00020; border-color: #fca5a5; background: #fef2f2; }
-.filters { display: flex; gap: 6px; flex-wrap: wrap; }
-.filters input, .filters select { flex: 0 1 130px; min-width: 110px; padding: 6px 8px; font-size: 13px; }
-select { border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--fg); font-family: inherit; }
-.btn.ghost.active { border-color: var(--primary); color: var(--primary); }
-.audit-table { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
-.audit-table table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.audit-table th { text-align: left; padding: 6px 8px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.audit-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.arow { cursor: pointer; }
-.arow:hover { background: var(--bg); }
-.arow.denied td, .arow.error td { background: #fef2f2; }
-.ts { white-space: nowrap; color: var(--muted); }
-.actor { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tgt { max-width: 240px; }
-.tgt .tname, .tgt .tuid { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tgt .tuid { font-size: 11px; color: var(--muted); }
-
-/* Rule create/edit overlay modal (teleported to <body>). */
-.rule-modal-backdrop {
-  position: fixed; inset: 0; z-index: 60;
-  background: rgba(15, 23, 42, 0.55);
-  display: flex; align-items: flex-start; justify-content: center;
-  padding: 40px 20px; overflow-y: auto;
-}
-.rule-modal {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
-  width: 100%; max-width: 640px; max-height: calc(100vh - 80px);
-  display: flex; flex-direction: column; overflow: hidden;
-}
-/* Raw DSL mode: take the full available height so the editor textarea fills it. */
-.rule-modal.raw { height: calc(100vh - 80px); }
-.rule-modal-head {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 18px; border-bottom: 1px solid var(--border);
-}
-.rule-modal-head h3 { margin: 0; flex: 1 1 auto; }
-.rule-modal-x {
-  border: none; background: none; font-size: 18px; line-height: 1;
-  color: var(--muted); cursor: pointer; flex: 0 0 auto;
-}
-.rule-modal-body { padding: 16px 18px; overflow-y: auto; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.rule-modal-foot {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 14px 18px; border-top: 1px solid var(--border);
-}
-.oc { font-size: 11px; padding: 0 6px; border-radius: 999px; }
-.oc.ok { color: #15803d; background: #f0fdf4; }
-.oc.denied, .oc.error { color: #b00020; background: #fef2f2; }
-.detail td { background: var(--bg); }
-.detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 4px 0; font-size: 12px; }
-.detail dl > div { display: contents; }
-.detail dt { color: var(--muted); }
-.detail dd { margin: 0; }
-.detail-json dd { grid-column: 2; }
-.detail pre { margin: 2px 0; padding: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; font-size: 11.5px; }
-.empty { text-align: center; padding: 16px; }
-.pager { display: flex; align-items: center; gap: 12px; justify-content: center; margin-top: 6px; }
-/* --- security --- */
-.rules-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
-.sev { font-size: 11px; padding: 0 6px; border-radius: 999px; text-transform: capitalize; }
-.sev.info { color: var(--muted); background: var(--bg); }
-.sev.warn { color: #92400e; background: #fffbeb; }
-.sev.serious, .sev.critical { color: #b00020; background: #fef2f2; }
-.editor { border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.raw-dsl {
-  flex: 1 1 auto; min-height: 240px; width: 100%; box-sizing: border-box;
-  resize: none; font-family: ui-monospace, 'SFMono-Regular', monospace; font-size: 12px;
-}
 </style>
