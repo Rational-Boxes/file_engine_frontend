@@ -294,10 +294,13 @@ function onPrincipal(key: string, p: Principal) {
 // --- options_source resolution ---
 // classifier_sets are fetched once and cached; event_catalog uses the prop.
 const classifierOptions = ref<FieldOption[]>([])
+const notifyTemplateOptions = ref<FieldOption[]>([])
 function optionsFor(f: FieldDescriptor): FieldOption[] {
   switch (f.options_source) {
     case 'classifier_sets':
       return classifierOptions.value
+    case 'notify_templates':
+      return notifyTemplateOptions.value
     case 'event_catalog':
       return (props.eventCatalog.length
         ? props.eventCatalog.map((e) => ({ value: e, label: e }))
@@ -321,6 +324,14 @@ onMounted(async () => {
     } catch {
       // Non-fatal: leave the select empty rather than blocking the form.
       classifierOptions.value = []
+    }
+  }
+  if (anyFieldNeeds(props.fields, 'notify_templates')) {
+    try {
+      const tpls = await folderActionsService.listNotifyTemplates()
+      notifyTemplateOptions.value = tpls.map((t) => ({ value: t.id, label: t.name }))
+    } catch {
+      notifyTemplateOptions.value = []
     }
   }
 })

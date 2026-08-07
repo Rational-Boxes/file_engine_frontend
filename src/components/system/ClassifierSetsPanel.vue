@@ -17,155 +17,150 @@
 
 <template>
   <div class="cset">
-    <AppNav />
-    <main class="cset-content">
-      <h1>Classifier sets</h1>
-      <p class="cset-lede">
-        Classifier sets drive the folder sorter: each classification scores a document by
-        matching weighted terms, and routes fire when a score clears a threshold.
-      </p>
+    <p class="cset-lede">
+      Classifier sets drive the folder sorter: each classification scores a document by
+      matching weighted terms, and routes fire when a score clears a threshold.
+    </p>
 
-      <p v-if="!isAdmin" class="cset-err">You need administrator access to manage classifier sets.</p>
-      <p v-else-if="error" class="cset-err">{{ error }}</p>
+    <p v-if="!isAdmin" class="cset-err">You need administrator access to manage classifier sets.</p>
+    <p v-else-if="error" class="cset-err">{{ error }}</p>
 
-      <div v-if="isAdmin" class="cset-layout">
-        <!-- ============ LEFT: list of sets ============ -->
-        <aside class="cset-list-pane">
-          <div class="cset-list-head">
-            <h2>Sets</h2>
-            <button class="btn" :disabled="busy" @click="createSet">➕ New set</button>
+    <div v-if="isAdmin" class="cset-layout">
+      <!-- ============ LEFT: list of sets ============ -->
+      <aside class="cset-list-pane">
+        <div class="cset-list-head">
+          <h2>Sets</h2>
+          <button class="btn" :disabled="busy" @click="createSet">➕ New set</button>
+        </div>
+
+        <p v-if="importNotice" class="cset-ok">{{ importNotice }}</p>
+
+        <ul class="cset-list">
+          <li
+            v-for="s in sets"
+            :key="s.id"
+            :class="{ active: selectedId === s.id }"
+          >
+            <button class="cset-name" @click="selectSet(s.id)">
+              {{ s.name || '(unnamed)' }}
+              <span class="muted">{{ s.updated_at ? fmtTs(s.updated_at) : '' }}</span>
+            </button>
+            <button class="link" title="Export YAML" @click="exportSet(s.id, s.name)">⬇</button>
+            <button class="link danger" title="Delete set" @click="deleteSet(s)">🗑</button>
+          </li>
+          <li v-if="loaded && !sets.length" class="muted empty">No classifier sets yet.</li>
+          <li v-else-if="!loaded" class="muted empty">Loading…</li>
+        </ul>
+
+        <!-- Import YAML -->
+        <div class="cset-import">
+          <h3>⬆ Import YAML</h3>
+          <p class="muted">Paste a set definition or choose a <code>.yaml</code> file.</p>
+          <textarea
+            v-model="importText"
+            rows="5"
+            placeholder="name: My set&#10;classifiers:&#10;  - name: Invoices&#10;    terms:&#10;      - term: invoice&#10;        distance: 0&#10;        weight: 1.0"
+          ></textarea>
+          <div class="row">
+            <input ref="importFileInput" type="file" accept=".yaml,.yml,text/yaml" @change="onImportFile" />
+            <button class="btn" :disabled="busy || !importText.trim()" @click="importYaml">Import</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ============ RIGHT: editor + test ============ -->
+      <section class="cset-editor-pane">
+        <p v-if="!selectedId" class="muted empty">Select a set on the left, or create one, to edit it.</p>
+
+        <template v-else-if="draft">
+          <div class="cset-editor-head">
+            <label class="grow">Set name<input v-model="draft.name" placeholder="Set name" /></label>
+            <button class="btn" :disabled="busy" @click="saveSet">💾 Save</button>
+          </div>
+          <p v-if="saveNotice" class="cset-ok">{{ saveNotice }}</p>
+
+          <p class="cset-help muted">
+            Wildcards in terms: <code>*</code> any run of characters, <code>?</code> a single
+            character, <code>#</code> a single digit. <strong>distance</strong> is the allowed edit
+            distance (fuzziness); <strong>weight</strong> is how much a match contributes.
+            Scores are unbounded weighted sums, so calibrate route thresholds against the real
+            numbers the test panel returns below.
+          </p>
+
+          <!-- classifications -->
+          <div
+            v-for="(c, ci) in draft.classifiers"
+            :key="ci"
+            class="cset-class"
+          >
+            <div class="cset-class-head">
+              <label class="grow">Classification<input v-model="c.name" placeholder="Classification name" /></label>
+              <button class="link danger" @click="removeClassifier(ci)">Remove classification</button>
+            </div>
+
+            <table class="cset-terms">
+              <thead>
+                <tr><th>term</th><th>distance</th><th>weight</th><th></th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(t, ti) in c.terms" :key="ti">
+                  <td><input v-model="t.term" placeholder="term / pattern" /></td>
+                  <td><input v-model.number="t.distance" type="number" step="1" min="0" class="num" /></td>
+                  <td><input v-model.number="t.weight" type="number" step="0.1" class="num" /></td>
+                  <td><button class="link danger" title="Remove term" @click="removeTerm(c, ti)">✕</button></td>
+                </tr>
+                <tr v-if="!c.terms.length"><td colspan="4" class="muted empty">No terms yet.</td></tr>
+              </tbody>
+            </table>
+            <button class="link" @click="addTerm(c)">➕ Add term</button>
           </div>
 
-          <p v-if="importNotice" class="cset-ok">{{ importNotice }}</p>
+          <button class="btn ghost" @click="addClassifier">➕ Add classification</button>
 
-          <ul class="cset-list">
-            <li
-              v-for="s in sets"
-              :key="s.id"
-              :class="{ active: selectedId === s.id }"
-            >
-              <button class="cset-name" @click="selectSet(s.id)">
-                {{ s.name || '(unnamed)' }}
-                <span class="muted">{{ s.updated_at ? fmtTs(s.updated_at) : '' }}</span>
-              </button>
-              <button class="link" title="Export YAML" @click="exportSet(s.id, s.name)">⬇</button>
-              <button class="link danger" title="Delete set" @click="deleteSet(s)">🗑</button>
-            </li>
-            <li v-if="loaded && !sets.length" class="muted empty">No classifier sets yet.</li>
-            <li v-else-if="!loaded" class="muted empty">Loading…</li>
-          </ul>
-
-          <!-- Import YAML -->
-          <div class="cset-import">
-            <h3>⬆ Import YAML</h3>
-            <p class="muted">Paste a set definition or choose a <code>.yaml</code> file.</p>
-            <textarea
-              v-model="importText"
-              rows="5"
-              placeholder="name: My set&#10;classifiers:&#10;  - name: Invoices&#10;    terms:&#10;      - term: invoice&#10;        distance: 0&#10;        weight: 1.0"
-            ></textarea>
-            <div class="row">
-              <input ref="importFileInput" type="file" accept=".yaml,.yml,text/yaml" @change="onImportFile" />
-              <button class="btn" :disabled="busy || !importText.trim()" @click="importYaml">Import</button>
-            </div>
-          </div>
-        </aside>
-
-        <!-- ============ RIGHT: editor + test ============ -->
-        <section class="cset-editor-pane">
-          <p v-if="!selectedId" class="muted empty">Select a set on the left, or create one, to edit it.</p>
-
-          <template v-else-if="draft">
-            <div class="cset-editor-head">
-              <label class="grow">Set name<input v-model="draft.name" placeholder="Set name" /></label>
-              <button class="btn" :disabled="busy" @click="saveSet">💾 Save</button>
-            </div>
-            <p v-if="saveNotice" class="cset-ok">{{ saveNotice }}</p>
-
-            <p class="cset-help muted">
-              Wildcards in terms: <code>*</code> any run of characters, <code>?</code> a single
-              character, <code>#</code> a single digit. <strong>distance</strong> is the allowed edit
-              distance (fuzziness); <strong>weight</strong> is how much a match contributes.
-              Scores are unbounded weighted sums, so calibrate route thresholds against the real
-              numbers the test panel returns below.
+          <!-- ============ TEST PANEL ============ -->
+          <div class="cset-test">
+            <h2>🧪 Test &amp; calibrate</h2>
+            <p class="muted">
+              Run sample text (or a stored file uid) through the <em>saved</em> set to see the
+              real scores each classification produces — that is how you pick route thresholds.
             </p>
-
-            <!-- classifications -->
-            <div
-              v-for="(c, ci) in draft.classifiers"
-              :key="ci"
-              class="cset-class"
-            >
-              <div class="cset-class-head">
-                <label class="grow">Classification<input v-model="c.name" placeholder="Classification name" /></label>
-                <button class="link danger" @click="removeClassifier(ci)">Remove classification</button>
-              </div>
-
-              <table class="cset-terms">
-                <thead>
-                  <tr><th>term</th><th>distance</th><th>weight</th><th></th></tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(t, ti) in c.terms" :key="ti">
-                    <td><input v-model="t.term" placeholder="term / pattern" /></td>
-                    <td><input v-model.number="t.distance" type="number" step="1" min="0" class="num" /></td>
-                    <td><input v-model.number="t.weight" type="number" step="0.1" class="num" /></td>
-                    <td><button class="link danger" title="Remove term" @click="removeTerm(c, ti)">✕</button></td>
-                  </tr>
-                  <tr v-if="!c.terms.length"><td colspan="4" class="muted empty">No terms yet.</td></tr>
-                </tbody>
-              </table>
-              <button class="link" @click="addTerm(c)">➕ Add term</button>
+            <label>Sample text
+              <textarea v-model="testText" rows="6" placeholder="Paste representative document text here…"></textarea>
+            </label>
+            <div class="row">
+              <input v-model="testFileUid" placeholder="…or a file uid (optional)" />
+              <button class="btn" :disabled="busy || (!testText.trim() && !testFileUid.trim())" @click="runTest">
+                Run test
+              </button>
             </div>
 
-            <button class="btn ghost" @click="addClassifier">➕ Add classification</button>
-
-            <!-- ============ TEST PANEL ============ -->
-            <div class="cset-test">
-              <h2>🧪 Test &amp; calibrate</h2>
-              <p class="muted">
-                Run sample text (or a stored file uid) through the <em>saved</em> set to see the
-                real scores each classification produces — that is how you pick route thresholds.
-              </p>
-              <label>Sample text
-                <textarea v-model="testText" rows="6" placeholder="Paste representative document text here…"></textarea>
-              </label>
-              <div class="row">
-                <input v-model="testFileUid" placeholder="…or a file uid (optional)" />
-                <button class="btn" :disabled="busy || (!testText.trim() && !testFileUid.trim())" @click="runTest">
-                  Run test
-                </button>
+            <div v-if="testResult" class="cset-scores">
+              <h3>Scores</h3>
+              <p v-if="!sortedScores.length" class="muted empty">No classifications scored above zero.</p>
+              <div v-for="row in sortedScores" :key="row.name" class="cset-score-row">
+                <span class="cset-score-label" :title="row.name">{{ row.name }}</span>
+                <span class="cset-score-bar">
+                  <span class="cset-score-fill" :style="{ width: barWidth(row.score) }"></span>
+                </span>
+                <span class="cset-score-val">{{ row.score.toFixed(3) }}</span>
               </div>
 
-              <div v-if="testResult" class="cset-scores">
-                <h3>Scores</h3>
-                <p v-if="!sortedScores.length" class="muted empty">No classifications scored above zero.</p>
-                <div v-for="row in sortedScores" :key="row.name" class="cset-score-row">
-                  <span class="cset-score-label" :title="row.name">{{ row.name }}</span>
-                  <span class="cset-score-bar">
-                    <span class="cset-score-fill" :style="{ width: barWidth(row.score) }"></span>
-                  </span>
-                  <span class="cset-score-val">{{ row.score.toFixed(3) }}</span>
-                </div>
-
-                <template v-if="hasMatches">
-                  <h3>Matches</h3>
-                  <pre class="cset-matches">{{ prettyMatches }}</pre>
-                </template>
-              </div>
+              <template v-if="hasMatches">
+                <h3>Matches</h3>
+                <pre class="cset-matches">{{ prettyMatches }}</pre>
+              </template>
             </div>
-          </template>
+          </div>
+        </template>
 
-          <p v-else class="muted empty">Loading set…</p>
-        </section>
-      </div>
-    </main>
+        <p v-else class="muted empty">Loading set…</p>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import AppNav from '@/components/AppNav.vue'
 import { folderActionsService } from '@/services/folderActionsService'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
@@ -379,8 +374,7 @@ const prettyMatches = computed(() => {
 </script>
 
 <style scoped>
-.cset-content { max-width: 1100px; margin: 0 auto; padding: 20px 18px; }
-.cset-content h1 { font-size: 20px; margin: 0 0 4px; }
+.cset { display: flex; flex-direction: column; }
 .cset-lede { color: var(--muted); font-size: 13px; margin: 0 0 14px; max-width: 720px; }
 .cset-err { color: var(--danger); font-size: 13px; }
 .cset-ok { color: var(--accent); font-size: 13px; margin: 4px 0; }

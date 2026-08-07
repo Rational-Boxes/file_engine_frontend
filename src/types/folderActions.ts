@@ -130,3 +130,31 @@ export interface ClassifierTestResult {
   scores: Record<string, number>
   matches?: unknown
 }
+
+// --- event-notification email templates (§7.2) ---
+export interface NotifyTemplateSummary {
+  id: string
+  name: string
+  subject?: string
+  created_by?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface NotifyTemplate {
+  id: string
+  name: string
+  subject: string
+  body_text: string
+  body_html: string
+  created_by?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface NotifyTemplateInput {
+  name: string
+  subject?: string
+  body_text?: string
+  body_html?: string
+}

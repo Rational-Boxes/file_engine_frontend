@@ -91,33 +91,6 @@
         <WebDavSessionTtlEditor />
       </section>
 
-      <!-- ============ EMAIL TEMPLATES ============ -->
-      <section v-if="tab === 'Email templates'" class="panel">
-        <h2>Email templates</h2>
-        <nav class="subtabs">
-          <button v-for="t in templates" :key="t.kind" :class="{ active: tmplKind === t.kind }" @click="selectTemplate(t.kind)">
-            {{ t.kind }}<span v-if="t.customized" class="dot" title="customized">•</span>
-          </button>
-        </nav>
-        <template v-if="draft">
-          <label>Subject<input v-model="draft.subject" /></label>
-          <label>Body (HTML)<textarea v-model="draft.body" rows="10"></textarea></label>
-          <p class="muted">Placeholders: <code>{{ placeholderHint }}</code> and, for invites, <code>{{ invitePlaceholderHint }}</code>.</p>
-          <div class="row">
-            <button class="btn" :disabled="busy" @click="saveTemplate">Save</button>
-            <button class="btn ghost" :disabled="busy" @click="preview">Preview</button>
-            <button class="btn ghost" :disabled="busy" @click="sendTest">Send test to me</button>
-            <button class="link" :disabled="busy" @click="revertTemplate">Revert to default</button>
-            <span v-if="tmplMsg" class="ok">{{ tmplMsg }}</span>
-          </div>
-          <div v-if="previewHtml" class="preview">
-            <div class="preview-subj">{{ previewSubject }}</div>
-            <!-- preview HTML is rendered by the service from sample data; isolate it -->
-            <ShadowHtml :html="previewHtml" />
-          </div>
-        </template>
-      </section>
-
       <!-- ============ AUDIT ============ -->
       <section v-if="tab === 'Audit'" class="panel">
         <div class="audit-head">
@@ -311,10 +284,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import AppNav from '@/components/AppNav.vue'
-import ShadowHtml from '@/components/ShadowHtml.vue'
 import TwoFactorPolicyEditor from '@/components/TwoFactorPolicyEditor.vue'
 import WebDavSessionTtlEditor from '@/components/WebDavSessionTtlEditor.vue'
-import { ldapAdminService, type EmailTemplate, type Role, type UserSummary } from '@/services/ldapAdminService'
+import { ldapAdminService, type Role, type UserSummary } from '@/services/ldapAdminService'
 import { auditService, type AuditRow, type ChainResult } from '@/services/auditService'
 import { securityService, type Incident, type SecurityRule } from '@/services/securityService'
 import { onBeforeUnmount } from 'vue'
@@ -323,12 +295,8 @@ import { errorMessage } from '@/services/apiClient'
 
 const auth = useAuthStore()
 
-const TABS = ['Users', 'Roles', 'Email templates', 'Audit', 'Security', 'Events'] as const
+const TABS = ['Users', 'Roles', 'Audit', 'Security', 'Events'] as const
 const tab = ref<(typeof TABS)[number]>('Users')
-// Literal placeholder hints (kept in the script so the template compiler doesn't
-// treat the {{ }} as interpolation).
-const placeholderHint = '{{display_name}} {{email}} {{tenant}} {{roles}} {{inviter}}'
-const invitePlaceholderHint = '{{invite_link}} {{expires}}'
 const error = ref('')
 const busy = ref(false)
 
@@ -345,14 +313,6 @@ const newRole = ref('')
 const selectedRole = ref('')
 const members = ref<string[]>([])
 const newMember = ref('')
-
-// templates
-const templates = ref<EmailTemplate[]>([])
-const tmplKind = ref('')
-const draft = ref<{ subject: string; body: string } | null>(null)
-const previewHtml = ref('')
-const previewSubject = ref('')
-const tmplMsg = ref('')
 
 // audit
 const AUDIT_CATEGORIES = ['access', 'mutate', 'permission', 'user', 'auth', 'admin']
@@ -390,7 +350,6 @@ let eventsTimer: ReturnType<typeof setInterval> | undefined
 
 onMounted(async () => {
   await loadRoles()
-  await loadTemplates()
 })
 
 function wrap(fn: () => Promise<void>) {
@@ -455,40 +414,6 @@ const removeMember = (uid: string) => wrap(async () => {
   members.value = await ldapAdminService.listMembers(selectedRole.value)
   await loadRoles()
 })()
-
-// --- templates ---
-async function loadTemplates() {
-  templates.value = await ldapAdminService.listTemplates()
-  if (templates.value.length && !tmplKind.value) selectTemplate(templates.value[0].kind)
-}
-function selectTemplate(kind: string) {
-  tmplKind.value = kind
-  previewHtml.value = ''
-  tmplMsg.value = ''
-  const t = templates.value.find((x) => x.kind === kind)
-  draft.value = t ? { subject: t.subject, body: t.body } : null
-}
-const saveTemplate = wrap(async () => {
-  if (!draft.value) return
-  await ldapAdminService.saveTemplate(tmplKind.value, draft.value.subject, draft.value.body)
-  tmplMsg.value = 'Saved ✓'
-  await loadTemplates()
-})
-const revertTemplate = wrap(async () => {
-  await ldapAdminService.revertTemplate(tmplKind.value)
-  tmplMsg.value = 'Reverted to default ✓'
-  await loadTemplates()
-  selectTemplate(tmplKind.value)
-})
-const preview = wrap(async () => {
-  const r = await ldapAdminService.previewTemplate(tmplKind.value, draft.value ?? undefined)
-  previewSubject.value = r.subject
-  previewHtml.value = r.body
-})
-const sendTest = wrap(async () => {
-  await ldapAdminService.testTemplate(tmplKind.value)
-  tmplMsg.value = 'Test sent ✓'
-})
 
 // --- audit ---
 const loadAudit = wrap(async () => {

@@ -16,24 +16,24 @@
 -->
 
 <template>
-  <div class="mcp">
-    <AppNav />
-    <main class="content">
-      <header class="head">
-        <h1>MCP integrations</h1>
+  <div class="intg">
+    <p v-if="!isAdmin" class="intg-err">Administrator access is required to manage integrations.</p>
+    <template v-else>
+      <header class="intg-head">
+        <h2>MCP integrations</h2>
         <button class="btn" :disabled="busy" @click="startCreate">Add integration</button>
       </header>
-      <p class="intro">
+      <p class="intg-intro">
         Register external <strong>MCP servers</strong> whose tools the AI chat may call.
         A tool runs with the <em>integration's</em> stored credentials on behalf of any
         chat user in this tenant — the tenant admin vouches for the server. Each call
         still requires the end user's explicit approval in chat.
       </p>
-      <p v-if="error" class="err">{{ error }}</p>
-      <p v-if="notice" class="ok">{{ notice }}</p>
+      <p v-if="error" class="intg-err">{{ error }}</p>
+      <p v-if="notice" class="intg-ok">{{ notice }}</p>
 
       <!-- ------------------------------- list ------------------------------- -->
-      <ul v-if="!editing" class="list">
+      <ul v-if="!editing" class="intg-list">
         <li v-for="i in integrations" :key="i.id" class="item">
           <div class="main">
             <span class="name">{{ i.name }}</span>
@@ -69,7 +69,7 @@
 
       <!-- ------------------------------- form ------------------------------- -->
       <section v-else class="form">
-        <h2>{{ form.id ? 'Edit integration' : 'Add integration' }}</h2>
+        <h3>{{ form.id ? 'Edit integration' : 'Add integration' }}</h3>
 
         <label class="fld"><span>Name</span>
           <input v-model.trim="form.name" placeholder="e.g. Support tickets" />
@@ -148,8 +148,8 @@
           <button class="btn ghost" :disabled="busy || !form.endpoint_url" @click="testForm">
             Test connection
           </button>
-          <span v-if="testState === 'ok'" class="ok">Connected — {{ discovered.length }} tool(s)</span>
-          <span v-if="testState === 'fail'" class="err">{{ testError }}</span>
+          <span v-if="testState === 'ok'" class="intg-ok">Connected — {{ discovered.length }} tool(s)</span>
+          <span v-if="testState === 'fail'" class="intg-err">{{ testError }}</span>
         </div>
 
         <fieldset v-if="discovered.length" class="tools">
@@ -170,13 +170,12 @@
           <button class="link" :disabled="busy" @click="cancel">Cancel</button>
         </div>
       </section>
-    </main>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import AppNav from '@/components/AppNav.vue'
 import {
   mcpAdminService,
   errorMessage,
@@ -185,6 +184,10 @@ import {
   type McpToolInfo,
 } from '@/services/mcpAdminService'
 import { ldapAdminService } from '@/services/ldapAdminService'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const isAdmin = computed(() => auth.hasAccessLevel('admin'))
 
 const integrations = ref<McpIntegration[]>([])
 const editing = ref(false)
@@ -410,41 +413,41 @@ async function loadRoles() {
 }
 
 onMounted(() => {
+  if (!isAdmin.value) return
   load()
   loadRoles()
 })
 </script>
 
 <style scoped>
-.content {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 16px;
+.intg {
+  display: flex;
+  flex-direction: column;
 }
-.head {
+.intg-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
 }
-.head h1 {
-  font-size: 1.3rem;
+.intg-head h2 {
+  font-size: 1.15rem;
   margin: 0;
 }
-.intro {
+.intg-intro {
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.5;
 }
-.err {
+.intg-err {
   color: var(--danger);
 }
-.ok {
+.intg-ok {
   color: var(--primary);
 }
 .muted {
   color: var(--muted);
 }
-.list {
+.intg-list {
   list-style: none;
   margin: 12px 0;
   padding: 0;
@@ -519,7 +522,7 @@ onMounted(() => {
   gap: 12px;
   max-width: 620px;
 }
-.form h2 {
+.form h3 {
   margin: 0;
   font-size: 1.05rem;
 }

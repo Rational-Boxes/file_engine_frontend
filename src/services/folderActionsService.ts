@@ -19,6 +19,7 @@ import folderActionsClient from '@/services/folderActionsClient'
 import type {
   ActionType, ActionBinding, BindingCreate, BindingUpdate, SorterRoute, ActionRun,
   ClassifierSetSummary, ClassifierSetFull, ClassifierTestResult, Classifier,
+  NotifyTemplateSummary, NotifyTemplate, NotifyTemplateInput,
 } from '@/types/folderActions'
 
 export const folderActionsService = {
@@ -109,6 +110,27 @@ export const folderActionsService = {
       : Promise<ClassifierTestResult> {
     const { data } = await folderActionsClient.post(`/classifier-sets/${setId}/test`, body)
     return data
+  },
+
+  // --- event-notification email templates (§7.2) ---
+  async listNotifyTemplates(): Promise<NotifyTemplateSummary[]> {
+    const { data } = await folderActionsClient.get('/notify-templates')
+    return data
+  },
+  async getNotifyTemplate(id: string): Promise<NotifyTemplate> {
+    const { data } = await folderActionsClient.get(`/notify-templates/${id}`)
+    return data
+  },
+  async createNotifyTemplate(body: NotifyTemplateInput): Promise<NotifyTemplate> {
+    const { data } = await folderActionsClient.post('/notify-templates', body)
+    return data
+  },
+  async updateNotifyTemplate(id: string, body: Partial<NotifyTemplateInput>): Promise<NotifyTemplate> {
+    const { data } = await folderActionsClient.put(`/notify-templates/${id}`, body)
+    return data
+  },
+  async deleteNotifyTemplate(id: string): Promise<void> {
+    await folderActionsClient.delete(`/notify-templates/${id}`)
   },
 }
 
