@@ -98,45 +98,45 @@
           />
         </div>
 
-        <!-- Sorter routing table -->
+        <!-- Sorter routing: one row per classification in the selected set -->
         <div v-if="actionType === 'sorter'" class="be-field">
           <label class="be-label">Routing rules</label>
-          <p class="be-help">Files matching a classification above its threshold are moved to the destination folder (highest priority first).</p>
-          <table class="be-routes">
+          <p class="be-help">
+            For each classification in the selected set, set an activation <strong>threshold</strong>
+            and a <strong>destination folder</strong>. A file is moved to the destination of the
+            highest-scoring classification whose score meets its threshold; a classification with no
+            destination is ignored. Scores are <strong>unbounded weighted sums</strong> (not 0–1) —
+            use the set's <em>test panel</em> to calibrate thresholds against real documents.
+          </p>
+          <p v-if="!selectedClassifierSetId" class="be-muted">
+            Choose a classifier set above to configure routing.
+          </p>
+          <p v-else-if="routesLoading" class="be-muted">Loading classifications…</p>
+          <p v-else-if="!routes.length" class="be-muted">
+            This classifier set has no classifications yet — add some in System → Classifier sets.
+          </p>
+          <table v-else class="be-routes">
             <thead>
               <tr>
                 <th>Classification</th>
                 <th>Threshold</th>
-                <th>Destination</th>
-                <th>Priority</th>
-                <th></th>
+                <th>Destination folder</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(r, i) in routes" :key="i">
+              <tr v-for="(r, i) in routes" :key="r.classification_name">
+                <td class="be-cls" :title="r.classification_name">{{ r.classification_name }}</td>
                 <td>
-                  <input class="be-input be-cell" type="text" v-model="r.classification_name" placeholder="name" />
-                </td>
-                <td>
-                  <input class="be-input be-cell be-num" type="number" step="0.01" min="0" max="1" v-model.number="r.threshold" />
+                  <input class="be-input be-cell be-num" type="number" step="0.5" min="0"
+                         v-model.number="r.threshold" />
                 </td>
                 <td class="be-dest">
                   <span class="be-dest-txt" :title="r.destination_folder">{{ routeDestLabel(i) }}</span>
                   <button class="btn be-mini" type="button" @click="openRoutePick(i)">📁</button>
                 </td>
-                <td>
-                  <input class="be-input be-cell be-num" type="number" step="1" v-model.number="r.priority" />
-                </td>
-                <td>
-                  <button class="btn be-mini" type="button" title="Remove rule" @click="removeRoute(i)">🗑</button>
-                </td>
-              </tr>
-              <tr v-if="!routes.length">
-                <td colspan="5" class="be-muted">No routing rules yet.</td>
               </tr>
             </tbody>
           </table>
-          <button class="btn" type="button" @click="addRoute">➕ Add rule</button>
         </div>
 
         <p v-if="error" class="err">{{ error }}</p>
@@ -196,10 +196,16 @@ const mimeTypes = ref<string[]>([])
 const mimeDraft = ref('')
 const config = ref<Record<string, unknown>>({})
 const routes = ref<SorterRoute[]>([])
+const routesLoading = ref(false)
 const error = ref('')
 const saving = ref(false)
 // Labels for route destinations picked this session (path shown instead of uid).
 const routeLabels = reactive<Record<number, string>>({})
+
+// The classifier set chosen in the sorter's config (its `classifier_set_id` ref field).
+const selectedClassifierSetId = computed(
+  () => ((config.value as Record<string, unknown>).classifier_set_id as string) || '',
+)
 
 const selectedType = computed<ActionType | undefined>(() =>
   props.actionTypes.find((t) => t.type_name === actionType.value),
@@ -233,17 +239,55 @@ watch(
       recursive.value = false
     }
 
-    // Load existing routes for a sorter binding being edited.
+    // Sorter: load any saved routes, then reconcile against the selected set's
+    // classifications so every classification shows a row (preserving saved values).
     if (props.binding && props.binding.action_type === 'sorter') {
       try {
         routes.value = await folderActionsService.getRoutes(props.binding.id)
       } catch (e) {
         error.value = errorMessage(e, 'Could not load routing rules')
       }
+      await syncRoutesToSet(selectedClassifierSetId.value)
     }
   },
   { immediate: true },
 )
+
+// Rebuild the routing rows from the chosen classifier set's classifications
+// whenever the selection changes, preserving thresholds/destinations already set.
+async function syncRoutesToSet(setId: string) {
+  if (!setId) {
+    routes.value = []
+    return
+  }
+  routesLoading.value = true
+  try {
+    const set = await folderActionsService.getClassifierSet(setId)
+    const prev = new Map(routes.value.map((r) => [r.classification_name, r]))
+    routes.value = (set.classifiers || []).map((c, idx) => {
+      const existing = prev.get(c.name)
+      return existing
+        ? { ...existing, classifier_set_id: setId }
+        : {
+            classifier_set_id: setId,
+            classification_name: c.name,
+            threshold: 1,
+            destination_folder: '',
+            priority: (set.classifiers?.length ?? 0) - idx, // set order = tie-break priority
+          }
+    })
+    for (const k of Object.keys(routeLabels)) delete routeLabels[Number(k)]
+  } catch (e) {
+    error.value = errorMessage(e, 'Could not load the classifier set')
+    routes.value = []
+  } finally {
+    routesLoading.value = false
+  }
+}
+
+watch(selectedClassifierSetId, (setId) => {
+  if (actionType.value === 'sorter') syncRoutesToSet(setId)
+})
 
 function addMime() {
   const v = mimeDraft.value.trim().toLowerCase()
@@ -260,17 +304,7 @@ function toggleEvent(ev: string) {
     : [...onEvents.value, ev]
 }
 
-// --- routes ---
-function addRoute() {
-  routes.value = [
-    ...routes.value,
-    { classification_name: '', threshold: 0.5, destination_folder: '', priority: routes.value.length },
-  ]
-}
-function removeRoute(i: number) {
-  routes.value = routes.value.filter((_, idx) => idx !== i)
-  delete routeLabels[i]
-}
+// --- routes (rows are driven by the selected classifier set; see syncRoutesToSet) ---
 function routeDestLabel(i: number): string {
   return routeLabels[i] || routes.value[i]?.destination_folder || '(none)'
 }
@@ -321,7 +355,8 @@ async function save() {
       bindingId = created.id
     }
     if (actionType.value === 'sorter' && bindingId) {
-      await folderActionsService.setRoutes(bindingId, routes.value)
+      // Only classifications with a destination are routed; the rest are ignored.
+      await folderActionsService.setRoutes(bindingId, routes.value.filter((r) => r.destination_folder))
     }
     emit('saved')
   } catch (e) {
