@@ -26,7 +26,7 @@
     </header>
 
     <nav class="tabs">
-      <button v-for="t in tabs" :key="t" :class="{ active: tab === t }" @click="tab = t">{{ t }}</button>
+      <button v-for="t in visibleTabs" :key="t" :class="{ active: tab === t }" @click="tab = t">{{ t }}</button>
     </nav>
 
     <p v-if="error" class="err">{{ error }}</p>
@@ -149,6 +149,17 @@
         <AclEditor :uid="item.uid" :can-manage="!!effective['m']" :is-directory="item.isDirectory" @changed="loadAll(item.uid)" />
       </div>
     </section>
+
+    <!-- Actions (folders only) -->
+    <section v-show="tab === 'Actions'" class="pane">
+      <FolderActionsPanel
+        v-if="item && item.isDirectory"
+        :uid="item.uid"
+        :can-write="!!effective['w']"
+        :can-manage="!!effective['m']"
+        @changed="loadAll(item.uid)"
+      />
+    </section>
   </aside>
 </template>
 
@@ -163,6 +174,7 @@ import { formatSize, formatDateTime } from '@/utils/format'
 import { fileBrowserLocation } from '@/utils/fileLocation'
 import { PERMS, canDo } from '@/utils/permissions'
 import AclEditor from '@/components/AclEditor.vue'
+import FolderActionsPanel from '@/components/FolderActionsPanel.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import FileVersions from '@/components/FileVersions.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
@@ -231,10 +243,15 @@ async function generateModel() {
 }
 
 const tabs = ['Info', 'Metadata', 'Versions', 'Access'] as const
-type Tab = (typeof tabs)[number]
+// 'Actions' is folder-only, appended via visibleTabs — widen Tab to include it.
+type Tab = (typeof tabs)[number] | 'Actions'
 const tab = ref<Tab>('Info')
 
 const item = computed(() => files.detailItem)
+// Folders gain an extra "Actions" tab (folder-actions bindings + run log).
+const visibleTabs = computed<Tab[]>(() =>
+  item.value?.isDirectory ? [...tabs, 'Actions'] : [...tabs],
+)
 const router = useRouter()
 const canEdit = computed(() => auth.hasAccessLevel('editor'))
 const canDownload = computed(() => canDo('download', auth.accessLevel))

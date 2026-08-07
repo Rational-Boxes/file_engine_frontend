@@ -29,7 +29,7 @@ const OnlyOfficeEditorView = () => import('@/views/OnlyOfficeEditorView.vue')
 const OAuthConsentView = () => import('@/views/OAuthConsentView.vue')
 const ProfileView = () => import('@/views/ProfileView.vue')
 const TenantAdminView = () => import('@/views/TenantAdminView.vue')
-const McpIntegrationsView = () => import('@/views/McpIntegrationsView.vue')
+const SecurityView = () => import('@/views/SecurityView.vue')
 const SetPasswordView = () => import('@/views/SetPasswordView.vue')
 const ResetPasswordView = () => import('@/views/ResetPasswordView.vue')
 
@@ -58,9 +58,9 @@ const routes = [
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
-    path: '/admin/integrations',
-    name: 'McpIntegrations',
-    component: McpIntegrationsView,
+    path: '/admin/security',
+    name: 'Security',
+    component: SecurityView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   { path: '/profile', name: 'Profile', component: ProfileView, meta: { requiresAuth: true } },

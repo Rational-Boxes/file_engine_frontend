@@ -84,6 +84,20 @@
         Apply to all contents (files &amp; subfolders)
       </label>
 
+      <div class="acl-clone">
+        <button
+          class="btn btn-tpl"
+          :disabled="busy || !hasParent"
+          :title="
+            hasParent
+              ? 'Replace these permissions with a copy of the parent folder\'s permissions'
+              : 'No parent folder to clone from'
+          "
+          @click="cloneParent"
+        >⧉ Clone parent&apos;s permissions</button>
+        <span class="acl-tpl-label">Copies the parent folder's ACL onto this item.</span>
+      </div>
+
       <div class="acl-templates">
         <span class="acl-tpl-label">Templates:</span>
         <button
@@ -109,7 +123,7 @@ import PrincipalPicker from '@/components/PrincipalPicker.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
 import { aclService } from '@/services/aclService'
 import { fileService } from '@/services/fileService'
-import { errorMessage } from '@/services/apiClient'
+import { errorMessage, ROOT_UID } from '@/services/apiClient'
 import { PERMS, decodePermissions } from '@/utils/permissions'
 import {
   encodePrincipal,
@@ -132,6 +146,10 @@ const busy = ref(false)
 // When set, a grant/revoke cascades to every descendant file and directory (the
 // bridge walks the subtree). Only meaningful for a directory.
 const recursive = ref(false)
+// The current node's parent, resolved on load — the source for "Clone parent's
+// permissions". Empty (root, or unresolved) disables the clone button.
+const parentUid = ref('')
+const hasParent = computed(() => !!parentUid.value && parentUid.value !== props.uid)
 
 // Show entries in evaluation order: User (0) → Roles/Claims (1) → Everyone (2),
 // and within a tier put DENY first (DENY wins in-tier). Mirrors the core engine.
@@ -158,6 +176,15 @@ async function load() {
     entries.value = []
   } finally {
     loading.value = false
+  }
+  // Resolve the parent (best-effort; only gates the clone button's availability).
+  parentUid.value = ''
+  if (props.uid && props.uid !== ROOT_UID) {
+    try {
+      parentUid.value = (await fileService.stat(props.uid)).parent_uid || ''
+    } catch {
+      /* leave empty — clone stays disabled */
+    }
   }
 }
 
@@ -247,6 +274,62 @@ async function applyTemplate(kind: 'home' | 'gated') {
     emit('changed')
   } catch (e) {
     error.value = errorMessage(e, 'Failed to apply template')
+  } finally {
+    busy.value = false
+  }
+}
+
+// Clone the parent folder's permissions onto this node: make its OWN ACL an exact
+// copy of the parent's OWN ACL. Reconciled as a minimal diff (grant what's missing,
+// then revoke the extras) so a rule already correct on both — e.g. the caller's own
+// Manage-ACL grant — is never dropped mid-operation. This is the UI counterpart of
+// the service's post-move normalization. Best-effort per rule: a failed grant/revoke
+// is counted and surfaced but doesn't abort the rest.
+async function cloneParent() {
+  if (!hasParent.value) return
+  busy.value = true
+  error.value = ''
+  const atom = (principal: string, effect: string, key: string) => `${principal}\t${effect}\t${key}`
+  const toAtoms = (list: AclEntry[]): Set<string> => {
+    const s = new Set<string>()
+    for (const e of list) {
+      const principal = encodePrincipal({ kind: principalKindFromType(e.type), value: e.principal })
+      for (const p of decode(e.permissions)) s.add(atom(principal, e.effect, p.key))
+    }
+    return s
+  }
+  const parse = (a: string) => {
+    const [principal, effect, key] = a.split('\t')
+    return { principal, effect: effect as 'allow' | 'deny', permission: key }
+  }
+  try {
+    const target = toAtoms(await aclService.getAcls(parentUid.value))
+    const current = toAtoms(entries.value)
+    let failures = 0
+    // Grant the parent's rules we're missing FIRST (so we gain any Manage-ACL the
+    // parent confers before we start revoking), then revoke the rules the parent
+    // doesn't have. Ordering guards against a MANAGE_ACL self-lockout mid-clone.
+    for (const a of target) {
+      if (current.has(a)) continue
+      try {
+        await fileService.grantPermission(props.uid, parse(a))
+      } catch {
+        failures++
+      }
+    }
+    for (const a of current) {
+      if (target.has(a)) continue
+      try {
+        await fileService.revokePermission(props.uid, parse(a))
+      } catch {
+        failures++
+      }
+    }
+    await load()
+    emit('changed')
+    if (failures) error.value = `Cloned with ${failures} permission change(s) skipped (insufficient rights?).`
+  } catch (e) {
+    error.value = errorMessage(e, 'Failed to clone parent permissions')
   } finally {
     busy.value = false
   }
@@ -406,7 +489,8 @@ async function revoke(e: AclEntry, permKey: string) {
   font-style: italic;
 }
 
-.acl-templates {
+.acl-templates,
+.acl-clone {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

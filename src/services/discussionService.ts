@@ -138,7 +138,9 @@ export interface ReviewRequest {
   threadId: string | null
   requester: string
   reviewer: string
-  status: 'requested' | 'acknowledged' | 'completed' | 'declined'
+  // 'completed' is the legacy terminal state (older records); explicit review
+  // decisions now land as 'approved' / 'rejected'.
+  status: 'requested' | 'acknowledged' | 'completed' | 'declined' | 'approved' | 'rejected'
   outcome: string | null
   createdAt: string
   acknowledgedAt: string | null
@@ -365,8 +367,19 @@ export const discussionService = {
     return toReview(data)
   },
 
+  // Terminal review decision. Approve/reject route to the *explicit* endpoints so
+  // the discussion service emits review.approved / review.rejected — the recognized
+  // types promoted to the shared fileengine:events stream that folder_actions'
+  // move-on-decision automations listen for. The legacy /complete endpoint (→
+  // review.completed) is NOT promoted, so using it silently breaks those chains.
+  // A non-approval outcome ('rejected' or 'changes') is a rejection; the outcome
+  // label is preserved on the record.
   async completeReview(reviewId: string, outcome?: string): Promise<ReviewRequest> {
-    const { data } = await discussionClient.post(`/reviews/${reviewId}/complete`, { outcome })
+    const path =
+      outcome === 'approved'
+        ? `/reviews/${reviewId}/approve`
+        : `/reviews/${reviewId}/reject`
+    const { data } = await discussionClient.post(path, { outcome })
     return toReview(data)
   },
 

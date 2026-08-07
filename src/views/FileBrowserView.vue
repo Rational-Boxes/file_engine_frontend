@@ -647,6 +647,41 @@ const onWinDrop = (e: DragEvent) => {
   uploadFiles(e.dataTransfer?.files ?? null)
 }
 
+// Background sync: periodically re-pull the current directory (silent refresh —
+// no spinner or selection reset) so out-of-band changes appear without a manual
+// reload: a folder-action moving files in/out, another user's upload, a new
+// version. Interval is configurable via VITE_FILE_LIST_POLL_MS (milliseconds);
+// 0, negative, or non-numeric disables polling. Tied to activation, so a
+// backgrounded (kept-alive) tab doesn't poll.
+const FILE_LIST_POLL_MS = Number(import.meta.env.VITE_FILE_LIST_POLL_MS ?? 10000)
+let pollTimer: ReturnType<typeof setInterval> | null = null
+function stopPoll() {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+function startPoll() {
+  stopPoll()
+  if (!(FILE_LIST_POLL_MS > 0)) return // disabled / invalid interval
+  if (document.hidden) return // suspended until the tab is visible again
+  pollTimer = setInterval(() => {
+    if (files.loading) return // never overlap an in-flight full load()
+    void files.refresh()
+  }, FILE_LIST_POLL_MS)
+}
+// Fully suspend the poll while the tab is backgrounded — no wake-ups when the user
+// isn't looking at the file view — and resume with an immediate catch-up sync (so
+// they don't wait out the interval) when it returns to the foreground.
+function onVisibilityChange() {
+  if (document.hidden) {
+    stopPoll()
+  } else {
+    void files.refresh()
+    startPoll()
+  }
+}
+
 // Window-level drag listeners are tied to activation (not mount): under
 // <KeepAlive> this view stays alive in the background, and we must not handle
 // drops while another tab (Search/Chat) is showing.
@@ -655,6 +690,8 @@ onActivated(() => {
   // doesn't change the deep-link query, so applyRoute's watch won't fire. Put the
   // current folder + tenant back in the URL so reload/bookmarks still work.
   syncUrl()
+  startPoll()
+  document.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('dragenter', onWinDragEnter)
   window.addEventListener('dragover', onWinDragOver)
   window.addEventListener('dragleave', onWinDragLeave)
@@ -663,6 +700,8 @@ onActivated(() => {
 onDeactivated(() => {
   dragOver.value = false
   dragDepth.value = 0
+  stopPoll()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('dragenter', onWinDragEnter)
   window.removeEventListener('dragover', onWinDragOver)
   window.removeEventListener('dragleave', onWinDragLeave)

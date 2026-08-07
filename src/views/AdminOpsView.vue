@@ -18,36 +18,65 @@
 <template>
   <div class="admin-ops">
     <AppNav />
-    <main class="content">
-      <h1 class="title">Storage &amp; sync</h1>
-      <p v-if="error" class="err">{{ error }}</p>
+    <main class="content" :class="{ wide: tab === 'Classifier sets' || tab === 'Email templates' }">
+      <h1 class="title">System configuration</h1>
+      <nav class="tabs">
+        <button v-for="t in TABS" :key="t" :class="{ active: tab === t }" @click="tab = t">{{ t }}</button>
+      </nav>
 
-      <section class="panel">
-        <h2 class="panel-head">Storage usage</h2>
-        <template v-if="usage">
-          <div class="bar"><div class="bar-fill" :style="{ width: pct + '%' }"></div></div>
-          <dl class="stats">
-            <dt>Used</dt>
-            <dd>{{ formatSize(usage.usedSpace) }} ({{ pct }}%)</dd>
-            <dt>Available</dt>
-            <dd>{{ formatSize(usage.availableSpace) }}</dd>
-            <dt>Total</dt>
-            <dd>{{ formatSize(usage.totalSpace) }}</dd>
-          </dl>
-        </template>
-        <p v-else-if="loading" class="muted">Loading…</p>
-        <button class="link" :disabled="loading" @click="load">Refresh</button>
+      <!-- ============ STORAGE & SYNC ============ -->
+      <section v-if="tab === 'Storage & sync'">
+        <p v-if="error" class="err">{{ error }}</p>
+
+        <section class="panel">
+          <h2 class="panel-head">Storage usage</h2>
+          <template v-if="usage">
+            <div class="bar"><div class="bar-fill" :style="{ width: pct + '%' }"></div></div>
+            <dl class="stats">
+              <dt>Used</dt>
+              <dd>{{ formatSize(usage.usedSpace) }} ({{ pct }}%)</dd>
+              <dt>Available</dt>
+              <dd>{{ formatSize(usage.availableSpace) }}</dd>
+              <dt>Total</dt>
+              <dd>{{ formatSize(usage.totalSpace) }}</dd>
+            </dl>
+          </template>
+          <p v-else-if="loading" class="muted">Loading…</p>
+          <button class="link" :disabled="loading" @click="load">Refresh</button>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-head">Object store sync</h2>
+          <p class="muted">Trigger a background sync between local storage and the object store.</p>
+          <div class="sync-row">
+            <button class="btn" :disabled="syncing" @click="sync">
+              {{ syncing ? 'Syncing…' : 'Trigger sync' }}
+            </button>
+            <span v-if="syncMsg" class="ok">{{ syncMsg }}</span>
+          </div>
+        </section>
       </section>
 
-      <section class="panel">
-        <h2 class="panel-head">Object store sync</h2>
-        <p class="muted">Trigger a background sync between local storage and the object store.</p>
-        <div class="sync-row">
-          <button class="btn" :disabled="syncing" @click="sync">
-            {{ syncing ? 'Syncing…' : 'Trigger sync' }}
+      <!-- ============ INTEGRATIONS ============ -->
+      <section v-else-if="tab === 'Integrations'">
+        <IntegrationsPanel />
+      </section>
+
+      <!-- ============ CLASSIFIER SETS ============ -->
+      <section v-else-if="tab === 'Classifier sets'">
+        <ClassifierSetsPanel />
+      </section>
+
+      <!-- ============ EMAIL TEMPLATES ============ -->
+      <section v-else-if="tab === 'Email templates'">
+        <nav class="subtabs">
+          <button :class="{ active: emailKind === 'Account' }" @click="emailKind = 'Account'">Account</button>
+          <button :class="{ active: emailKind === 'Event notifications' }" @click="emailKind = 'Event notifications'">
+            Event notifications
           </button>
-          <span v-if="syncMsg" class="ok">{{ syncMsg }}</span>
-        </div>
+        </nav>
+        <AccountEmailTemplates v-if="emailKind === 'Account'" />
+        <NotifyTemplatesPanel v-else />
       </section>
     </main>
   </div>
@@ -56,9 +85,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import AppNav from '@/components/AppNav.vue'
+import IntegrationsPanel from '@/components/system/IntegrationsPanel.vue'
+import ClassifierSetsPanel from '@/components/system/ClassifierSetsPanel.vue'
+import AccountEmailTemplates from '@/components/system/AccountEmailTemplates.vue'
+import NotifyTemplatesPanel from '@/components/system/NotifyTemplatesPanel.vue'
 import { adminService, type StorageUsage } from '@/services/adminService'
 import { errorMessage } from '@/services/apiClient'
 import { formatSize } from '@/utils/format'
+
+const TABS = ['Storage & sync', 'Integrations', 'Classifier sets', 'Email templates'] as const
+const tab = ref<(typeof TABS)[number]>('Storage & sync')
+
+// Email-templates sub-toggle: account templates vs. event-notification templates.
+const emailKind = ref<'Account' | 'Event notifications'>('Account')
 
 const usage = ref<StorageUsage | null>(null)
 const loading = ref(false)
@@ -104,9 +143,60 @@ async function sync() {
   padding: 20px 18px;
 }
 
+/* The classifier and template surfaces use wide two-column layouts, so those
+   tabs get more room; the storage/integrations tabs stay narrow for reading. */
+.content.wide {
+  max-width: 1100px;
+}
+
 .title {
   font-size: 20px;
+  margin: 0 0 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
   margin: 0 0 16px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.tabs button {
+  border: none;
+  background: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  font-size: 14px;
+}
+
+.tabs button.active {
+  color: var(--fg);
+  border-bottom-color: var(--primary);
+}
+
+.subtabs {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.subtabs button {
+  border: none;
+  background: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+}
+
+.subtabs button.active {
+  color: var(--fg);
+  border-bottom-color: var(--primary);
 }
 
 .err {

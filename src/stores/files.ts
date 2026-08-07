@@ -20,6 +20,17 @@ import { errorMessage, errorStatus } from '@/services/apiClient'
 
 export type { FileItem }
 
+// A compact fingerprint of a listing, used by the background poll to tell whether
+// anything the UI cares about actually changed before swapping the list. Covers
+// membership (uid), rename (name), new version (size/modifiedAt), soft-delete, and
+// renditions appearing. Order-independent so a re-sort alone doesn't force a churn.
+function listingSignature(items: FileItem[]): string {
+  return items
+    .map((i) => `${i.uid}:${i.name}:${i.size}:${i.modifiedAt}:${i.deleted ? 1 : 0}:${i.renditionCount}`)
+    .sort()
+    .join('|')
+}
+
 interface Crumb {
   uid: string
   name: string
@@ -126,6 +137,35 @@ export const useFileStore = defineStore('files', {
         this.items = []
       } finally {
         this.loading = false
+      }
+    },
+
+    // Silent re-fetch of the current directory — no spinner, no selection reset,
+    // no drawer changes. Backs the periodic background poll (and post-mutation
+    // refreshes) so out-of-band changes (an action moving a file in/out, another
+    // user's upload, a new version) appear without a disruptive full load().
+    // Best-effort: a transient failure keeps the current listing rather than
+    // blanking it, and items are only swapped when the listing actually changed
+    // so we don't churn the DOM or drop scroll position every tick.
+    async refresh() {
+      if (this.loading) return // a full load() is already in flight
+      let items: FileItem[]
+      try {
+        items = await fileService.listDirectory(this.currentUid, { deleted: this.showDeleted })
+      } catch {
+        return // transient — leave the current listing intact
+      }
+      if (listingSignature(items) === listingSignature(this.items)) return
+      this.items = items
+      // Prune selection of any uids that no longer exist in the listing.
+      if (this.selected.size) {
+        const present = new Set(items.map((i) => i.uid))
+        for (const uid of [...this.selected]) if (!present.has(uid)) this.selected.delete(uid)
+      }
+      // If the open details drawer is for an item that vanished, close it.
+      if (this.detailItem && !items.some((i) => i.uid === this.detailItem!.uid)) {
+        this.drawerOpen = false
+        this.detailItem = null
       }
     },
 
