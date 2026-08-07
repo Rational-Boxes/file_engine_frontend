@@ -174,7 +174,7 @@
         <div class="fr-modal-backdrop" @click="closeFolderPick"></div>
         <div class="fr-modal-panel">
           <h3 class="fr-modal-title">Pick a destination folder</h3>
-          <FolderBrowser @navigate="folderNav = $event" />
+          <FolderBrowser show-create @navigate="folderNav = $event" />
           <p class="fr-hint">
             Selected: <strong>{{ folderNav?.path || '/' }}</strong>
           </p>
