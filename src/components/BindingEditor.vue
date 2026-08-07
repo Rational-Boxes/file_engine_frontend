@@ -35,6 +35,10 @@
             <option v-for="t in actionTypes" :key="t.type_name" :value="t.type_name">{{ t.label }}</option>
           </select>
           <p v-if="selectedType?.description" class="be-help">{{ selectedType.description }}</p>
+          <p v-if="selectedType?.auto_moves" class="be-help be-note">
+            ⟳ This action can move files automatically. It is guarded against
+            move-loops (it won't re-fire on folder_actions' own moves).
+          </p>
         </div>
 
         <!-- Trigger events -->

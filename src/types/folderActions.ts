@@ -49,6 +49,7 @@ export interface ActionType {
   label: string
   description: string
   supported_events: string[]
+  auto_moves?: boolean // manifest: moves files unattended (loop-guarded, §3.3)
   fields: FieldDescriptor[]
 }
 
