@@ -138,7 +138,9 @@ export interface ReviewRequest {
   threadId: string | null
   requester: string
   reviewer: string
-  status: 'requested' | 'acknowledged' | 'completed' | 'declined'
+  // 'completed' is the legacy terminal state (older records); explicit review
+  // decisions now land as 'approved' / 'rejected'.
+  status: 'requested' | 'acknowledged' | 'completed' | 'declined' | 'approved' | 'rejected'
   outcome: string | null
   createdAt: string
   acknowledgedAt: string | null

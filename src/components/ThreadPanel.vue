@@ -312,6 +312,10 @@ function fmtDate(iso: string | null): string {
 }
 // Human label for a review's state/outcome (the record reads as plain English).
 function reviewLabel(r: ReviewRequest): string {
+  // Terminal states from the explicit approve/reject transitions.
+  if (r.status === 'approved') return 'approved'
+  if (r.status === 'rejected') return r.outcome === 'changes' ? 'changes requested' : 'rejected'
+  // Legacy /complete outcome form (older records).
   if (r.status === 'completed') {
     if (r.outcome === 'approved') return 'approved'
     if (r.outcome === 'changes') return 'changes requested'
@@ -440,10 +444,19 @@ async function loadMyReviews() {
     myReviews.value = []
   }
 }
+// Re-pull both the record tab (fileReviews — every request on the file) and my
+// inline action set after a transition, so the whole panel reflects the new state
+// without a full document reload.
+async function refreshReviews() {
+  fileReviews.value = await discussionService
+    .listFileReviews(props.fileUid)
+    .catch(() => [] as ReviewRequest[])
+  await loadMyReviews()
+}
 async function ackMyReview(r: ReviewRequest) {
   try {
     await discussionService.acknowledgeReview(r.id)
-    await loadMyReviews()
+    await refreshReviews()
   } catch {
     reviewMsg.value = 'Could not acknowledge.'
   }
@@ -451,7 +464,7 @@ async function ackMyReview(r: ReviewRequest) {
 async function resolveMyReview(r: ReviewRequest, outcome: 'approved' | 'changes') {
   try {
     await discussionService.completeReview(r.id, outcome)
-    await loadMyReviews()
+    await refreshReviews()
   } catch {
     reviewMsg.value = 'Could not submit the review.'
   }
