@@ -131,7 +131,7 @@
                          v-model.number="r.threshold" />
                 </td>
                 <td class="be-dest">
-                  <span class="be-dest-txt" :title="r.destination_folder">{{ routeDestLabel(i) }}</span>
+                  <span class="be-dest-txt" :title="routeDestLabel(i)">{{ routeDestLabel(i) }}</span>
                   <button class="btn be-mini" type="button" @click="openRoutePick(i)">📁</button>
                 </td>
               </tr>
@@ -173,8 +173,26 @@ import { ref, reactive, computed, watch } from 'vue'
 import FieldRenderer from '@/components/FieldRenderer.vue'
 import FolderBrowser from '@/components/FolderBrowser.vue'
 import { folderActionsService } from '@/services/folderActionsService'
-import { errorMessage } from '@/services/apiClient'
+import { fileService } from '@/services/fileService'
+import { errorMessage, ROOT_UID } from '@/services/apiClient'
 import type { ActionType, ActionBinding, SorterRoute } from '@/types/folderActions'
+
+// Resolve a folder uid to its full path (walk parents) — so an existing binding's
+// destination shows a readable path, not the bare uid.
+async function resolveFolderPath(uid: string): Promise<string> {
+  const names: string[] = []
+  let cur = uid
+  for (let i = 0; i < 32 && cur && cur !== ROOT_UID; i++) {
+    try {
+      const info = await fileService.stat(cur)
+      names.unshift(info.name)
+      cur = info.parent_uid
+    } catch {
+      break
+    }
+  }
+  return '/' + names.join('/')
+}
 
 const props = defineProps<{
   open: boolean
@@ -277,6 +295,14 @@ async function syncRoutesToSet(setId: string) {
           }
     })
     for (const k of Object.keys(routeLabels)) delete routeLabels[Number(k)]
+    // Resolve each existing destination uid to a readable path (async, best-effort).
+    routes.value.forEach((r, i) => {
+      if (r.destination_folder) {
+        resolveFolderPath(r.destination_folder).then((p) => {
+          if (p && p !== '/') routeLabels[i] = p
+        })
+      }
+    })
   } catch (e) {
     error.value = errorMessage(e, 'Could not load the classifier set')
     routes.value = []
