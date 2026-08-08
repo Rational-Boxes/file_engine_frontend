@@ -16,12 +16,16 @@
 -->
 
 <!--
-  Reusable folder browser: a breadcrumb + folder list over fileService.listDirectory.
-  Two modes:
-    • single (default) — drilling in; emits `navigate` with the current folder, so a
-      parent can use it as a destination (e.g. "save report here").
+  Reusable node browser: a breadcrumb + tree listing over fileService.listDirectory.
+  Modes:
+    • single (default) — drilling into folders; emits `navigate` with the current
+      folder, so a parent can use it as a destination (e.g. "save report here").
     • multiSelect — a checkbox per folder; `v-model` is the chosen folder set
       (each `{ uid, path }`), so a parent can use it as a scope (e.g. "search these").
+    • pickFiles — files are also listed (alongside folders you can still drill into);
+      clicking one emits `select-file` with `{ uid, name, path }`, so a parent can use
+      it as a file picker (e.g. "test this document"). `selectedUid` highlights the
+      current pick. Folder selection (multiSelect / navigate) is unaffected.
   Optional `showCreate` offers inline new-folder creation. Reset to root happens on
   mount, so callers that gate it behind `v-if` get a fresh browser each time.
 -->
@@ -46,7 +50,19 @@
           </label>
           <button v-else class="fb-folder" type="button" @click="openFolder(f)">📁 {{ f.name }}</button>
         </template>
-        <p v-if="!folders.length" class="fb-muted">No sub-folders here.</p>
+        <template v-if="pickFiles">
+          <button
+            v-for="f in files"
+            :key="f.uid"
+            class="fb-file"
+            :class="{ 'fb-on': f.uid === selectedUid }"
+            type="button"
+            @click="pickFile(f)"
+          >📄 {{ f.name }}</button>
+        </template>
+        <p v-if="!folders.length && !(pickFiles && files.length)" class="fb-muted">
+          {{ pickFiles ? 'Nothing here.' : 'No sub-folders here.' }}
+        </p>
       </template>
     </div>
 
@@ -85,13 +101,16 @@ const props = withDefaults(
     multiSelect?: boolean
     modelValue?: FolderRef[] // selected folders (multiSelect mode); v-model
     showCreate?: boolean
+    pickFiles?: boolean // also list files; clicking one emits `select-file`
+    selectedUid?: string // highlight this file/folder as the current pick
   }>(),
-  { multiSelect: false, modelValue: () => [], showCreate: false },
+  { multiSelect: false, modelValue: () => [], showCreate: false, pickFiles: false, selectedUid: '' },
 )
 
 const emit = defineEmits<{
   (e: 'update:modelValue', folders: FolderRef[]): void
   (e: 'navigate', folder: { uid: string; name: string; path: string }): void
+  (e: 'select-file', file: { uid: string; name: string; path: string }): void
 }>()
 
 interface Crumb {
@@ -101,6 +120,7 @@ interface Crumb {
 
 const crumbs = ref<Crumb[]>([{ uid: ROOT_UID, name: 'Home' }])
 const folders = ref<FileItem[]>([])
+const files = ref<FileItem[]>([]) // populated only in pickFiles mode
 const loading = ref(false)
 const error = ref('')
 const busy = ref(false)
@@ -137,9 +157,13 @@ async function load(uid: string) {
     folders.value = items
       .filter((i) => i.isDirectory && !i.deleted)
       .sort((a, b) => a.name.localeCompare(b.name))
+    files.value = props.pickFiles
+      ? items.filter((i) => !i.isDirectory && !i.deleted).sort((a, b) => a.name.localeCompare(b.name))
+      : []
   } catch (e) {
     error.value = errorMessage(e, 'Could not list this folder')
     folders.value = []
+    files.value = []
   } finally {
     loading.value = false
   }
@@ -150,6 +174,9 @@ function openFolder(f: FileItem) {
   creatingFolder.value = false
   emitNav()
   load(f.uid)
+}
+function pickFile(f: FileItem) {
+  emit('select-file', { uid: f.uid, name: f.name, path: childPath(f.name) })
 }
 function goToCrumb(i: number) {
   if (i === crumbs.value.length - 1) return
@@ -208,6 +235,8 @@ defineExpose({ reset })
 .fb-muted { color: var(--muted); font-size: 0.85rem; padding: 6px 8px; }
 .fb-folder { text-align: left; background: none; border: none; color: var(--fg); cursor: pointer; padding: 6px 8px; border-radius: 6px; font-size: 0.9rem; }
 .fb-folder:hover { background: var(--bg); }
+.fb-file { text-align: left; background: none; border: none; color: var(--fg); cursor: pointer; padding: 6px 8px; border-radius: 6px; font-size: 0.9rem; }
+.fb-file:hover { background: var(--bg); }
 .fb-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
 .fb-row:hover { background: var(--bg); }
 .fb-on { background: color-mix(in srgb, var(--primary) 12%, transparent); }

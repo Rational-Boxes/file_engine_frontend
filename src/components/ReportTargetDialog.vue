@@ -24,7 +24,7 @@
         <h2 class="rt-title">Generate report</h2>
         <p class="rt-sub">Choose where to save the report, then a file name.</p>
 
-        <FolderBrowser show-create @navigate="onNavigate" />
+        <NodeBrowser show-create @navigate="onNavigate" />
 
         <label class="rt-field">
           File name
@@ -53,7 +53,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { ROOT_UID } from '@/services/apiClient'
-import FolderBrowser, { type FolderRef } from '@/components/FolderBrowser.vue'
+import NodeBrowser, { type FolderRef } from '@/components/NodeBrowser.vue'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{

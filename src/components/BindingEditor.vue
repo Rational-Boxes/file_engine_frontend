@@ -155,7 +155,7 @@
       <div class="be-modal-backdrop" @click="closeRoutePick"></div>
       <div class="be-modal-panel">
         <h3 class="be-modal-title">Pick a destination folder</h3>
-        <FolderBrowser show-create @navigate="routeNav = $event" />
+        <NodeBrowser show-create @navigate="routeNav = $event" />
         <p class="be-hint">Selected: <strong>{{ routeNav?.path || '/' }}</strong></p>
         <div class="be-modal-actions">
           <button class="btn" type="button" @click="closeRoutePick">Cancel</button>
@@ -171,7 +171,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import FieldRenderer from '@/components/FieldRenderer.vue'
-import FolderBrowser from '@/components/FolderBrowser.vue'
+import NodeBrowser from '@/components/NodeBrowser.vue'
 import { folderActionsService } from '@/services/folderActionsService'
 import { fileService } from '@/services/fileService'
 import { errorMessage, ROOT_UID } from '@/services/apiClient'

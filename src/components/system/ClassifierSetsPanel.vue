@@ -121,15 +121,22 @@
           <div class="cset-test">
             <h2>🧪 Test &amp; calibrate</h2>
             <p class="muted">
-              Run sample text (or a stored file uid) through the <em>saved</em> set to see the
+              Run sample text (or a chosen file) through the <em>saved</em> set to see the
               real scores each classification produces — that is how you pick route thresholds.
             </p>
             <label>Sample text
               <textarea v-model="testText" rows="6" placeholder="Paste representative document text here…"></textarea>
             </label>
+            <div class="cset-testfile">
+              <button class="btn ghost" type="button" @click="pickingFile = true">📄 Choose file…</button>
+              <template v-if="testFile">
+                <span class="cset-testfile-name" :title="testFile.path || testFile.name">{{ testFile.name }}</span>
+                <button class="cset-testfile-clear" type="button" title="Clear selected file" @click="testFile = null">✕</button>
+              </template>
+              <span v-else class="muted">…or pick a stored file (optional)</span>
+            </div>
             <div class="row">
-              <input v-model="testFileUid" placeholder="…or a file uid (optional)" />
-              <button class="btn" :disabled="busy || (!testText.trim() && !testFileUid.trim())" @click="runTest">
+              <button class="btn" :disabled="busy || (!testText.trim() && !testFile)" @click="runTest">
                 Run test
               </button>
             </div>
@@ -156,11 +163,25 @@
         <p v-else class="muted empty">Loading set…</p>
       </section>
     </div>
+
+    <!-- Tester file picker. The chosen file lives in `testFile` (persists across
+         runs and set switches), so re-testing the ruleset doesn't require re-picking. -->
+    <div v-if="pickingFile" class="cset-modal" role="dialog" aria-modal="true" aria-label="Pick a file to test">
+      <div class="cset-modal-backdrop" @click="pickingFile = false"></div>
+      <div class="cset-modal-panel">
+        <h3 class="cset-modal-title">Pick a file to test</h3>
+        <NodeBrowser pick-files :selected-uid="testFile?.uid" @select-file="onPickTestFile" />
+        <div class="cset-modal-actions">
+          <button class="btn" type="button" @click="pickingFile = false">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import NodeBrowser from '@/components/NodeBrowser.vue'
 import { folderActionsService } from '@/services/folderActionsService'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
@@ -186,7 +207,15 @@ const importNotice = ref('')
 const saveNotice = ref('')
 
 const testText = ref('')
-const testFileUid = ref('')
+// The chosen test file. Deliberately NOT reset when switching/saving sets, so the
+// same document can be run against different rulesets without re-picking it.
+const testFile = ref<{ uid: string; name: string; path: string } | null>(null)
+const pickingFile = ref(false)
+
+function onPickTestFile(file: { uid: string; name: string; path: string }) {
+  testFile.value = file
+  pickingFile.value = false
+}
 const testResult = ref<ClassifierTestResult | null>(null)
 
 onMounted(() => {
@@ -340,7 +369,7 @@ const runTest = wrap(async () => {
   testResult.value = null
   const body: { text?: string; file_uid?: string } = {}
   if (testText.value.trim()) body.text = testText.value
-  if (testFileUid.value.trim()) body.file_uid = testFileUid.value.trim()
+  if (testFile.value) body.file_uid = testFile.value.uid
   testResult.value = await folderActionsService.testClassifierSet(selectedId.value, body)
 })
 
@@ -420,6 +449,21 @@ const prettyMatches = computed(() => {
 /* --- shared bits --- */
 h3 { font-size: 14px; margin: 4px 0 2px; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.cset-testfile { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.cset-testfile-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.cset-testfile-clear { border: none; background: transparent; cursor: pointer; color: var(--muted); font-size: 12px; line-height: 1; padding: 0; }
+.cset-testfile-clear:hover { color: var(--danger); }
+
+.cset-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
+.cset-modal-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
+.cset-modal-panel {
+  position: relative; z-index: 1; background: var(--card, var(--bg)); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px; width: min(520px, 92vw); max-height: 86vh; overflow: auto;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cset-modal-title { margin: 0; font-size: 15px; }
+.cset-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .grow { flex: 1; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 input, textarea {

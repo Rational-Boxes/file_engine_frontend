@@ -27,7 +27,7 @@
           everything inside them. Select nothing to search all your documents.
         </p>
 
-        <FolderBrowser multi-select v-model="chosen" />
+        <NodeBrowser multi-select v-model="chosen" />
 
         <div v-if="chosen.length" class="fs-selected">
           <p class="rt-hint">{{ chosen.length }} selected:</p>
@@ -52,7 +52,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import FolderBrowser, { type FolderRef } from '@/components/FolderBrowser.vue'
+import NodeBrowser, { type FolderRef } from '@/components/NodeBrowser.vue'
 
 const props = defineProps<{ open: boolean; selected: FolderRef[] }>()
 const emit = defineEmits<{

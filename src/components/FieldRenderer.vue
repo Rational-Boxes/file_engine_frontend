@@ -174,7 +174,7 @@
         <div class="fr-modal-backdrop" @click="closeFolderPick"></div>
         <div class="fr-modal-panel">
           <h3 class="fr-modal-title">Pick a destination folder</h3>
-          <FolderBrowser show-create @navigate="folderNav = $event" />
+          <NodeBrowser show-create @navigate="folderNav = $event" />
           <p class="fr-hint">
             Selected: <strong>{{ folderNav?.path || '/' }}</strong>
           </p>
@@ -193,7 +193,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import PrincipalPicker from '@/components/PrincipalPicker.vue'
-import FolderBrowser from '@/components/FolderBrowser.vue'
+import NodeBrowser from '@/components/NodeBrowser.vue'
 import { folderActionsService } from '@/services/folderActionsService'
 import { useFolderActionsStore } from '@/stores/folderActions'
 import { encodePrincipal } from '@/types'
