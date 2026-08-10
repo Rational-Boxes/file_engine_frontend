@@ -26,6 +26,7 @@ export interface EmbedIntegrationStatus {
   key_present: boolean
   allowed_ips: string[]
   ip_allowlist_enforced: boolean
+  allow_service: boolean
 }
 
 export const embedIntegrationService = {

@@ -60,6 +60,12 @@
               </template>
               <span v-else class="muted">not enforced (any source IP)</span>
             </dd>
+            <dt>Service tokens</dt>
+            <dd>
+              <span :class="i.allow_service ? 'ok' : 'muted'">
+                {{ i.allow_service ? 'enabled (non-delegated)' : 'delegated only' }}
+              </span>
+            </dd>
           </dl>
           <p v-if="!i.enabled" class="embi-note warn">
             Set both an issuer and a public key on the bridge (INTEGRATION_ISSUER +
