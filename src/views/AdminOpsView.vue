@@ -62,6 +62,11 @@
         <IntegrationsPanel />
       </section>
 
+      <!-- ============ EMBEDDING ============ -->
+      <section v-else-if="tab === 'Embedding'">
+        <EmbedIntegrationPanel />
+      </section>
+
       <!-- ============ CLASSIFIER SETS ============ -->
       <section v-else-if="tab === 'Classifier sets'">
         <ClassifierSetsPanel />
@@ -86,6 +91,7 @@
 import { ref, computed, onMounted } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import IntegrationsPanel from '@/components/system/IntegrationsPanel.vue'
+import EmbedIntegrationPanel from '@/components/system/EmbedIntegrationPanel.vue'
 import ClassifierSetsPanel from '@/components/system/ClassifierSetsPanel.vue'
 import AccountEmailTemplates from '@/components/system/AccountEmailTemplates.vue'
 import NotifyTemplatesPanel from '@/components/system/NotifyTemplatesPanel.vue'
@@ -93,7 +99,7 @@ import { adminService, type StorageUsage } from '@/services/adminService'
 import { errorMessage } from '@/services/apiClient'
 import { formatSize } from '@/utils/format'
 
-const TABS = ['Storage & sync', 'Integrations', 'Classifier sets', 'Email templates'] as const
+const TABS = ['Storage & sync', 'Integrations', 'Embedding', 'Classifier sets', 'Email templates'] as const
 const tab = ref<(typeof TABS)[number]>('Storage & sync')
 
 // Email-templates sub-toggle: account templates vs. event-notification templates.
