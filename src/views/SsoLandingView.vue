@@ -41,7 +41,10 @@ const message = ref('Signing you in…')
 function targetPath(): string {
   const t = route.query.target
   const uid = Array.isArray(t) ? t[0] : t
-  return uid ? `/preview/${encodeURIComponent(String(uid))}` : '/dashboard'
+  // Land on the file LIST with the file revealed + selected (FileBrowserView honors
+  // ?file=<uid>: it navigates to the containing folder, selects the row, opens the
+  // details drawer) — rather than jumping straight into the preview.
+  return uid ? `/files?file=${encodeURIComponent(String(uid))}` : '/dashboard'
 }
 
 onMounted(async () => {
