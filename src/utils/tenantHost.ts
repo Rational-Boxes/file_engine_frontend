@@ -31,17 +31,21 @@
 // Labels that are never a tenant even when they appear as the leading label.
 const RESERVED_LABELS = new Set(['www', 'app', 'api', 'csai'])
 
-// Derive the tenant from a hostname: the leading DNS label, regardless of the
-// rest of the domain. Returns null when the host carries no usable subdomain.
-// The SPA host carries a bare tenant label (`someco`); the WebDAV `-drive` host
-// never reaches the SPA, and tenant names contain no hyphen, so the whole label
-// is the tenant.
+// Derive the tenant from a hostname: the first hyphen-delimited segment of the
+// leading DNS label, regardless of the rest of the domain. Returns null when the
+// host carries no usable subdomain. This mirrors the bridge's own
+// extractTenantFromHostname exactly: tenant names contain no hyphen, and an
+// `<tenant>-<interface>` label (e.g. `acme-drive` for WebDAV) resolves to the
+// tenant, so `default.host`, `default-drive.host`, and `default-fileengine.host`
+// all resolve to `default`.
 export function tenantFromHostname(hostname: string): string | null {
   if (!hostname) return null
   const host = hostname.toLowerCase().replace(/\.$/, '')
   const firstDot = host.indexOf('.')
   if (firstDot <= 0) return null // bare host (e.g. "localhost") — no tenant
-  const label = host.slice(0, firstDot)
+  const fullLabel = host.slice(0, firstDot)
+  const dash = fullLabel.indexOf('-')
+  const label = dash > 0 ? fullLabel.slice(0, dash) : fullLabel // <tenant>-<interface> -> tenant
   if (/^\d+$/.test(label)) return null // IPv4 literal — not a tenant subdomain
   if (RESERVED_LABELS.has(label)) return null
   return label

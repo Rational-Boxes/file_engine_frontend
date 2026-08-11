@@ -120,6 +120,9 @@ export interface ClassifierSetSummary {
   id: string
   name: string
   created_by?: string
+  // Set by the provisioning service (§14a) when an integration owns this config;
+  // the editor warns that manual edits may be overwritten on the next sync.
+  managed_by?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -127,6 +130,7 @@ export interface ClassifierSetSummary {
 export interface ClassifierSetFull {
   id: string
   name: string
+  managed_by?: string | null
   classifiers: Classifier[]
 }
 
@@ -141,6 +145,7 @@ export interface NotifyTemplateSummary {
   name: string
   subject?: string
   created_by?: string
+  managed_by?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -152,6 +157,7 @@ export interface NotifyTemplate {
   body_text: string
   body_html: string
   created_by?: string
+  managed_by?: string | null
   created_at?: string
   updated_at?: string
 }

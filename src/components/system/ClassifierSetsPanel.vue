@@ -42,7 +42,10 @@
             :class="{ active: selectedId === s.id }"
           >
             <button class="cset-name" @click="selectSet(s.id)">
-              {{ s.name || '(unnamed)' }}
+              <span class="cset-name-row">
+                {{ s.name || '(unnamed)' }}
+                <span v-if="s.managed_by" class="cset-managed" :title="managedTitle(s.managed_by)">managed</span>
+              </span>
               <span class="muted">{{ s.updated_at ? fmtTs(s.updated_at) : '' }}</span>
             </button>
             <button class="link" title="Export YAML" @click="exportSet(s.id, s.name)">⬇</button>
@@ -73,6 +76,10 @@
         <p v-if="!selectedId" class="muted empty">Select a set on the left, or create one, to edit it.</p>
 
         <template v-else-if="draft">
+          <p v-if="draft.managed_by" class="cset-managed-warn">
+            ⚠ Externally managed by <strong>{{ draft.managed_by }}</strong> — changes
+            here may be overwritten on the next provisioning sync.
+          </p>
           <div class="cset-editor-head">
             <label class="grow">Set name<input v-model="draft.name" placeholder="Set name" /></label>
             <button class="btn" :disabled="busy" @click="saveSet">💾 Save</button>
@@ -241,6 +248,9 @@ function fmtTs(ts: string) {
   const d = new Date(ts)
   return isNaN(d.getTime()) ? ts : d.toLocaleDateString()
 }
+function managedTitle(by: string) {
+  return `Externally managed by ${by} — provisioned by an integration; edits may be overwritten on the next sync.`
+}
 
 async function loadSets() {
   loaded.value = false
@@ -407,6 +417,9 @@ const prettyMatches = computed(() => {
 .cset-lede { color: var(--muted); font-size: 13px; margin: 0 0 14px; max-width: 720px; }
 .cset-err { color: var(--danger); font-size: 13px; }
 .cset-ok { color: var(--accent); font-size: 13px; margin: 4px 0; }
+.cset-name-row { display: flex; align-items: center; gap: 6px; }
+.cset-managed { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 999px; background: var(--warn-bg, #f59e0b22); color: var(--warn, #b45309); border: 1px solid var(--warn, #b4530955); }
+.cset-managed-warn { font-size: 12.5px; color: var(--warn, #b45309); background: var(--warn-bg, #f59e0b14); border: 1px solid var(--warn, #b4530944); border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; }
 
 .cset-layout { display: grid; grid-template-columns: 320px 1fr; gap: 18px; align-items: start; }
 

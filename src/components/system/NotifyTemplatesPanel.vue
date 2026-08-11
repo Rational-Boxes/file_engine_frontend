@@ -40,7 +40,10 @@
             :class="{ active: selectedId === t.id }"
           >
             <button class="ntf-name" @click="selectTemplate(t.id)">
-              {{ t.name || '(unnamed)' }}
+              <span class="ntf-name-row">
+                {{ t.name || '(unnamed)' }}
+                <span v-if="t.managed_by" class="ntf-managed" :title="managedTitle(t.managed_by)">managed</span>
+              </span>
               <span class="muted">{{ t.subject || '' }}</span>
             </button>
             <button class="link danger" title="Delete template" @click="deleteTemplate(t)">🗑</button>
@@ -55,6 +58,10 @@
         <p v-if="!selectedId" class="muted empty">Select a template on the left, or create one, to edit it.</p>
 
         <template v-else-if="draft">
+          <p v-if="draft.managed_by" class="ntf-managed-warn">
+            ⚠ Externally managed by <strong>{{ draft.managed_by }}</strong> — changes
+            here may be overwritten on the next provisioning sync.
+          </p>
           <div class="ntf-editor-head">
             <label class="grow">Name<input v-model="draft.name" placeholder="Template name" /></label>
             <button class="btn" :disabled="busy" @click="saveTemplate">💾 Save</button>
@@ -149,8 +156,13 @@ const selectTemplate = (id: string) => wrap(async () => {
     subject: full.subject ?? '',
     body_text: full.body_text ?? '',
     body_html: full.body_html ?? '',
+    managed_by: full.managed_by ?? null,
   }
 })()
+
+function managedTitle(by: string) {
+  return `Externally managed by ${by} — provisioned by an integration; edits may be overwritten on the next sync.`
+}
 
 const createTemplate = wrap(async () => {
   const name = window.prompt('Name for the new notification template:')?.trim()
@@ -197,6 +209,9 @@ const saveTemplate = wrap(async () => {
 .ntf-lede { color: var(--muted); font-size: 13px; margin: 0 0 14px; max-width: 720px; }
 .ntf-err { color: var(--danger); font-size: 13px; }
 .ntf-ok { color: var(--accent); font-size: 13px; margin: 4px 0; }
+.ntf-name-row { display: flex; align-items: center; gap: 6px; }
+.ntf-managed { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 999px; background: var(--warn-bg, #f59e0b22); color: var(--warn, #b45309); border: 1px solid var(--warn, #b4530955); }
+.ntf-managed-warn { font-size: 12.5px; color: var(--warn, #b45309); background: var(--warn-bg, #f59e0b14); border: 1px solid var(--warn, #b4530944); border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; }
 
 .ntf-layout { display: grid; grid-template-columns: 320px 1fr; gap: 18px; align-items: start; }
 

@@ -65,6 +65,13 @@ export const authService = {
     return { kind: 'session' }
   },
 
+  // Deep-link SSO (§5.5): redeem a one-time hand-off code minted by another system
+  // for a fresh session (POST /v1/auth/sso/redeem). A bare axios call — no bearer yet.
+  async ssoRedeem(code: string): Promise<void> {
+    const { data } = await axios.post(`${API_BASE}/v1/auth/sso/redeem`, { code })
+    storeToken(data.access_token, data.expires_in)
+  },
+
   // Complete a second-factor challenge (POST /v1/auth/2fa). On success the bridge
   // returns a full session, which we persist. Uses a bare axios call: the caller
   // holds only the challenge token, not yet a session bearer token.

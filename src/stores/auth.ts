@@ -351,6 +351,22 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    // Deep-link SSO (§5.5): redeem a one-time hand-off code from another system for a
+    // session, then hydrate identity. Returns true on success.
+    async redeemSso(code: string) {
+      this.error = null
+      try {
+        await authService.ssoRedeem(code)
+        await this.hydrateSession()
+        return true
+      } catch (e) {
+        this.error = errorMessage(e, 'This sign-in link is invalid or has expired.')
+        tokenStorage.clearTokens()
+        this.token = null
+        return false
+      }
+    },
+
     async logout() {
       if (refreshTimer) clearTimeout(refreshTimer)
       refreshTimer = undefined

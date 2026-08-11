@@ -19,6 +19,7 @@ import { safeRedirect } from '@/utils/redirect'
 
 const LoginView = () => import('@/views/LoginView.vue')
 const OAuthCallbackView = () => import('@/views/OAuthCallbackView.vue')
+const SsoLandingView = () => import('@/views/SsoLandingView.vue')
 const DashboardView = () => import('@/views/DashboardView.vue')
 const FileBrowserView = () => import('@/views/FileBrowserView.vue')
 const SearchView = () => import('@/views/SearchView.vue')
@@ -36,6 +37,8 @@ const ResetPasswordView = () => import('@/views/ResetPasswordView.vue')
 const routes = [
   { path: '/login', name: 'Login', component: LoginView, meta: { requiresAuth: false } },
   { path: '/oauth/callback', name: 'OAuthCallback', component: OAuthCallbackView, meta: { requiresAuth: false } },
+  // Deep-link SSO landing (§5.5): redeems a one-time hand-off code from another system.
+  { path: '/sso', name: 'SsoLanding', component: SsoLandingView, meta: { requiresAuth: false } },
   { path: '/dashboard', name: 'Dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/files', name: 'FileBrowser', component: FileBrowserView, meta: { requiresAuth: true } },
   { path: '/search', name: 'Search', component: SearchView, meta: { requiresAuth: true } },
