@@ -15,12 +15,15 @@
 
 import axios, { type AxiosInstance } from 'axios'
 import { tokenStorage } from '@/utils/tokenStorage'
+import { SERVICE_PATHS, serviceBase } from '@/services/serviceBase'
 
 // Single axios instance pointed at the http_bridge REST proxy. Every request
 // carries the opaque bridge bearer token; a 401 means the token is missing or
 // expired (bridge tokens have a fixed TTL and cannot be refreshed), so we clear
 // it and bounce to the login page.
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8090'
+// Same-origin `/api` by default (Vite proxy in dev, nginx in prod); VITE_API_BASE
+// overrides. See serviceBase.ts for why the default is a path, not a localhost URL.
+export const API_BASE = serviceBase(import.meta.env.VITE_API_BASE, SERVICE_PATHS.api)
 
 // Root directory is the all-zeros UUID (the bridge is UID-native).
 export const ROOT_UID = '00000000-0000-0000-0000-000000000000'

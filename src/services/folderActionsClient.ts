@@ -16,6 +16,7 @@
 import axios, { type AxiosInstance } from 'axios'
 import { tokenStorage } from '@/utils/tokenStorage'
 import { errorMessage } from '@/services/apiClient'
+import { SERVICE_PATHS, serviceBase } from '@/services/serviceBase'
 
 // Satellite service client — folder_actions (SPECIFICATIONS.md §9). Auth is the
 // same one-login model CSAI / discussion use: the SPA's bridge bearer token is
@@ -24,10 +25,10 @@ import { errorMessage } from '@/services/apiClient'
 // A 401 here does NOT bounce the app to /login — folder_actions is a secondary,
 // admin-surface that degrades; callers map failures via errorMessage().
 //
-// VITE_FOLDER_ACTIONS_BASE is an absolute URL in dev (`http://localhost:8099`) or a
-// same-origin path (`/folder-actions`) behind the unified reverse proxy.
+// Same-origin `/folder-actions` by default — the Vite proxy forwards it in dev,
+// nginx in prod. VITE_FOLDER_ACTIONS_BASE overrides to reach another host.
 export const FOLDER_ACTIONS_BASE =
-  import.meta.env.VITE_FOLDER_ACTIONS_BASE || 'http://localhost:8099'
+  serviceBase(import.meta.env.VITE_FOLDER_ACTIONS_BASE, SERVICE_PATHS.folderActions)
 
 const folderActionsClient: AxiosInstance = axios.create({ baseURL: FOLDER_ACTIONS_BASE })
 

@@ -15,6 +15,7 @@
 
 import axios, { type AxiosInstance } from 'axios'
 import { tokenStorage } from '@/utils/tokenStorage'
+import { SERVICE_PATHS, serviceBase } from '@/services/serviceBase'
 
 // Client for the LDAP Manager service (tenant user/role admin, self-service
 // profile/password, invite/reset). Auth is coordinated exactly like csaiClient:
@@ -22,9 +23,10 @@ import { tokenStorage } from '@/utils/tokenStorage'
 // (the service validates it via the bridge's /v1/auth/introspect). No second
 // login. A 401 here does NOT bounce the app — callers handle it locally.
 //
-// VITE_LDAPADMIN_BASE may be absolute (`http://localhost:8093`) or a same-origin
-// path (`/ldapadmin`, behind the unified nginx proxy — the default in the stack).
-export const LDAPADMIN_BASE = import.meta.env.VITE_LDAPADMIN_BASE || '/ldapadmin'
+// Same-origin `/ldapadmin` by default — the Vite proxy forwards it to :8093 in dev,
+// nginx in prod. VITE_LDAPADMIN_BASE overrides to reach another host.
+export const LDAPADMIN_BASE = serviceBase(import.meta.env.VITE_LDAPADMIN_BASE,
+                                          SERVICE_PATHS.ldapAdmin)
 
 const ldapAdminClient: AxiosInstance = axios.create({ baseURL: LDAPADMIN_BASE })
 

@@ -15,6 +15,7 @@
 
 import axios, { type AxiosInstance } from 'axios'
 import { tokenStorage } from '@/utils/tokenStorage'
+import { SERVICE_PATHS, serviceBase } from '@/services/serviceBase'
 
 // Client for the audit query/export/verify API (usage_logging §9). Auth mirrors
 // ldapAdminClient: the http-bridge is the token authority, so we reuse the SPA's
@@ -22,9 +23,10 @@ import { tokenStorage } from '@/utils/tokenStorage'
 // on tenant-admin membership). No second login. A 401/403 here does NOT bounce the
 // app — the console handles it locally.
 //
-// VITE_AUDIT_BASE may be absolute (`http://localhost:8099`) or a same-origin path
-// (`/audit`, behind the unified nginx proxy — the default in the stack).
-export const AUDIT_BASE = import.meta.env.VITE_AUDIT_BASE || '/audit'
+// Same-origin `/audit` by default — the Vite proxy forwards it to :8097 in dev,
+// nginx in prod. VITE_AUDIT_BASE overrides to reach another host.
+export const AUDIT_BASE = serviceBase(import.meta.env.VITE_AUDIT_BASE,
+                                      SERVICE_PATHS.audit)
 
 const auditClient: AxiosInstance = axios.create({ baseURL: AUDIT_BASE })
 

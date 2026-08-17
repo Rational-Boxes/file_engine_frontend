@@ -16,6 +16,7 @@
 import axios, { type AxiosInstance } from 'axios'
 import { tokenStorage } from '@/utils/tokenStorage'
 import { errorMessage } from '@/services/apiClient'
+import { SERVICE_PATHS, serviceBase } from '@/services/serviceBase'
 
 // Fourth service client — the discussion service (document-anchored threads,
 // reviews, the attention dashboard, live comment sync). Auth is coordinated the
@@ -26,9 +27,10 @@ import { errorMessage } from '@/services/apiClient'
 // Like csaiClient, a 401 here does NOT bounce the app to /login — discussion is a
 // secondary surface that degrades; callers map failures via errorMessage().
 //
-// VITE_DISCUSS_BASE is an absolute URL in dev (`http://localhost:8094`) or a
-// same-origin path (`/discuss`) behind the unified reverse proxy.
-export const DISCUSS_BASE = import.meta.env.VITE_DISCUSS_BASE || 'http://localhost:8094'
+// Same-origin `/discuss` by default — the Vite proxy forwards it in dev, nginx in
+// prod. VITE_DISCUSS_BASE overrides with an absolute URL to reach another host.
+export const DISCUSS_BASE = serviceBase(import.meta.env.VITE_DISCUSS_BASE,
+                                        SERVICE_PATHS.discuss)
 
 const discussionClient: AxiosInstance = axios.create({ baseURL: DISCUSS_BASE })
 

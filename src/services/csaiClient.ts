@@ -16,6 +16,7 @@
 import axios, { type AxiosInstance } from 'axios'
 import { tokenStorage } from '@/utils/tokenStorage'
 import { errorMessage } from '@/services/apiClient'
+import { SERVICE_PATHS, serviceBase } from '@/services/serviceBase'
 
 // Second service client — convert_search_ai (search, document text, RAG chat).
 //
@@ -28,9 +29,9 @@ import { errorMessage } from '@/services/apiClient'
 // bridge session may still be valid, so AI features simply degrade. Callers map
 // failures to a user message via errorMessage().
 //
-// VITE_CSAI_BASE may be an absolute URL (`http://localhost:8092`, local dev) or a
-// same-origin path (`/csai`, behind the unified nginx reverse proxy).
-export const CSAI_BASE = import.meta.env.VITE_CSAI_BASE || 'http://localhost:8092'
+// Same-origin `/csai` by default — the Vite proxy forwards it in dev, nginx in
+// prod. VITE_CSAI_BASE overrides with an absolute URL to reach another host.
+export const CSAI_BASE = serviceBase(import.meta.env.VITE_CSAI_BASE, SERVICE_PATHS.csai)
 
 const csaiClient: AxiosInstance = axios.create({ baseURL: CSAI_BASE })
 
