@@ -106,9 +106,16 @@ export interface DiffViewAnchor {
   plugin: string
   plugin_version: string
   manifest_uid?: string
-  /** Where the author was looking: page index and which of the three views. */
+  /**
+   * Where the author was looking. Page and view alone are not a location on a
+   * large drawing, so the viewport comes too: `zoom` is relative to fit-width
+   * (1 = the whole page) and the pan is in fitted-page pixels.
+   */
   page?: number
   view?: 'before' | 'after' | 'difference'
+  zoom?: number
+  pan_x?: number
+  pan_y?: number
 }
 
 /** Every anchor kind a thread can carry. Discriminate on `kind`. */

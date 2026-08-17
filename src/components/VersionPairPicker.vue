@@ -32,7 +32,7 @@
   <div class="vp-root">
     <label class="vp-field">
       <span class="vp-lbl">Before</span>
-      <select v-model="base" class="vp-sel" :disabled="busy || loading" @change="onPick">
+      <select v-model="pickBase" class="vp-sel" :disabled="busy || loading" @change="onPick">
         <option v-for="v in baseOptions" :key="v" :value="v">{{ label(v) }}</option>
       </select>
     </label>
@@ -41,7 +41,7 @@
 
     <label class="vp-field">
       <span class="vp-lbl">After</span>
-      <select v-model="target" class="vp-sel" :disabled="busy || loading" @change="onPick">
+      <select v-model="pickTarget" class="vp-sel" :disabled="busy || loading" @change="onPick">
         <option v-for="v in targetOptions" :key="v" :value="v">{{ label(v) }}</option>
       </select>
     </label>
@@ -79,8 +79,8 @@ const emit = defineEmits<{ (e: 'compare', pair: { base: string; target: string }
 const versions = ref<string[]>([])
 const loading = ref(false)
 const error = ref('')
-const base = ref('')
-const target = ref('')
+const pickBase = ref('')
+const pickTarget = ref('')
 
 // listVersions returns newest-first (the core's own ordering, which the version
 // list and the service's `back=N` indexing both rely on). Keeping that order here
@@ -91,12 +91,12 @@ const targetOptions = computed(() => versions.value)
 // accepting the pair and reporting an error afterwards — and comparing forwards
 // is the only direction the service defines.
 const baseOptions = computed(() => {
-  const i = versions.value.indexOf(target.value)
+  const i = versions.value.indexOf(pickTarget.value)
   return i < 0 ? versions.value : versions.value.slice(i + 1)
 })
 
 const canCompare = computed(() =>
-  !!base.value && !!target.value && base.value !== target.value)
+  !!pickBase.value && !!pickTarget.value && pickBase.value !== pickTarget.value)
 
 function label(v: string) {
   // Versions ARE timestamps in this system; showing them as such beats inventing
@@ -108,14 +108,14 @@ function label(v: string) {
 // the current "before" — silently comparing backwards would be worse than moving
 // the other end down with it.
 function onPick() {
-  if (base.value && target.value && !baseOptions.value.includes(base.value)) {
-    base.value = baseOptions.value[0] ?? ''
+  if (pickBase.value && pickTarget.value && !baseOptions.value.includes(pickBase.value)) {
+    pickBase.value = baseOptions.value[0] ?? ''
   }
 }
 
 function emitPair() {
   if (!canCompare.value) return
-  emit('compare', { base: base.value, target: target.value })
+  emit('compare', { base: pickBase.value, target: pickTarget.value })
 }
 
 async function load() {
@@ -126,8 +126,8 @@ async function load() {
     versions.value = await fileService.listVersions(props.uid)
     // Default to what the caller is showing; fall back to the newest pair, which
     // is the same default the service itself applies.
-    target.value = props.target || versions.value[0] || ''
-    base.value = props.base || versions.value[1] || ''
+    pickTarget.value = props.target || versions.value[0] || ''
+    pickBase.value = props.base || versions.value[1] || ''
     onPick()
   } catch (e) {
     error.value = errorMessage(e, 'Failed to load the version list')
@@ -141,8 +141,8 @@ watch(() => props.uid, load, { immediate: true })
 // Follow the caller when it moves to a different pair (e.g. restoring a comment's
 // comparison), so the control never disagrees with what is on screen.
 watch(() => [props.base, props.target], ([b, t]) => {
-  if (t) target.value = t
-  if (b) base.value = b
+  if (t) pickTarget.value = t
+  if (b) pickBase.value = b
 })
 </script>
 

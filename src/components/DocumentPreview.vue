@@ -68,13 +68,21 @@
         reader never loses the conversation by changing what they are looking at.
       -->
       <div v-if="diffView" class="dp-pdf">
-        <p v-if="diffLoading" class="dp-hint">Preparing the comparison…</p>
+        <p v-if="diffLoading" class="dp-hint" role="status" aria-live="polite">
+          Preparing the comparison…
+          <span v-if="diffSlow">
+            A large document can take a while — this stays open while it works.
+          </span>
+        </p>
         <p v-else-if="diffError" class="dp-diff-dead">{{ diffError }}</p>
         <DiffPageViewer
           v-else-if="diffView.pages.length"
           :pages="diffView.pages"
           :initial-page="diffView.anchor?.page"
           :initial-view="diffView.anchor?.view"
+          :initial-zoom="diffView.anchor?.zoom"
+          :initial-pan-x="diffView.anchor?.pan_x"
+          :initial-pan-y="diffView.anchor?.pan_y"
           @state="diffPos = $event"
         />
         <div class="dp-actions">
@@ -347,6 +355,7 @@ import VersionPairPicker from '@/components/VersionPairPicker.vue'
 import { differenceService, type DiffChildRef } from '@/services/differenceService'
 import type { DiffViewAnchor } from '@/services/discussionService'
 import { useModel3dStore } from '@/stores/model3d'
+import { useDifferenceStore } from '@/stores/difference'
 import ThreadOverlay from '@/components/ThreadOverlay.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
@@ -443,9 +452,22 @@ const activeMarkupCommentId = ref<string | null>(null) // the comment whose copy
 // restored from (null when the reader opened it themselves), and where they are
 // looking now. Mutually exclusive with markupView — see the template comment.
 const diffView = ref<{ anchor: DiffViewAnchor | null; pages: DiffChildRef[]; manifestUid: string } | null>(null)
-const diffPos = ref<{ page: number; view: 'before' | 'after' | 'difference' }>({ page: 0, view: 'difference' })
+// Where the reader is looking, including how far in. On an engineering drawing
+// "page 3, difference" is not a location — the zoom and pan are what make a
+// comment point at a detail rather than at a sheet.
+const diffPos = ref<{
+  page: number
+  view: 'before' | 'after' | 'difference'
+  zoom: number
+  panX: number
+  panY: number
+}>({ page: 0, view: 'difference', zoom: 1, panX: 0, panY: 0 })
 const threadPanelRef = ref<InstanceType<typeof ThreadPanel> | null>(null)
+const difference = useDifferenceStore()
 const diffLoading = ref(false)
+// Surfaced once the wait is clearly not instant, rather than spinning silently
+// and looking hung. Carried over from the standalone comparison window.
+const diffSlow = ref(false)
 const diffError = ref('')
 const chatlogHtml = ref('') // chat provenance log HTML (fetched on demand)
 const activeTab = ref<'document' | 'chatlog'>('document') // report preview vs. provenance log
@@ -933,6 +955,9 @@ async function onShowDiff(anchor: DiffViewAnchor, threadId: string) {
         useModel3dStore().open(model.uid, props.name || 'Comparison',
           { xktUid: model.uid, metamodelUid: meta?.uid })
         diffView.value = null
+        // A model has no document preview to return to, so leaving this surface
+        // open behind the 3D viewer would strand an empty window.
+        handOffToModelViewer()
         return
       }
     }
@@ -954,6 +979,29 @@ async function onShowDiff(anchor: DiffViewAnchor, threadId: string) {
   }
 }
 
+// A comparison requested elsewhere (the version list's Compare) arrives as a
+// store request rather than a second window: the reader lands on the ordinary
+// preview surface, with the document's discussion rail beside the comparison.
+//
+// Only the full review surface answers. The drawer mounts this component too, as
+// a thumbnail, and a comparison rendered in a 200px strip helps nobody.
+watch(
+  () => (props.fullWidth ? `${difference.uid}|${difference.target}|${difference.base}` : ''),
+  () => {
+    if (!props.fullWidth || !difference.uid || difference.uid !== props.uid) return
+    openDiffPicker()
+    runDiff({ base: difference.base, target: difference.target })
+  },
+  { immediate: true },
+)
+
+// Close the surface behind a 3D hand-off, and clear the request so reopening the
+// file later does not silently re-enter a comparison the reader has moved on from.
+function handOffToModelViewer() {
+  difference.close()
+  preview.close()
+}
+
 // Enter comparison mode with nothing chosen yet — the picker in the action bar
 // is then the thing that starts one.
 function openDiffPicker() {
@@ -969,12 +1017,14 @@ function openDiffPicker() {
 // upload. Resolving to concrete versions is what makes it a durable reference.
 async function runDiff(pair: { base: string; target: string }) {
   diffError.value = ''
+  diffSlow.value = false
   diffLoading.value = true
   try {
-    const res = await differenceService.getWhenReady(props.uid, {
-      version: pair.target || undefined,
-      base: pair.base || undefined,
-    })
+    const res = await differenceService.getWhenReady(
+      props.uid,
+      { version: pair.target || undefined, base: pair.base || undefined },
+      { onProgress: (attempt: number) => { if (attempt >= 3) diffSlow.value = true } },
+    )
     if (res.status !== 'ready') {
       diffError.value = res.detail || diffFailureText(res.status)
       diffView.value = { anchor: null, pages: [], manifestUid: '' }
@@ -990,6 +1040,9 @@ async function runDiff(pair: { base: string; target: string }) {
         useModel3dStore().open(model.uid, props.name || 'Comparison',
           { xktUid: model.uid, metamodelUid: meta?.uid })
         diffView.value = null
+        // A model has no document preview to return to, so leaving this surface
+        // open behind the 3D viewer would strand an empty window.
+        handOffToModelViewer()
         return
       }
     }
@@ -1030,6 +1083,9 @@ function commentOnDiff() {
     ...src,
     page: diffPos.value.page,
     view: diffPos.value.view,
+    zoom: diffPos.value.zoom,
+    pan_x: diffPos.value.panX,
+    pan_y: diffPos.value.panY,
   } as DiffViewAnchor)
 }
 

@@ -95,12 +95,14 @@ import { computed, ref, watch } from 'vue'
 import { fileService } from '@/services/fileService'
 import { errorMessage } from '@/services/apiClient'
 import { useDifferenceStore } from '@/stores/difference'
+import { usePreviewStore } from '@/stores/preview'
 import { formatVersionTimestamp, versionFilename } from '@/utils/format'
 
 const props = defineProps<{ uid: string; name?: string; current?: string; canManage?: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const difference = useDifferenceStore()
+const preview = usePreviewStore()
 
 const versions = ref<string[]>([])
 // At most two, in click order. The cap is enforced on the inputs as well, so the
@@ -167,10 +169,14 @@ async function compareSelected() {
   if (!canCompare.value) return
   comparing.value = true
   try {
+    // Two calls, one window: the request says WHICH comparison, the preview
+    // store opens the surface that shows it — the same surface that holds the
+    // document, its markup and its discussion.
     difference.open(props.uid, props.name || '', newerSelected.value, olderSelected.value)
+    preview.open(props.uid, props.name || '')
   } finally {
-    // The overlay owns the long-running work and shows its own progress; this
-    // spinner only covers the hand-off so the button cannot be double-clicked.
+    // The preview surface owns the long-running work and shows its own progress;
+    // this spinner only covers the hand-off so the button cannot be double-clicked.
     setTimeout(() => { comparing.value = false }, 400)
   }
 }

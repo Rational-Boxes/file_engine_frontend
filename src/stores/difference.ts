@@ -42,9 +42,15 @@ export const useDifferenceStore = defineStore('difference', {
   },
   actions: {
     /**
-     * Open a comparison. `target` defaults to the newest version and `base` to
+     * Request a comparison. `target` defaults to the newest version and `base` to
      * the target's immediate predecessor — the same defaults the service applies,
      * so "compare" with no further choices does the obvious thing.
+     *
+     * This used to open a comparison window of its own. It no longer does: the
+     * comparison is shown inside the ordinary preview surface, beside the
+     * discussion rail, so this is a *request* that the surface picks up rather
+     * than a second window. Two windows meant a reader comparing versions had no
+     * comments and a reader commenting had no comparison.
      */
     open(uid: string, name = '', target = '', base = '') {
       if (!uid) return

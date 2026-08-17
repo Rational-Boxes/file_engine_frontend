@@ -257,6 +257,22 @@ describe('FileVersions — two-version convenience', () => {
     expect(store.base).toBe('v1')       // older
   })
 
+  it('opens the unified preview surface rather than a comparison window of its own', async () => {
+    // There used to be a second, comparison-only window. A reader in it had no
+    // comments, and a reader in the preview had no comparison. Compare now names
+    // the pair AND opens the one surface that shows both.
+    listVersions.mockResolvedValue(['v1', 'v2'])
+    const w = mountIt({ uid: 'f1', name: 'plan.pdf' })
+    await flushPromises()
+
+    const { usePreviewStore } = await import('@/stores/preview')
+    const { useDifferenceStore } = await import('@/stores/difference')
+    await w.findAll('button').find((b) => b.text().includes('Compare selected'))!.trigger('click')
+
+    expect(usePreviewStore().uid).toBe('f1')
+    expect(useDifferenceStore().uid).toBe('f1')
+  })
+
   it('does NOT preselect when the choice is real', async () => {
     // Three or more versions means a genuine decision; guessing one would be
     // worse than asking, because a wrong default is invisible.
