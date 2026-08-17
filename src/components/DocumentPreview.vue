@@ -306,6 +306,7 @@
           :titlebar-target="titlebar"
           :pos="discussionPos"
           :markup-provider="attachMarkup"
+          :anchor-provider="liveDiffAnchor"
           :active-comment-id="activeMarkupCommentId"
           :class="['dp-thread', { 'dp-thread-min': discLayout === 'collapsed' }]"
           @layout="discLayout = $event"
@@ -353,7 +354,7 @@ import ThreadPanel from '@/components/ThreadPanel.vue'
 import DiffPageViewer from '@/components/DiffPageViewer.vue'
 import VersionPairPicker from '@/components/VersionPairPicker.vue'
 import { differenceService, type DiffChildRef } from '@/services/differenceService'
-import type { DiffViewAnchor } from '@/services/discussionService'
+import type { DiffViewAnchor, ThreadAnchor } from '@/services/discussionService'
 import { useModel3dStore } from '@/stores/model3d'
 import { useDifferenceStore } from '@/stores/difference'
 import ThreadOverlay from '@/components/ThreadOverlay.vue'
@@ -1087,6 +1088,31 @@ function commentOnDiff() {
     pan_x: diffPos.value.panX,
     pan_y: diffPos.value.panY,
   } as DiffViewAnchor)
+}
+
+/**
+ * The comparison interface as it stands right now, for a comment about to be
+ * posted. Everything the interface holds is recorded — which two versions, which
+ * page, which of the three views, and how far in and where the reader had zoomed
+ * and panned — because on a large drawing only the last of those actually says
+ * WHAT the comment is about.
+ *
+ * Re-read at post time rather than frozen at capture: adjusting the view while
+ * writing about what you found is normal, and a comment that restores to the
+ * viewport you had before you looked closer points at the wrong thing.
+ */
+function liveDiffAnchor(pending: ThreadAnchor): ThreadAnchor | null {
+  if (pending.kind !== 'diff-view') return null   // a 3D viewpoint is a moment, not a live feed
+  const d = diffView.value
+  if (!d?.anchor) return null
+  return {
+    ...d.anchor,
+    page: diffPos.value.page,
+    view: diffPos.value.view,
+    zoom: diffPos.value.zoom,
+    pan_x: diffPos.value.panX,
+    pan_y: diffPos.value.panY,
+  }
 }
 
 function closeDiffView() {

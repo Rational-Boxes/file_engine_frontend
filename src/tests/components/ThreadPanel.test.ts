@@ -155,6 +155,30 @@ describe('comparison-anchored threads', () => {
     w.unmount()
   })
 
+  it('records the interface as it stands at post time, not as it stood at capture', async () => {
+    // Attaching a view and then looking closer before posting is normal. A
+    // comment that restores to the viewport you had BEFORE you zoomed in points
+    // at the sheet rather than at the thing you were writing about.
+    const openThread = vi.fn().mockResolvedValue({ id: 't9', comments: [] })
+    const svc = await import('@/services/discussionService')
+    ;(svc.discussionService as unknown as Record<string, unknown>).openThread = openThread
+
+    const moved = { ...DIFF_ANCHOR, page: 5, view: 'before', zoom: 8, pan_x: -400, pan_y: -220 }
+    listThreads.mockResolvedValue([])
+    const w = mount(ThreadPanel, {
+      props: { fileUid: 'f1', embedded: true, anchorProvider: () => moved },
+    })
+    await flushPromises()
+
+    const vm = w.vm as unknown as { startAnnotation: (a: unknown) => void; newBody: string }
+    vm.startAnnotation(DIFF_ANCHOR)
+    vm.newBody = 'the callout moved'
+    await (w.vm as unknown as { open: () => Promise<void> }).open()
+
+    expect(openThread).toHaveBeenCalledWith('f1', expect.objectContaining({ anchor: moved }))
+    w.unmount()
+  })
+
   it('names what is attached when a comparison rides along with the next comment', async () => {
     const w = await panel(null)
     ;(w.vm as unknown as { startAnnotation: (a: unknown) => void }).startAnnotation(DIFF_ANCHOR)

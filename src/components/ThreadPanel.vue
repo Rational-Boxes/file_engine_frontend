@@ -271,6 +271,14 @@ const props = defineProps<{
   // pointer to link to it (or null). The host (DocumentPreview) captures + uploads
   // the current PDF markup here, so no separate "save markup" step is needed.
   markupProvider?: () => Promise<CommentMarkup | null>
+  /**
+   * Refresh a pending anchor at post time. Attaching a view and then adjusting it
+   * before posting is normal — a reader zooms in further while writing about what
+   * they found — and a comment that restores to a stale viewport points at the
+   * wrong thing. The host returns the anchor's current state, or null to keep
+   * what was captured (a 3D viewpoint is deliberately a moment, not a live feed).
+   */
+  anchorProvider?: (pending: ThreadAnchor) => ThreadAnchor | null
   // The comment whose marked-up copy is currently being viewed (highlighted).
   activeCommentId?: string | null
 }>()
@@ -557,6 +565,13 @@ function scrollToThread(threadId: string) {
 }
 defineExpose({ startAnnotation, scrollToThread })
 
+// The pending anchor as it stands at post time, not as it stood when attached.
+function liveAnchor(): ThreadAnchor | null {
+  const pending = pendingAnchor.value
+  if (!pending) return null
+  return props.anchorProvider?.(pending) ?? pending
+}
+
 async function open() {
   const body = newBody.value.trim()
   if (!body) return
@@ -568,8 +583,9 @@ async function open() {
     const t = await discussionService.openThread(props.fileUid, {
       body,
       mentions: extractMentions(body),
-      // A pending 3D viewpoint turns this thread into an anchored annotation (§9).
-      anchor: pendingAnchor.value ?? undefined,
+      // A pending view turns this thread into an anchored annotation (§9) —
+      // re-read at post time so it records the interface as it stands now.
+      anchor: liveAnchor() ?? undefined,
       markup: markup ?? undefined,
     })
     if (!threads.value.some((x) => x.id === t.id)) threads.value.unshift(t)
