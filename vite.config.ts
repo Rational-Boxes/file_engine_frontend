@@ -78,6 +78,11 @@ export default defineConfig({
         target: 'http://localhost:8098', // BCF-API 2.1 — BCF-XML export/import (§11)
         changeOrigin: true, // NB: no rewrite — the service's router is mounted under /bcf
       },
+      '/diff': {
+        target: 'http://localhost:8100', // difference_service (version comparison)
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/diff/, ''),
+      },
       '/folder-actions': {
         target: 'http://localhost:8099', // folder_actions admin API (bindings, classifier editor)
         changeOrigin: true,

@@ -26,6 +26,7 @@
     </router-view>
     <PdfPreviewOverlay />
     <ModelViewerOverlay />
+    <DiffOverlay />
     <ThreadOverlay
       :open="comments.isOpen"
       :file-uid="comments.uid"
@@ -43,6 +44,7 @@ import { useCommentsStore } from '@/stores/comments'
 import { initTheme } from '@/composables/useTheme'
 import PdfPreviewOverlay from '@/components/PdfPreviewOverlay.vue'
 import ModelViewerOverlay from '@/components/ModelViewerOverlay.vue'
+import DiffOverlay from '@/components/DiffOverlay.vue'
 import ThreadOverlay from '@/components/ThreadOverlay.vue'
 import HelpModal from '@/components/HelpModal.vue'
 

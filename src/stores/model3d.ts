@@ -36,6 +36,12 @@ export type MeasureUnits = 'mm' | 'm' | 'ft'
 interface Model3dState {
   uid: string
   name: string
+  // Explicit rendition override. Normally the overlay RESOLVES a file's own
+  // `model`/`metamodel` renditions on open; a version comparison instead has a
+  // specific pair of diff children to load, which are not the file's own model.
+  // Empty strings keep the default resolve-on-open behaviour.
+  xktUid: string
+  metamodelUid: string
   // --- live viewer state (§5.3) ---
   ready: boolean // a Model3DViewer is mounted with a loaded model
   navMode: NavMode // current CameraControl nav mode
@@ -63,21 +69,30 @@ function freshViewerState() {
 }
 
 export const useModel3dStore = defineStore('model3d', {
-  state: (): Model3dState => ({ uid: '', name: '', ...freshViewerState() }),
+  state: (): Model3dState => ({
+    uid: '', name: '', xktUid: '', metamodelUid: '', ...freshViewerState(),
+  }),
   getters: {
     isOpen: (s): boolean => !!s.uid,
     hasSection: (s): boolean => s.sectionPlaneIds.length > 0,
     isMeasuring: (s): boolean => s.activeTool !== 'none',
   },
   actions: {
-    open(uid: string, name = '') {
+    // `renditions` pins the exact children to load instead of resolving the
+    // file's own model — used by the version-comparison overlay, whose diff XKT
+    // is a different child of the same source file.
+    open(uid: string, name = '', renditions?: { xktUid?: string; metamodelUid?: string }) {
       if (!uid) return
       this.uid = uid
       this.name = name
+      this.xktUid = renditions?.xktUid || ''
+      this.metamodelUid = renditions?.metamodelUid || ''
     },
     close() {
       this.uid = ''
       this.name = ''
+      this.xktUid = ''
+      this.metamodelUid = ''
       this.resetViewerState()
     },
     // --- live viewer state, written by the mounted Model3DViewer ---

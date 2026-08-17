@@ -15,6 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 const { listVersions, getVersion, restoreVersion, purgeVersions } = vi.hoisted(() => ({
   listVersions: vi.fn(),
@@ -36,6 +37,8 @@ function mountIt(props: Record<string, unknown> = {}) {
 
 describe('FileVersions', () => {
   beforeEach(() => {
+    // FileVersions now opens the comparison store from its `compare` action.
+    setActivePinia(createPinia())
     vi.clearAllMocks()
     listVersions.mockResolvedValue(['v1', 'v3', 'v2'])
     restoreVersion.mockResolvedValue('v3')
@@ -93,5 +96,51 @@ describe('FileVersions', () => {
     expect(w.text()).not.toContain('restore')
     expect(w.find('form.v-purge').exists()).toBe(false)
     expect(w.text()).toContain('download') // still downloadable
+  })
+})
+
+describe('FileVersions — compare', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('offers compare on every version that has a predecessor', async () => {
+    // Versions render newest-first, so the OLDEST has nothing to compare against
+    // and must not offer an action that could only ever answer "no predecessor".
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt()
+    await flushPromises()
+
+    const rows = w.findAll('tbody tr')
+    expect(rows).toHaveLength(3)
+    const hasCompare = rows.map((r) =>
+      r.findAll('button').some((b) => b.text() === 'compare'))
+    expect(hasCompare).toEqual([true, true, false])
+  })
+
+  it('opens the comparison store for the chosen version', async () => {
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt({ name: 'plan.pdf' })
+    await flushPromises()
+
+    const { useDifferenceStore } = await import('@/stores/difference')
+    const store = useDifferenceStore()
+
+    const compare = w.findAll('tbody tr')[0].findAll('button').find((b) => b.text() === 'compare')!
+    await compare.trigger('click')
+
+    expect(store.isOpen).toBe(true)
+    expect(store.uid).toBe('f1')
+    expect(store.name).toBe('plan.pdf')
+    expect(store.target).toBe('v3')     // newest row
+    expect(store.base).toBe('')         // default: the service picks the predecessor
+  })
+
+  it('does not offer compare when there is only one version', async () => {
+    listVersions.mockResolvedValue(['v1'])
+    const w = mountIt()
+    await flushPromises()
+    expect(w.findAll('button').some((b) => b.text() === 'compare')).toBe(false)
   })
 })

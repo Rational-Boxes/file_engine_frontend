@@ -675,15 +675,29 @@ async function toggleSidebar() {
 }
 
 // Resolve the source file's `model` (.xkt) rendition whenever the viewer opens.
+//
+// A caller may instead PIN the exact children to load (model3d.xktUid): the
+// version-comparison overlay does this, because a diff model is a different child
+// of the same source file and resolving the file's own `model` rendition would
+// silently open the current model instead of the comparison — the wrong thing,
+// shown confidently.
 watch(
-  () => model3d.uid,
-  async (uid) => {
+  () => `${model3d.uid}|${model3d.xktUid}`,
+  async () => {
+    const uid = model3d.uid
     xktUid.value = ''
     metamodelUid.value = ''
     resolveError.value = ''
     if (!uid) return
     document.body.style.overflow = 'hidden'
     await nextTick() // ensure the sidebar tree container exists before the viewer mounts
+
+    if (model3d.xktUid) {
+      xktUid.value = model3d.xktUid
+      metamodelUid.value = model3d.metamodelUid || ''
+      return
+    }
+
     try {
       const set = await loadRenditionSet(uid)
       const model = modelRendition(set)

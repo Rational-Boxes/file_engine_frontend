@@ -28,6 +28,18 @@
           </td>
           <td class="v-act">
             <button class="link" :disabled="busy" @click="download(ts)">download</button>
+            <!-- Compare THIS version against its immediate predecessor — the same
+                 default the service applies, so the common case is one click. The
+                 oldest version has no predecessor, so it offers no compare. -->
+            <button
+              v-if="hasPredecessor(ts)"
+              class="link"
+              :disabled="busy"
+              title="Compare this version with the one before it"
+              @click="compare(ts)"
+            >
+              compare
+            </button>
             <button
               v-if="canManage && ts !== current"
               class="link"
@@ -56,10 +68,13 @@
 import { ref, watch } from 'vue'
 import { fileService } from '@/services/fileService'
 import { errorMessage } from '@/services/apiClient'
+import { useDifferenceStore } from '@/stores/difference'
 import { formatVersionTimestamp, versionFilename } from '@/utils/format'
 
 const props = defineProps<{ uid: string; name?: string; current?: string; canManage?: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
+
+const difference = useDifferenceStore()
 
 const versions = ref<string[]>([])
 const loading = ref(false)
@@ -82,6 +97,17 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+// `versions` is newest-first, so a predecessor exists for everything but the last
+// entry. Offering "compare" on the oldest version would only ever produce the
+// service's "no predecessor" answer.
+function hasPredecessor(ts: string): boolean {
+  return versions.value.indexOf(ts) < versions.value.length - 1
+}
+
+function compare(ts: string) {
+  difference.open(props.uid, props.name || '', ts)
 }
 
 async function download(ts: string) {
