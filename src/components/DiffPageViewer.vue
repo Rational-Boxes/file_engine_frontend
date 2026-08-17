@@ -188,6 +188,35 @@ watch(pageIndex, loadPage)
 </script>
 
 <style scoped>
+/*
+ * Theme tokens are the app's own (App.vue :root / [data-theme='dark']):
+ * --fg --muted --border --bg --card --primary --danger --success.
+ * An earlier version invented --surface/--ink/--accent with hard-coded
+ * fallbacks, which is why this panel never followed the theme: the variables
+ * did not exist, so every rule silently used its fallback.
+ *
+ * The diff palette is declared per theme rather than fixed, because the light
+ * red/green/orange that reads well on white paper is muddy on a dark surface.
+ */
+.dv-root {
+  --diff-added: #16a34a;
+  --diff-deleted: #dc2626;
+  --diff-modified: #ea580c;
+  /* The page itself is paper. It stays light in both themes — inverting a
+     drawing would misrepresent the document, and every PDF viewer in the stack
+     keeps the page white while the chrome follows the theme. */
+  --diff-paper: #ffffff;
+  --diff-unchanged: #111827;
+}
+
+:root[data-theme='dark'] .dv-root,
+.theme-dark .dv-root {
+  /* Lifted for contrast against the darker chrome; the paper stays paper. */
+  --diff-added: #4ade80;
+  --diff-deleted: #f87171;
+  --diff-modified: #fb923c;
+}
+
 .dv-root {
   display: flex;
   flex-direction: column;
@@ -205,7 +234,7 @@ watch(pageIndex, loadPage)
 
 .dv-views {
   display: inline-flex;
-  border: 1px solid var(--border, #d0d5dd);
+  border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -213,32 +242,34 @@ watch(pageIndex, loadPage)
 .dv-view {
   border: 0;
   background: transparent;
+  color: var(--fg);
   padding: 0.3rem 0.7rem;
   cursor: pointer;
   font: inherit;
 }
 
 .dv-view.active {
-  background: var(--accent, #2563eb);
+  background: var(--primary);
   color: #fff;
 }
 
 .dv-pages { display: inline-flex; align-items: center; gap: 0.4rem; }
-.dv-nav { border: 1px solid var(--border, #d0d5dd); background: transparent; border-radius: 4px; cursor: pointer; padding: 0.15rem 0.5rem; }
+.dv-nav { border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 4px; cursor: pointer; padding: 0.15rem 0.5rem; }
 .dv-nav:disabled { opacity: 0.4; cursor: default; }
-.dv-page-lbl { font-size: 0.85rem; opacity: 0.75; }
+.dv-page-lbl { font-size: 0.85rem; color: var(--muted); }
 
 .dv-mode {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  border: 1px solid var(--border, #d0d5dd);
+  border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0.05rem 0.5rem;
   opacity: 0.8;
 }
-.dv-mode.mode-raster { border-color: #b45309; color: #b45309; }
-.dv-mode.mode-unavailable { border-color: #6b7280; color: #6b7280; }
+.dv-mode { color: var(--muted); }
+.dv-mode.mode-raster { border-color: var(--diff-modified); color: var(--diff-modified); }
+.dv-mode.mode-unavailable { border-color: var(--muted); color: var(--muted); }
 
 .dv-legend { margin-left: auto; display: inline-flex; gap: 0.6rem; font-size: 0.75rem; }
 .dv-key::before {
@@ -249,20 +280,20 @@ watch(pageIndex, loadPage)
   border-radius: 2px;
   vertical-align: baseline;
 }
-.dv-key.added::before { background: var(--diff-added, #16a34a); }
-.dv-key.deleted::before { background: var(--diff-deleted, #dc2626); }
-.dv-key.modified::before { background: var(--diff-modified, #ea580c); }
+.dv-key.added::before { background: var(--diff-added); }
+.dv-key.deleted::before { background: var(--diff-deleted); }
+.dv-key.modified::before { background: var(--diff-modified); }
 
-.dv-err { color: var(--danger, #b91c1c); }
-.dv-muted { opacity: 0.7; }
-.dv-unavailable { padding: 1rem; border: 1px dashed var(--border, #d0d5dd); border-radius: 6px; }
+.dv-err { color: var(--danger); }
+.dv-muted { color: var(--muted); }
+.dv-unavailable { padding: 1rem; border: 1px dashed var(--border); border-radius: 6px; color: var(--muted); }
 
 .dv-stage {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: #fff;
-  border: 1px solid var(--border, #d0d5dd);
+  background: var(--diff-paper);
+  border: 1px solid var(--border);
   border-radius: 6px;
 }
 
@@ -290,10 +321,10 @@ watch(pageIndex, loadPage)
  * regeneration. Vector elements are painted; raster pages carry <image> layers
  * that are tinted instead, since a bitmap has no fill to set.
  */
-.dv-stage :deep([data-diff-state='added']) { fill: var(--diff-added, #16a34a); stroke: var(--diff-added, #16a34a); }
-.dv-stage :deep([data-diff-state='deleted']) { fill: var(--diff-deleted, #dc2626); stroke: var(--diff-deleted, #dc2626); }
-.dv-stage :deep([data-diff-state='modified']) { fill: var(--diff-modified, #ea580c); stroke: var(--diff-modified, #ea580c); }
-.dv-stage :deep([data-diff-state='unchanged']) { fill: #111827; stroke: #111827; }
+.dv-stage :deep([data-diff-state='added']) { fill: var(--diff-added); stroke: var(--diff-added); }
+.dv-stage :deep([data-diff-state='deleted']) { fill: var(--diff-deleted); stroke: var(--diff-deleted); }
+.dv-stage :deep([data-diff-state='modified']) { fill: var(--diff-modified); stroke: var(--diff-modified); }
+.dv-stage :deep([data-diff-state='unchanged']) { fill: var(--diff-unchanged); stroke: var(--diff-unchanged); }
 
 /* A path drawn with fill="none" (an unfilled stroke) must keep its stroke-only
    rendering — forcing a fill would turn every outlined rectangle into a slab. */

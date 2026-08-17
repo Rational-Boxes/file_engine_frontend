@@ -55,11 +55,18 @@
 
       <section class="df-body">
         <!-- computing -->
-        <div v-if="state === 'loading'" class="df-state">
-          <p class="df-spin">Comparing versions…</p>
-          <p class="df-muted">
-            This runs on the server and can take a moment for large drawings or models.
+        <div v-if="state === 'loading'" class="df-state" role="status" aria-live="polite">
+          <p class="df-working">
+            <span class="df-spinner" aria-hidden="true"></span>
+            Comparing versions…
           </p>
+          <p class="df-muted">
+            This runs on the server. A complex drawing or a large model can take
+            a while — the result is stored, so opening it again later is instant.
+          </p>
+          <!-- Only offered once the wait is clearly not momentary: a "come back
+               later" button that appears immediately reads as an apology for
+               something that was about to finish. -->
           <button v-if="waited" class="df-btn" @click="close">Close and come back later</button>
         </div>
 
@@ -150,6 +157,7 @@ const result = ref<DiffResponse | null>(null)
 const state = ref<'idle' | 'loading' | 'done' | 'error'>('idle')
 const error = ref('')
 const waited = ref(false)
+
 
 let controller: AbortController | null = null
 
@@ -249,14 +257,18 @@ onBeforeUnmount(() => controller?.abort())
 </script>
 
 <style scoped>
+/* Tokens are the app's own (App.vue): --fg --muted --border --bg --card
+   --primary --danger. An earlier version referenced --surface/--ink/--accent,
+   which do not exist, so every rule fell through to a hard-coded light value and
+   the overlay ignored the theme entirely. */
 .df-root {
   position: fixed;
   inset: 0;
   z-index: 1200;
   display: flex;
   flex-direction: column;
-  background: var(--surface, #fff);
-  color: var(--ink, #111827);
+  background: var(--bg);
+  color: var(--fg);
 }
 
 .df-head {
@@ -264,29 +276,44 @@ onBeforeUnmount(() => controller?.abort())
   align-items: center;
   gap: 1rem;
   padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--border, #d0d5dd);
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
 }
 
 .df-title { font-size: 1rem; margin: 0; font-weight: 600; }
-.df-pair { margin: 0; font-size: 0.85rem; opacity: 0.75; }
-.df-close { margin-left: auto; border: 0; background: transparent; font-size: 1.1rem; cursor: pointer; }
+.df-pair { margin: 0; font-size: 0.85rem; color: var(--muted); }
+
+.df-close { margin-left: auto; border: 0; background: transparent; color: var(--fg); font-size: 1.1rem; cursor: pointer; }
 
 .df-body { flex: 1; min-height: 0; padding: 1rem; display: flex; flex-direction: column; }
 .df-pages { flex: 1; min-height: 0; }
 
 .df-state { max-width: 44rem; display: flex; flex-direction: column; gap: 0.6rem; }
-.df-muted { opacity: 0.72; margin: 0; }
-.df-err { color: var(--danger, #b91c1c); margin: 0; }
-.df-spin { margin: 0; font-weight: 600; }
+.df-muted { color: var(--muted); margin: 0; }
+.df-err { color: var(--danger); margin: 0; }
+.df-working { margin: 0; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+.df-spinner {
+  width: 1em;
+  height: 1em;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: df-spin 0.8s linear infinite;
+}
+@keyframes df-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .df-spinner { animation-duration: 2.4s; } }
 
 .df-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .df-btn {
-  border: 1px solid var(--border, #d0d5dd);
-  background: transparent;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
   border-radius: 6px;
   padding: 0.35rem 0.8rem;
   cursor: pointer;
   font: inherit;
 }
-.df-btn.primary { background: var(--accent, #2563eb); color: #fff; border-color: transparent; }
+.df-btn:hover { border-color: var(--primary); }
+.df-btn.primary { background: var(--primary); color: #fff; border-color: transparent; }
+.df-btn.primary:hover { background: var(--primary-hover); }
 </style>

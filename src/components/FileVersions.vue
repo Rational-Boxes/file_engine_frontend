@@ -22,24 +22,24 @@
 
     <table v-else-if="versions.length" class="v-list">
       <tbody>
-        <tr v-for="ts in versions" :key="ts" :class="{ current: ts === current }">
+        <tr v-for="ts in versions" :key="ts" :class="{ current: ts === current, picked: isPicked(ts) }">
+          <td class="v-pick">
+            <input
+              type="checkbox"
+              :checked="isPicked(ts)"
+              :disabled="busy || (!isPicked(ts) && selected.length >= 2)"
+              :aria-label="`Select version ${formatVersionTimestamp(ts)} for comparison`"
+              :title="!isPicked(ts) && selected.length >= 2
+                ? 'Two versions are already selected — clear one first'
+                : 'Select this version to compare'"
+              @change="togglePick(ts)"
+            />
+          </td>
           <td class="v-ts">
             {{ formatVersionTimestamp(ts) }}<span v-if="ts === current" class="v-cur">current</span>
           </td>
           <td class="v-act">
             <button class="link" :disabled="busy" @click="download(ts)">download</button>
-            <!-- Compare THIS version against its immediate predecessor — the same
-                 default the service applies, so the common case is one click. The
-                 oldest version has no predecessor, so it offers no compare. -->
-            <button
-              v-if="hasPredecessor(ts)"
-              class="link"
-              :disabled="busy"
-              title="Compare this version with the one before it"
-              @click="compare(ts)"
-            >
-              compare
-            </button>
             <button
               v-if="canManage && ts !== current"
               class="link"
@@ -54,6 +54,32 @@
     </table>
     <p v-else class="v-muted">No versions.</p>
 
+    <!-- Comparison bar. Exactly two versions must be chosen: a diff is defined
+         between a pair, so one selection has nothing to compare against and three
+         has no single answer. The checkboxes enforce the ceiling; this states the
+         requirement in words rather than leaving a disabled button unexplained. -->
+    <div v-if="versions.length > 1" class="v-compare">
+      <button
+        class="btn"
+        :disabled="!canCompare || busy"
+        :title="canCompare
+          ? 'Compare the two selected versions'
+          : 'Select two versions to compare'"
+        @click="compareSelected"
+      >
+        <span v-if="comparing" class="v-spin" aria-hidden="true"></span>
+        {{ comparing ? 'Opening…' : 'Compare selected' }}
+      </button>
+      <span class="v-hint">
+        <template v-if="canCompare">
+          {{ formatVersionTimestamp(olderSelected) }} → {{ formatVersionTimestamp(newerSelected) }}
+        </template>
+        <template v-else-if="selected.length === 1">Select one more version.</template>
+        <template v-else>Select two versions to compare.</template>
+      </span>
+      <button v-if="selected.length" class="link" :disabled="busy" @click="selected = []">clear</button>
+    </div>
+
     <form v-if="canManage && versions.length > 1" class="v-purge" @submit.prevent="purge">
       <label class="v-keep-label">
         Keep newest
@@ -65,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { fileService } from '@/services/fileService'
 import { errorMessage } from '@/services/apiClient'
 import { useDifferenceStore } from '@/stores/difference'
@@ -77,6 +103,10 @@ const emit = defineEmits<{ (e: 'changed'): void }>()
 const difference = useDifferenceStore()
 
 const versions = ref<string[]>([])
+// At most two, in click order. The cap is enforced on the inputs as well, so the
+// invalid state is unreachable rather than merely rejected on submit.
+const selected = ref<string[]>([])
+const comparing = ref(false)
 const loading = ref(false)
 const error = ref('')
 const busy = ref(false)
@@ -86,6 +116,7 @@ watch(() => props.uid, load, { immediate: true })
 
 async function load() {
   if (!props.uid) return
+  selected.value = []          // a selection from another file means nothing here
   loading.value = true
   error.value = ''
   try {
@@ -99,15 +130,45 @@ async function load() {
   }
 }
 
-// `versions` is newest-first, so a predecessor exists for everything but the last
-// entry. Offering "compare" on the oldest version would only ever produce the
-// service's "no predecessor" answer.
-function hasPredecessor(ts: string): boolean {
-  return versions.value.indexOf(ts) < versions.value.length - 1
+function isPicked(ts: string): boolean {
+  return selected.value.includes(ts)
 }
 
-function compare(ts: string) {
-  difference.open(props.uid, props.name || '', ts)
+function togglePick(ts: string) {
+  if (isPicked(ts)) {
+    selected.value = selected.value.filter((v) => v !== ts)
+  } else if (selected.value.length < 2) {
+    selected.value = [...selected.value, ts]
+  }
+}
+
+const canCompare = computed(() => selected.value.length === 2)
+
+// `versions` is newest-first, so the SMALLER index is the newer version. Deriving
+// old/new from list position rather than click order means the pair is always the
+// right way round however the reviewer ticked the boxes — picking them bottom-up
+// must not invert the comparison.
+const newerSelected = computed(() => {
+  if (!canCompare.value) return ''
+  return [...selected.value].sort(
+    (a, b) => versions.value.indexOf(a) - versions.value.indexOf(b))[0]
+})
+const olderSelected = computed(() => {
+  if (!canCompare.value) return ''
+  return [...selected.value].sort(
+    (a, b) => versions.value.indexOf(a) - versions.value.indexOf(b))[1]
+})
+
+async function compareSelected() {
+  if (!canCompare.value) return
+  comparing.value = true
+  try {
+    difference.open(props.uid, props.name || '', newerSelected.value, olderSelected.value)
+  } finally {
+    // The overlay owns the long-running work and shows its own progress; this
+    // spinner only covers the hand-off so the button cannot be double-clicked.
+    setTimeout(() => { comparing.value = false }, 400)
+  }
 }
 
 async function download(ts: string) {
@@ -162,6 +223,36 @@ async function purge() {
 </script>
 
 <style scoped>
+.v-pick { width: 1.6rem; padding-right: 0.25rem; }
+.v-list tr.picked { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+
+.v-compare {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.v-hint { font-size: 0.85rem; color: var(--muted); }
+
+/* The comparison runs server-side and can take a while on a complex document, so
+   the button says so rather than looking inert while nothing appears to happen. */
+.v-spin {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  margin-right: 0.35em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: v-spin 0.7s linear infinite;
+  vertical-align: -0.1em;
+}
+@keyframes v-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .v-spin { animation-duration: 2s; } }
+
 .versions {
   display: flex;
   flex-direction: column;

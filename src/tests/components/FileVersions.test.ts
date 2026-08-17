@@ -105,21 +105,58 @@ describe('FileVersions — compare', () => {
     vi.clearAllMocks()
   })
 
-  it('offers compare on every version that has a predecessor', async () => {
-    // Versions render newest-first, so the OLDEST has nothing to compare against
-    // and must not offer an action that could only ever answer "no predecessor".
+  const boxes = (w: ReturnType<typeof mountIt>) =>
+    w.findAll('tbody input[type="checkbox"]')
+  const compareBtn = (w: ReturnType<typeof mountIt>) =>
+    w.findAll('button').find((b) => b.text().includes('Compare selected'))!
+
+  it('offers a checkbox per version and a disabled compare button', async () => {
     listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
     const w = mountIt()
     await flushPromises()
 
-    const rows = w.findAll('tbody tr')
-    expect(rows).toHaveLength(3)
-    const hasCompare = rows.map((r) =>
-      r.findAll('button').some((b) => b.text() === 'compare'))
-    expect(hasCompare).toEqual([true, true, false])
+    expect(boxes(w)).toHaveLength(3)
+    expect(compareBtn(w).attributes('disabled')).toBeDefined()
   })
 
-  it('opens the comparison store for the chosen version', async () => {
+  it('enables compare only when exactly two are selected', async () => {
+    // A diff is defined between a PAIR: one has nothing to compare against and
+    // three has no single answer.
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt()
+    await flushPromises()
+
+    await boxes(w)[0].trigger('change')
+    expect(compareBtn(w).attributes('disabled')).toBeDefined()
+
+    await boxes(w)[1].trigger('change')
+    expect(compareBtn(w).attributes('disabled')).toBeUndefined()
+  })
+
+  it('makes a third selection unreachable rather than rejecting it later', async () => {
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt()
+    await flushPromises()
+
+    await boxes(w)[0].trigger('change')
+    await boxes(w)[1].trigger('change')
+    expect(boxes(w)[2].attributes('disabled')).toBeDefined()
+  })
+
+  it('deselecting frees the third checkbox again', async () => {
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt()
+    await flushPromises()
+
+    await boxes(w)[0].trigger('change')
+    await boxes(w)[1].trigger('change')
+    await boxes(w)[0].trigger('change')          // untick
+    expect(boxes(w)[2].attributes('disabled')).toBeUndefined()
+  })
+
+  it('opens the pair the right way round however it was ticked', async () => {
+    // versions render newest-first, so list POSITION decides old/new — ticking
+    // bottom-up must not invert the comparison.
     listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
     const w = mountIt({ name: 'plan.pdf' })
     await flushPromises()
@@ -127,20 +164,59 @@ describe('FileVersions — compare', () => {
     const { useDifferenceStore } = await import('@/stores/difference')
     const store = useDifferenceStore()
 
-    const compare = w.findAll('tbody tr')[0].findAll('button').find((b) => b.text() === 'compare')!
-    await compare.trigger('click')
+    await boxes(w)[2].trigger('change')          // oldest first
+    await boxes(w)[0].trigger('change')          // then newest
+    await compareBtn(w).trigger('click')
 
     expect(store.isOpen).toBe(true)
     expect(store.uid).toBe('f1')
     expect(store.name).toBe('plan.pdf')
-    expect(store.target).toBe('v3')     // newest row
-    expect(store.base).toBe('')         // default: the service picks the predecessor
+    expect(store.target).toBe('v3')              // newer side
+    expect(store.base).toBe('v1')                // older side
   })
 
-  it('does not offer compare when there is only one version', async () => {
+  it('compares two adjacent versions as an explicit pair', async () => {
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt()
+    await flushPromises()
+    const { useDifferenceStore } = await import('@/stores/difference')
+    const store = useDifferenceStore()
+
+    await boxes(w)[0].trigger('change')
+    await boxes(w)[1].trigger('change')
+    await compareBtn(w).trigger('click')
+
+    expect(store.target).toBe('v3')
+    expect(store.base).toBe('v2')
+  })
+
+  it('clears the selection', async () => {
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt()
+    await flushPromises()
+
+    await boxes(w)[0].trigger('change')
+    await w.findAll('button').find((b) => b.text() === 'clear')!.trigger('click')
+    expect(compareBtn(w).attributes('disabled')).toBeDefined()
+  })
+
+  it('hides the compare bar when there is only one version', async () => {
     listVersions.mockResolvedValue(['v1'])
     const w = mountIt()
     await flushPromises()
-    expect(w.findAll('button').some((b) => b.text() === 'compare')).toBe(false)
+    expect(w.findAll('button').some((b) => b.text().includes('Compare selected'))).toBe(false)
+  })
+
+  it('drops a selection when the file changes', async () => {
+    // A version id from another file would silently produce a nonsense pair.
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt()
+    await flushPromises()
+    await boxes(w)[0].trigger('change')
+
+    listVersions.mockResolvedValue(['x1', 'x2'])
+    await w.setProps({ uid: 'f2' })
+    await flushPromises()
+    expect(compareBtn(w).attributes('disabled')).toBeDefined()
   })
 })
