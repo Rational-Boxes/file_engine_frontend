@@ -209,14 +209,79 @@ describe('FileVersions — compare', () => {
 
   it('drops a selection when the file changes', async () => {
     // A version id from another file would silently produce a nonsense pair.
+    // The second file has THREE versions on purpose: a two-version file
+    // preselects its own pair, which would mask whether the old selection was
+    // actually cleared.
     listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
     const w = mountIt()
     await flushPromises()
     await boxes(w)[0].trigger('change')
 
-    listVersions.mockResolvedValue(['x1', 'x2'])
+    listVersions.mockResolvedValue(['x1', 'x2', 'x3'])
     await w.setProps({ uid: 'f2' })
     await flushPromises()
     expect(compareBtn(w).attributes('disabled')).toBeDefined()
+    expect(boxes(w).some((b) => (b.element as HTMLInputElement).checked)).toBe(false)
+  })
+})
+
+describe('FileVersions — two-version convenience', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('preselects both when there are exactly two versions', async () => {
+    // Only one pair is possible, so making the reviewer tick both is busywork.
+    listVersions.mockResolvedValue(['v1', 'v2'])
+    const w = mountIt()
+    await flushPromises()
+
+    const boxes = w.findAll('tbody input[type="checkbox"]')
+    expect(boxes.every((b) => (b.element as HTMLInputElement).checked)).toBe(true)
+
+    const btn = w.findAll('button').find((b) => b.text().includes('Compare selected'))!
+    expect(btn.attributes('disabled')).toBeUndefined()
+  })
+
+  it('compares that pair the right way round without any clicks', async () => {
+    listVersions.mockResolvedValue(['v1', 'v2'])
+    const w = mountIt({ name: 'plan.pdf' })
+    await flushPromises()
+
+    const { useDifferenceStore } = await import('@/stores/difference')
+    const store = useDifferenceStore()
+    await w.findAll('button').find((b) => b.text().includes('Compare selected'))!.trigger('click')
+
+    expect(store.target).toBe('v2')     // newer
+    expect(store.base).toBe('v1')       // older
+  })
+
+  it('does NOT preselect when the choice is real', async () => {
+    // Three or more versions means a genuine decision; guessing one would be
+    // worse than asking, because a wrong default is invisible.
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt()
+    await flushPromises()
+
+    const boxes = w.findAll('tbody input[type="checkbox"]')
+    expect(boxes.some((b) => (b.element as HTMLInputElement).checked)).toBe(false)
+    expect(
+      w.findAll('button').find((b) => b.text().includes('Compare selected'))!
+        .attributes('disabled'),
+    ).toBeDefined()
+  })
+
+  it('re-preselects when switching to another two-version file', async () => {
+    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    const w = mountIt()
+    await flushPromises()
+
+    listVersions.mockResolvedValue(['x1', 'x2'])
+    await w.setProps({ uid: 'f2' })
+    await flushPromises()
+
+    const boxes = w.findAll('tbody input[type="checkbox"]')
+    expect(boxes.every((b) => (b.element as HTMLInputElement).checked)).toBe(true)
   })
 })

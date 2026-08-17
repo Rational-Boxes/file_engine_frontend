@@ -60,7 +60,7 @@
          requirement in words rather than leaving a disabled button unexplained. -->
     <div v-if="versions.length > 1" class="v-compare">
       <button
-        class="btn"
+        class="v-btn"
         :disabled="!canCompare || busy"
         :title="canCompare
           ? 'Compare the two selected versions'
@@ -122,6 +122,10 @@ async function load() {
   try {
     const list = await fileService.listVersions(props.uid)
     versions.value = [...list].sort().reverse() // timestamp ids → newest first
+    // With exactly two versions there is only ONE possible pair, so asking the
+    // reviewer to tick both is busywork — preselect it and leave Compare ready.
+    // With three or more the choice is real and must stay explicit.
+    if (versions.value.length === 2) selected.value = [...versions.value]
   } catch (e) {
     error.value = errorMessage(e, 'Failed to load versions')
     versions.value = []
@@ -223,6 +227,30 @@ async function purge() {
 </script>
 
 <style scoped>
+/*
+ * The compare button is styled HERE. It previously carried `class="btn"`, which
+ * this component does not define and cannot inherit — sibling styles are scoped —
+ * so it rendered unstyled and picked up whatever colours were around it, which in
+ * dark mode meant a light label on a light background.
+ */
+.v-btn {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--primary);
+  color: #fff;                 /* on --primary, which is blue in both themes */
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.v-btn:hover:not(:disabled) { background: var(--primary-hover); }
+.v-btn:disabled {
+  background: var(--card);
+  color: var(--muted);
+  border-color: var(--border);
+  cursor: default;
+}
+
 .v-pick { width: 1.6rem; padding-right: 0.25rem; }
 .v-list tr.picked { background: color-mix(in srgb, var(--primary) 10%, transparent); }
 
