@@ -125,6 +125,15 @@
             title="Restore this 3D view"
             @click="emit('restore-view', t.id)"
           >🎯 View</button>
+          <!-- Comparison thread: reopen the exact rendering set the author was
+               looking at — the peer of 🎯 View and of "view marked-up copy". -->
+          <button
+            v-if="t.anchor?.kind === 'diff-view'"
+            type="button"
+            class="tp-viewbtn"
+            title="Reopen this comparison"
+            @click="emit('show-diff', t.anchor as DiffViewAnchor, t.id)"
+          >🔀 View comparison</button>
           <!-- Download the anchored comment as a BCF file (.bcfzip) for use outside
                the API — e.g. opening the issue in a desktop BCF Manager. -->
           <button
@@ -166,10 +175,11 @@
 
       <!-- Composer for a new root message — always available, below the messages. -->
       <div class="tp-composer">
-        <!-- A 3D viewpoint captured from the viewer is attached to the next thread (§9). -->
+        <!-- A captured view — a 3D viewpoint (§9) or a comparison — rides along
+             with the next thread. One chip, worded for whichever kind is pending. -->
         <div v-if="pendingAnchor" class="tp-anchor-chip">
-          <span>📍 3D view attached</span>
-          <button type="button" class="tp-anchor-clear" title="Detach the 3D view" @click="clearPendingAnchor">✕</button>
+          <span>{{ pendingAnchorLabel }}</span>
+          <button type="button" class="tp-anchor-clear" :title="`Detach the ${pendingAnchorNoun}`" @click="clearPendingAnchor">✕</button>
         </div>
         <CommentEditor
           v-model="newBody"
@@ -240,7 +250,8 @@ import {
   type FlagCounts,
   type MentionUser,
   type ReviewRequest,
-  type ModelViewpointAnchor,
+  type DiffViewAnchor,
+  type ThreadAnchor,
   type CommentMarkup,
 } from '@/services/discussionService'
 import bcfService from '@/services/bcfService'
@@ -273,6 +284,7 @@ const emit = defineEmits<{
   (e: 'restore-view', threadId: string): void
   // Reshow a comment's marked-up PDF copy (host loads the rendition + highlights it).
   (e: 'show-markup', markup: CommentMarkup, commentId: string): void
+  (e: 'show-diff', anchor: DiffViewAnchor, threadId: string): void
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
@@ -291,7 +303,7 @@ const flashing = reactive(new Set<string>())
 const newBody = ref('')
 // A 3D view captured from the viewer, pending attachment to the next new thread
 // (§9). Set by the viewer's "Comment here"; rides along on open() then clears.
-const pendingAnchor = ref<ModelViewpointAnchor | null>(null)
+const pendingAnchor = ref<ThreadAnchor | null>(null)
 const reviewOpen = ref(false)
 const reviewInput = ref('')
 const reviewMsg = ref('')
@@ -497,10 +509,27 @@ function threadOf(id: string): Thread | undefined {
 
 // Begin an annotation: attach a viewer-captured viewpoint to the next new thread
 // and reveal the composer. Called by the viewer's "Comment here" (via a ref).
-function startAnnotation(anchor: ModelViewpointAnchor) {
+// Attach a captured view to the next thread. Takes any anchor kind: a 3D
+// viewpoint from the model viewer, or a comparison from the difference viewer.
+function startAnnotation(anchor: ThreadAnchor) {
   pendingAnchor.value = anchor
   if (layout.value === 'collapsed') layout.value = props.pos === 'bottom' ? 'bottom' : 'right'
 }
+// The chip is the author's only confirmation that a view is riding along with
+// their comment, so it names what was captured rather than saying "attached".
+const pendingAnchorNoun = computed(() =>
+  pendingAnchor.value?.kind === 'diff-view' ? 'comparison' : '3D view')
+
+const pendingAnchorLabel = computed(() => {
+  const a = pendingAnchor.value
+  if (!a) return ''
+  if (a.kind === 'diff-view') {
+    const page = a.page === undefined ? '' : `, page ${a.page + 1}`
+    return `🔀 Comparison attached (${a.view ?? 'difference'}${page})`
+  }
+  return '📍 3D view attached'
+})
+
 function clearPendingAnchor() {
   pendingAnchor.value = null
 }

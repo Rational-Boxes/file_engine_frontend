@@ -96,3 +96,75 @@ describe('ThreadPanel deep-link focus', () => {
     w.unmount()
   })
 })
+
+
+// A thread can now be anchored to a comparison as well as to a 3D viewpoint. The
+// panel's job is to offer the way back to it and to hand the host the anchor
+// verbatim — the host owns rendering, the panel owns the affordance.
+describe('comparison-anchored threads', () => {
+  const DIFF_ANCHOR = {
+    kind: 'diff-view',
+    file_uid: 'f1',
+    base: '2026-08-16T09:00:00',
+    target: '2026-08-17T10:00:00',
+    plugin: 'pdf',
+    plugin_version: '1',
+    page: 2,
+    view: 'difference',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    flags.mockResolvedValue({})
+    listFileReviews.mockResolvedValue([])
+    listReviews.mockResolvedValue([])
+  })
+
+  async function panel(anchor: unknown) {
+    listThreads.mockResolvedValue([{ id: 't1', status: 'open', anchor, comments: [] }])
+    const w = mount(ThreadPanel, { props: { fileUid: 'f1', embedded: true } })
+    await flushPromises()
+    return w
+  }
+
+  it('offers a way back to the comparison a thread was made against', async () => {
+    const w = await panel(DIFF_ANCHOR)
+    const btn = w.findAll('.tp-viewbtn').find((b) => b.text().includes('comparison'))
+    expect(btn).toBeTruthy()
+
+    await btn!.trigger('click')
+    // The anchor goes back to the host untouched — including the page and view, so
+    // the reader lands where the author was rather than on page 1 of the default.
+    expect(w.emitted('show-diff')?.[0]).toEqual([DIFF_ANCHOR, 't1'])
+    w.unmount()
+  })
+
+  it('does not offer 3D affordances for a comparison thread', async () => {
+    const w = await panel(DIFF_ANCHOR)
+    const labels = w.findAll('.tp-viewbtn').map((b) => b.text())
+    // 🎯 View and ⬇ BCF are meaningless without a viewpoint; offering a BCF export
+    // of a PDF comparison would produce a file nothing can open.
+    expect(labels.some((t) => t.includes('BCF'))).toBe(false)
+    expect(labels.some((t) => t.includes('🎯'))).toBe(false)
+    w.unmount()
+  })
+
+  it('offers no comparison affordance on a plain thread', async () => {
+    const w = await panel(null)
+    expect(w.findAll('.tp-viewbtn').some((b) => b.text().includes('comparison'))).toBe(false)
+    w.unmount()
+  })
+
+  it('names what is attached when a comparison rides along with the next comment', async () => {
+    const w = await panel(null)
+    ;(w.vm as unknown as { startAnnotation: (a: unknown) => void }).startAnnotation(DIFF_ANCHOR)
+    await flushPromises()
+    const chip = w.get('.tp-anchor-chip').text()
+    // The chip is the author's only confirmation, so it must say "comparison" —
+    // the 3D wording it used to hard-code would be a plain lie here.
+    expect(chip).toContain('Comparison attached')
+    expect(chip).toContain('difference')
+    expect(chip).toContain('page 3') // 0-based capture, 1-based for a human
+    w.unmount()
+  })
+})

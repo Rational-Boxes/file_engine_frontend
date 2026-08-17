@@ -579,15 +579,19 @@ let deepLinkRestored = false
 // so a newly-created (or teammate's live) annotation gets a marker.
 function onThreads(ts: Thread[]) {
   threadsCache = ts
+  // Threads can now carry other anchor kinds (a comparison), which this viewer
+  // has no marker for — narrowing on `kind` is what keeps them out rather than
+  // producing a marker with every field undefined.
   const markers = ts
-    .filter((t) => t.anchor?.kind === 'model-viewpoint')
-    .map((t) => ({
-      id: t.id,
-      threadId: t.id,
-      marker: t.anchor?.marker,
-      viewpoint: t.anchor?.viewpoint,
-      measurements: t.anchor?.measurements,
-    }))
+    .flatMap((t) => (t.anchor?.kind === 'model-viewpoint'
+      ? [{
+        id: t.id,
+        threadId: t.id,
+        marker: t.anchor.marker,
+        viewpoint: t.anchor.viewpoint,
+        measurements: t.anchor.measurements,
+      }]
+      : []))
   viewerRef.value?.renderAnnotations(markers)
   maybeRestoreDeepLink()
 }

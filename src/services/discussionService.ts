@@ -88,6 +88,32 @@ export interface ModelViewpointAnchor {
   measurements?: AnchorMeasurement[]
 }
 
+// A comparison anchor (COMMENTS_ON_DIFFERENCES §2): the *rendering set* a comment
+// was made against, named by the same cache key the service computes a diff under
+// — (file_uid, base, target, plugin, plugin_version). Naming the key rather than
+// the rendition uids is what makes the anchor durable: the children can be evicted
+// and recomputed, and this still points at the same comparison, because the
+// pipeline is deterministic. `manifest_uid` is the commit marker at capture time,
+// carried so a restore can tell "recomputed" from "never existed".
+//
+// The server stores anchors as opaque JSONB, so this needs no backend change; it
+// is the viewer for `kind` that knows how to restore one.
+export interface DiffViewAnchor {
+  kind: 'diff-view'
+  file_uid: string
+  base: string
+  target: string
+  plugin: string
+  plugin_version: string
+  manifest_uid?: string
+  /** Where the author was looking: page index and which of the three views. */
+  page?: number
+  view?: 'before' | 'after' | 'difference'
+}
+
+/** Every anchor kind a thread can carry. Discriminate on `kind`. */
+export type ThreadAnchor = ModelViewpointAnchor | DiffViewAnchor
+
 export interface Thread {
   id: string
   fileUid: string
@@ -100,7 +126,7 @@ export interface Thread {
   resolvedBy: string | null
   resolvedVersion: string | null
   anchorStale: boolean
-  anchor: ModelViewpointAnchor | null
+  anchor: ThreadAnchor | null
   comments?: Comment[]
 }
 
@@ -208,7 +234,7 @@ function toThread(t: Record<string, unknown>): Thread {
     resolvedBy: (t.resolved_by as string) ?? null,
     resolvedVersion: (t.resolved_version as string) ?? null,
     anchorStale: !!t.anchor_stale,
-    anchor: (t.anchor as ModelViewpointAnchor) ?? null,
+    anchor: (t.anchor as ThreadAnchor) ?? null,
     comments: Array.isArray(t.comments) ? (t.comments as Record<string, unknown>[]).map(toComment) : undefined,
   }
 }
@@ -261,7 +287,7 @@ export const discussionService = {
       body: string
       version?: string
       mentions?: string[]
-      anchor?: ModelViewpointAnchor | null
+      anchor?: ThreadAnchor | null
       markup?: CommentMarkup | null
     },
   ): Promise<Thread> {

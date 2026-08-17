@@ -50,6 +50,17 @@
 
         <p v-if="pairLabel" class="df-pair">{{ pairLabel }}</p>
 
+        <!-- Change the pair without leaving: the reader is already comparing and
+             wanting a different pair is a normal next thought, not a restart. -->
+        <VersionPairPicker
+          class="df-picker"
+          :uid="store.uid"
+          :base="result?.baseVersion || store.base"
+          :target="result?.targetVersion || store.target"
+          :busy="state === 'loading'"
+          @compare="recompare"
+        />
+
         <button class="df-close" title="Close (Esc)" aria-label="Close" @click="close">✕</button>
       </header>
 
@@ -144,6 +155,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import DiffPageViewer from '@/components/DiffPageViewer.vue'
+import VersionPairPicker from '@/components/VersionPairPicker.vue'
 import { useDifferenceStore } from '@/stores/difference'
 import { useModel3dStore } from '@/stores/model3d'
 import { differenceService, errorMessage, type DiffResponse } from '@/services/differenceService'
@@ -249,6 +261,12 @@ function close() {
   state.value = 'idle'
 }
 
+// Re-point the store at the chosen pair; the watch below reruns the comparison,
+// so there is one path into `start()` rather than two that can drift apart.
+function recompare(pair: { base: string; target: string }) {
+  store.open(store.uid, store.name, pair.target, pair.base)
+}
+
 watch(() => `${store.uid}|${store.target}|${store.base}`, () => {
   if (store.isOpen) start()
 }, { immediate: true })
@@ -282,6 +300,8 @@ onBeforeUnmount(() => controller?.abort())
 
 .df-title { font-size: 1rem; margin: 0; font-weight: 600; }
 .df-pair { margin: 0; font-size: 0.85rem; color: var(--muted); }
+
+.df-picker { margin-left: 0.75rem; }
 
 .df-close { margin-left: auto; border: 0; background: transparent; color: var(--fg); font-size: 1.1rem; cursor: pointer; }
 

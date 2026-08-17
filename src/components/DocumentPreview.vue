@@ -60,7 +60,43 @@
            heavy library is dynamic-imported inside PdfViewer. For a user with WRITE
            the markup toolbar is always shown (editable) so the tools are obvious;
            reshowing a comment's marked-up copy loads that rendition read-only. -->
-      <div v-if="viewerSrc" class="dp-pdf">
+      <!--
+        The preview surface shows ONE of three things, and they are mutually
+        exclusive: the live document, a comment's marked-up copy, or a comparison
+        between two versions. All three sit in the same frame with the same
+        discussion rail beside them, which is what "merged windows" means — a
+        reader never loses the conversation by changing what they are looking at.
+      -->
+      <div v-if="diffView" class="dp-pdf">
+        <p v-if="diffLoading" class="dp-hint">Preparing the comparison…</p>
+        <p v-else-if="diffError" class="dp-diff-dead">{{ diffError }}</p>
+        <DiffPageViewer
+          v-else-if="diffView.pages.length"
+          :pages="diffView.pages"
+          :initial-page="diffView.anchor?.page"
+          :initial-view="diffView.anchor?.view"
+          @state="diffPos = $event"
+        />
+        <div class="dp-actions">
+          <span class="dp-markup-tag">🔀 Comparison — {{ diffLabel }}</span>
+          <VersionPairPicker
+            :uid="uid"
+            :base="diffView.anchor?.base"
+            :target="diffView.anchor?.target"
+            :busy="diffLoading"
+            @compare="runDiff"
+          />
+          <button
+            v-if="!diffLoading && !diffError && hasPreview"
+            class="link"
+            title="Open a thread anchored to exactly this comparison"
+            @click="commentOnDiff"
+          >💬 Comment on this comparison</button>
+          <button class="link" @click="closeDiffView">← Back to document</button>
+        </div>
+      </div>
+
+      <div v-else-if="viewerSrc" class="dp-pdf">
         <PdfViewer
           ref="pdfViewerRef"
           :key="markupView ? `markup:${markupView.renditionUid}` : `doc:${viewerNonce}`"
@@ -86,6 +122,15 @@
               ● Your markup will be saved with your next comment
             </span>
             <span v-else-if="canAnnotate" class="dp-hint">✎ Mark up with the toolbar; it saves with your comment</span>
+            <!-- The way into a comparison from the document itself. Same window,
+                 same discussion rail — changing what you look at must not cost you
+                 the conversation beside it. -->
+            <button
+              v-if="fullWidth"
+              class="link"
+              title="Compare two versions of this document"
+              @click="openDiffPicker"
+            >🔀 Compare versions</button>
             <!-- Discard all markup and return to the clean original (guarded). -->
             <button v-if="canAnnotate && pdfHasMarkup" class="link" @click="clearMarkup">↺ Return to original</button>
             <!-- The source file itself (for an Office doc that's the .docx/.xlsx). The
@@ -245,6 +290,7 @@
       <section v-if="fullWidth" class="dp-discussion" :style="discStyle">
         <ThreadPanel
           v-if="hasPreview"
+          ref="threadPanelRef"
           :file-uid="uid"
           :focus-thread="focusThread"
           :focus-comment="focusComment"
@@ -257,6 +303,7 @@
           @layout="discLayout = $event"
           @update:pos="setPos"
           @show-markup="onShowMarkup"
+          @show-diff="onShowDiff"
         />
         <button v-else class="btn dp-discuss-btn" @click="discussionOpen = true">
           💬 Discussion
@@ -295,6 +342,11 @@ import ShadowHtml from '@/components/ShadowHtml.vue'
 // the same lazy posture as the xeokit 3D SDK (loaded inside Model3DViewer).
 import PdfViewer from '@/components/PdfViewer.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
+import DiffPageViewer from '@/components/DiffPageViewer.vue'
+import VersionPairPicker from '@/components/VersionPairPicker.vue'
+import { differenceService, type DiffChildRef } from '@/services/differenceService'
+import type { DiffViewAnchor } from '@/services/discussionService'
+import { useModel3dStore } from '@/stores/model3d'
 import ThreadOverlay from '@/components/ThreadOverlay.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
@@ -387,6 +439,14 @@ const markupView = ref<CommentMarkup | null>(null)
 const markupUrl = ref('')
 const markupDownloading = ref(false)
 const activeMarkupCommentId = ref<string | null>(null) // the comment whose copy is shown
+// The comparison substitute: the rendering set on screen, the anchor it was
+// restored from (null when the reader opened it themselves), and where they are
+// looking now. Mutually exclusive with markupView — see the template comment.
+const diffView = ref<{ anchor: DiffViewAnchor | null; pages: DiffChildRef[]; manifestUid: string } | null>(null)
+const diffPos = ref<{ page: number; view: 'before' | 'after' | 'difference' }>({ page: 0, view: 'difference' })
+const threadPanelRef = ref<InstanceType<typeof ThreadPanel> | null>(null)
+const diffLoading = ref(false)
+const diffError = ref('')
 const chatlogHtml = ref('') // chat provenance log HTML (fetched on demand)
 const activeTab = ref<'document' | 'chatlog'>('document') // report preview vs. provenance log
 const loading = ref(false)
@@ -426,6 +486,15 @@ const openHint = computed(() =>
       ? 'Open the full document'
       : 'Open the full preview',
 )
+
+// Names the pair on screen. Timestamps are what a version *is* in this system, so
+// the label uses them rather than inventing revision numbers that don't exist.
+const diffLabel = computed(() => {
+  const a = diffView.value?.anchor
+  if (!a) return ''
+  const short = (v: string) => (v || '').replace('T', ' ').slice(0, 19) || 'previous'
+  return `${short(a.base)} → ${short(a.target)}`
+})
 
 // What the PDF.js viewer renders: a comment's marked-up copy (read-only) when
 // reshowing, else the live document.
@@ -781,6 +850,7 @@ async function onShowMarkup(markup: CommentMarkup, commentId: string) {
   // unsaved markup, so the drawing isn't silently discarded.
   if (!confirmDiscard()) return
   closeMarkupUrl()
+  closeDiffView() // the substitutes are mutually exclusive
   error.value = ''
   try {
     markupUrl.value = await renditionObjectUrl(markup.renditionUid, 'application/pdf')
@@ -820,6 +890,161 @@ async function downloadMarkupView() {
   } finally {
     markupDownloading.value = false
   }
+}
+
+// Reopen the comparison a comment was made against (ThreadPanel's "🔀 View
+// comparison"), the peer of restoring a 3D viewpoint or a marked-up copy.
+//
+// The anchor names the pipeline's own cache key, not the rendition uids, so this
+// re-requests the comparison rather than fetching stored children: a purged
+// result is recomputed and the reader still lands where the author was. That
+// only holds because the pipeline is deterministic — if it ever stops being, an
+// anchor stops being a durable reference and this becomes a lie.
+async function onShowDiff(anchor: DiffViewAnchor, threadId: string) {
+  if (!confirmDiscard()) return
+  closeMarkupView2()
+  diffError.value = ''
+  diffLoading.value = true
+  diffView.value = { anchor, pages: [], manifestUid: '' }
+  activeMarkupCommentId.value = threadId
+  try {
+    const res = await differenceService.getWhenReady(anchor.file_uid, {
+      version: anchor.target,
+      base: anchor.base,
+    })
+    if (res.status !== 'ready') {
+      // A dead end is stated, not silently shown as an empty view: the comment
+      // still exists and still means something, but what it points at cannot be
+      // reproduced, and the reader needs to know which of the two is true.
+      diffError.value = res.detail
+        || 'This comparison can no longer be produced. The comment remains, but the '
+         + 'versions it compared are no longer available.'
+      return
+    }
+    if (res.is3d) {
+      // A 3D comparison is not a document preview. Hand it to the model viewer,
+      // which is the surface that can actually render it.
+      const model = res.children.find((c) => c.kind === 'model')
+      const meta = res.children.find((c) => c.kind === 'metamodel')
+      if (model) {
+        // Resolved here rather than at setup: a 3D comparison is one path out of
+        // several, and binding the store up front made the entire preview
+        // component require an active Pinia just to render a PDF.
+        useModel3dStore().open(model.uid, props.name || 'Comparison',
+          { xktUid: model.uid, metamodelUid: meta?.uid })
+        diffView.value = null
+        return
+      }
+    }
+    diffView.value = {
+      anchor,
+      pages: res.children.filter((c) => c.kind !== 'metamodel'),
+      manifestUid: res.manifest?.key ?? '',
+    }
+    // The author's differ may have been superseded. The comparison shown is then
+    // a *different* rendering of the same two versions — worth saying, because
+    // "what changed" can legitimately read differently under a newer differ.
+    if (anchor.manifest_uid && res.manifest?.key && anchor.manifest_uid !== res.manifest.key) {
+      diffError.value = ''
+    }
+  } catch (e) {
+    diffError.value = errorMessage(e, 'Failed to reopen this comparison')
+  } finally {
+    diffLoading.value = false
+  }
+}
+
+// Enter comparison mode with nothing chosen yet — the picker in the action bar
+// is then the thing that starts one.
+function openDiffPicker() {
+  if (!confirmDiscard()) return
+  closeMarkupView2()
+  diffError.value = ''
+  diffView.value = { anchor: null, pages: [], manifestUid: '' }
+}
+
+// Run a pair the reader picked. The anchor is built from the RESULT, not the
+// request: the reader may have taken the defaults ("newest", "its predecessor"),
+// and an anchor that says "newest" would point somewhere else after the next
+// upload. Resolving to concrete versions is what makes it a durable reference.
+async function runDiff(pair: { base: string; target: string }) {
+  diffError.value = ''
+  diffLoading.value = true
+  try {
+    const res = await differenceService.getWhenReady(props.uid, {
+      version: pair.target || undefined,
+      base: pair.base || undefined,
+    })
+    if (res.status !== 'ready') {
+      diffError.value = res.detail || diffFailureText(res.status)
+      diffView.value = { anchor: null, pages: [], manifestUid: '' }
+      return
+    }
+    if (res.is3d) {
+      const model = res.children.find((c) => c.kind === 'model')
+      const meta = res.children.find((c) => c.kind === 'metamodel')
+      if (model) {
+        // Resolved here rather than at setup: a 3D comparison is one path out of
+        // several, and binding the store up front made the entire preview
+        // component require an active Pinia just to render a PDF.
+        useModel3dStore().open(model.uid, props.name || 'Comparison',
+          { xktUid: model.uid, metamodelUid: meta?.uid })
+        diffView.value = null
+        return
+      }
+    }
+    diffView.value = {
+      anchor: {
+        kind: 'diff-view',
+        file_uid: props.uid,
+        base: res.baseVersion,
+        target: res.targetVersion,
+        plugin: res.manifest?.plugin ?? '',
+        plugin_version: String(res.manifest?.plugin_version ?? ''),
+        manifest_uid: res.manifest?.key,
+      },
+      pages: res.children.filter((c) => c.kind !== 'metamodel'),
+      manifestUid: res.manifest?.key ?? '',
+    }
+  } catch (e) {
+    diffError.value = errorMessage(e, 'Failed to compare these versions')
+  } finally {
+    diffLoading.value = false
+  }
+}
+
+function diffFailureText(status: string) {
+  if (status === 'unsupported') return 'This file type has no comparison tool yet.'
+  if (status === 'none') return 'There is nothing to compare — this file has only one version.'
+  return 'The comparison could not be produced.'
+}
+
+// Attach the comparison on screen to the next comment, so the thread reopens
+// exactly here — same pair, same page, same view.
+function commentOnDiff() {
+  const d = diffView.value
+  if (!d) return
+  const src = d.anchor
+  if (!src) return
+  threadPanelRef.value?.startAnnotation({
+    ...src,
+    page: diffPos.value.page,
+    view: diffPos.value.view,
+  } as DiffViewAnchor)
+}
+
+function closeDiffView() {
+  diffView.value = null
+  diffError.value = ''
+  activeMarkupCommentId.value = null
+}
+
+// Close a shown marked-up copy without the discard prompt — the caller has
+// already confirmed. Keeps the two substitutes mutually exclusive.
+function closeMarkupView2() {
+  markupView.value = null
+  activeMarkupCommentId.value = null
+  closeMarkupUrl()
 }
 
 function closeMarkupUrl() {
@@ -1102,6 +1327,14 @@ function cleanup() {
   align-items: center;
   flex-wrap: wrap;
 }
+.dp-diff-dead {
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--card);
+}
+
 .dp-markup-tag {
   font-size: 12px;
   color: var(--primary);

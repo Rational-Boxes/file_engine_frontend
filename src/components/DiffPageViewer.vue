@@ -99,9 +99,18 @@ import { renditionText } from '@/services/renditions'
 import { errorMessage } from '@/services/apiClient'
 import type { DiffChildRef, DiffMode } from '@/services/differenceService'
 
-const props = defineProps<{ pages: DiffChildRef[] }>()
-
 type ViewId = 'before' | 'after' | 'difference'
+
+const props = defineProps<{
+  pages: DiffChildRef[]
+  /** Restore a comment's captured position: which page and which of the three views. */
+  initialPage?: number
+  initialView?: ViewId
+}>()
+
+// Where the reader is looking. A comment anchored to a comparison records this, so
+// restoring one lands on the same page in the same view rather than the default.
+const emit = defineEmits<{ (e: 'state', s: { page: number; view: ViewId }): void }>()
 
 const VIEWS: Array<{ id: ViewId; label: string; help: string }> = [
   { id: 'before', label: 'Before', help: 'The base version on its own' },
@@ -109,8 +118,8 @@ const VIEWS: Array<{ id: ViewId; label: string; help: string }> = [
   { id: 'difference', label: 'Difference', help: 'Only what changed, over the page' },
 ]
 
-const view = ref<ViewId>('difference')
-const pageIndex = ref(0)
+const view = ref<ViewId>(props.initialView ?? 'difference')
+const pageIndex = ref(props.initialPage ?? 0)
 const svg = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -177,14 +186,19 @@ async function loadPage() {
   }
 }
 
-// Reset to the first page when a different comparison is shown, so a reader is
-// never left on page 9 of a two-page result.
+// Reset when a different comparison is shown, so a reader is never left on page 9
+// of a two-page result — unless the caller is restoring a captured position, which
+// is the whole point of the props and must not be stomped on.
 watch(() => props.pages, () => {
-  pageIndex.value = 0
+  pageIndex.value = Math.min(props.initialPage ?? 0, Math.max(props.pages.length - 1, 0))
+  if (props.initialView) view.value = props.initialView
   loadPage()
 }, { immediate: true, deep: false })
 
 watch(pageIndex, loadPage)
+
+watch([pageIndex, view], () => emit('state', { page: pageIndex.value, view: view.value }),
+  { immediate: true })
 </script>
 
 <style scoped>
