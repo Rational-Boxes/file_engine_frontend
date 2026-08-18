@@ -44,6 +44,7 @@ const hh = vi.hoisted(() => ({
   // ThreadPanel exposed methods.
   scrollToThread: vi.fn(),
   startAnnotation: vi.fn(),
+  ancestorObjectIds: vi.fn(() => [] as string[]),
   getWhenReady: vi.fn(),
   listVersions: vi.fn(async () => ['2026-08-17T10:00:00', '2026-08-16T09:00:00']),
 }))
@@ -84,6 +85,10 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
         addSectionPlane: hh.addSectionPlane,
         editSectionPlane: hh.editSectionPlane,
         clearXRay: hh.clearXRay,
+        // The real viewer reports which rows sit ABOVE the see-through objects,
+        // and hands back the element the tree was built into.
+        ancestorObjectIds: hh.ancestorObjectIds,
+        treeContainerEl: null,
       })
       return () => createEl('div', { class: 'm3d-stub' })
     },
@@ -656,6 +661,7 @@ describe('see-through markers in the object tree', () => {
 
   /** The rows xeokit builds: <li id="${treeId}-${objectId}"> … <span>label</span>. */
   function plantTree(objectIds: string[], treeId = 'tree7') {
+    document.getElementById('mv-object-tree')?.remove()
     const host = document.createElement('div')
     host.id = 'mv-object-tree'
     for (const oid of objectIds) {
@@ -723,21 +729,60 @@ describe('see-through markers in the object tree', () => {
     expect(rowFor(host, 'outerwall1').classList.contains('mv-xrayed')).toBe(false)
   })
 
-  it('re-marks after a model loads, since the tree is rebuilt then', async () => {
-    // A rebuilt tree carries no marks; without this the see-through state would
-    // be applied in the 3D view and invisible in the tree beside it.
+  it('marks the ancestor row when only its children are see-through', async () => {
+    // The comparison case. See-through lands on leaves — x-raying a layer
+    // resolves to its elements, because only ids with geometry can be x-rayed —
+    // so the row the user clicked is never in the set, and with the tree expanded
+    // one level its marked children are not even rendered. Without this the whole
+    // comparison tree showed nothing while a plain model looked fine.
+    const host = plantTree([])
+    const layer = document.createElement('li')
+    layer.id = 'tree7-old'
+    layer.appendChild(document.createElement('span'))
+    host.appendChild(layer)
+
+    const store = useModel3dStore()
+    store.open('f1', 'tower.ifc — comparison')
+    const w = mountOverlay()
+    await flushPromises()
+
+    // The viewer reports the layer as the parent of the x-rayed element.
+    hh.ancestorObjectIds.mockReturnValue(['old'])
+
+    store.setXRayed(['wall-a|old'])
+    await flushPromises()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+
+    expect(layer.classList.contains('mv-xrayed-within')).toBe(true)
+    // ...and it is NOT dimmed as though it were see-through itself.
+    expect(layer.classList.contains('mv-xrayed')).toBe(false)
+    w.unmount()
+  })
+
+  it('marks rows that appear AFTER the marking was triggered', async () => {
+    // The case that defeated three earlier attempts: at every moment there was a
+    // reason to mark — the set changing, the model becoming ready, a viewpoint
+    // being restored — the tree still held zero rows, because the plugin builds
+    // it later and expands branches lazily. Watching the container is what makes
+    // a row marked whenever it turns up.
+    const host = plantTree([])                    // container present, no rows yet
     const store = useModel3dStore()
     store.open('f1', 'tower.ifc')
     mountOverlay()
     await flushPromises()
+
     store.setXRayed(['wall-a'])
     await flushPromises()
 
-    const host = plantTree(['wall-a'])          // the tree comes back fresh
-    store.setReady(true)
-    await flushPromises()
+    // Now the plugin builds the row, long after anything told us to mark.
+    const li = document.createElement('li')
+    li.id = 'tree7-wall-a'
+    li.appendChild(document.createElement('span'))
+    host.appendChild(li)
+
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
     await flushPromises()
 
-    expect(rowFor(host, 'wall-a').classList.contains('mv-xrayed')).toBe(true)
+    expect(li.classList.contains('mv-xrayed')).toBe(true)
   })
 })

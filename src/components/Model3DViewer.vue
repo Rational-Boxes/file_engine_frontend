@@ -107,6 +107,10 @@ const error = ref('')
 // toolbar and the annotation layer drive; live state is mirrored into the store.
 let viewer: any = null
 let treeView: any = null
+// The element the object tree was actually built into — the same reference the
+// plugin holds, so a caller marking rows cannot end up looking at a different
+// element that happens to share the id.
+const treeContainerEl = ref<HTMLElement | null>(null)
 let sectionPlanes: any = null // SectionPlanesPlugin — cut-away (Workstream B / §7)
 let distanceMeasurements: any = null // DistanceMeasurementsPlugin (Workstream C / §8)
 let angleMeasurements: any = null // AngleMeasurementsPlugin (Workstream C / §8)
@@ -137,9 +141,19 @@ async function load() {
       console.warn('[Model3DViewer] navigation cube unavailable', e)
     }
     try {
-      if (props.treeContainerId && document.getElementById(props.treeContainerId)) {
+      // Resolve the container ONCE and hand the ELEMENT to the plugin, rather
+      // than an id for it to look up. The plugin caches whatever it resolves at
+      // construction, so passing an id leaves two independent lookups that can
+      // disagree — and anything marking rows afterwards has no way to know which
+      // element actually received the tree. Exposing the very same reference (see
+      // treeContainerEl below) removes the guesswork.
+      const treeEl = props.treeContainerId
+        ? document.getElementById(props.treeContainerId)
+        : null
+      treeContainerEl.value = treeEl
+      if (treeEl) {
         treeView = new xeokit.TreeViewPlugin(viewer, {
-          containerElementId: props.treeContainerId,
+          containerElement: treeEl,
           hierarchy: 'containment',
           autoExpandDepth: 1,
         })
@@ -152,6 +166,33 @@ async function load() {
       }
     } catch (e) {
       console.warn('[Model3DViewer] object tree unavailable (model may have no metadata)', e)
+    }
+
+    // Keep the store's see-through set tracking the SCENE, not just our own
+    // calls into it.
+    //
+    // syncXRayFromScene() was only invoked where we knew we had changed
+    // something, which left the store blind to anything the viewer did on its
+    // own — restoring a saved viewpoint being the case that matters: BCF carries
+    // x-ray as `components.translucency`, so the 3D view came back correctly
+    // see-through while the store still believed nothing was, and the object
+    // tree showed no markers beside it.
+    //
+    // Subscribing to the scene's own event makes the store authoritative
+    // whatever the cause. Coalesced onto a microtask because a restore x-rays
+    // many entities in a burst and each one fires.
+    try {
+      let pending = false
+      viewer.scene.on('objectXRayed', () => {
+        if (pending) return
+        pending = true
+        queueMicrotask(() => {
+          pending = false
+          syncXRayFromScene()
+        })
+      })
+    } catch {
+      /* best-effort: the store then only tracks our own changes, as before */
     }
 
     // Instantiate the markup / BCF plugin suite. Each is the backing capability
@@ -740,6 +781,37 @@ function resolveObjectIds(ids: string[]): string[] {
 // The scene-object ids under a metamodel node (the object + all its descendants
 // that actually have geometry). Falls back to just the object when there is no
 // metamodel subtree. Powers see-through-a-whole-storey/assembly from the tree.
+/**
+ * Every ANCESTOR of the given objects, by metadata.
+ *
+ * See-through is applied to leaves: x-raying a layer resolves to its element
+ * children, because subtreeObjectIds() keeps only ids that have geometry and a
+ * layer has none. So the row a user actually clicked — and is looking at — is
+ * never itself in the see-through set, and on a tree expanded one level deep its
+ * marked children do not exist yet either. Reporting the ancestors lets the row
+ * they are looking at say that something beneath it is see-through.
+ */
+function ancestorObjectIds(ids: readonly string[]): string[] {
+  const metaObjects = viewer?.metaScene?.metaObjects
+  if (!metaObjects) return []
+  const out = new Set<string>()
+  for (const id of ids) {
+    let node = metaObjects[id]
+    // `parent` is a MetaObject in xeokit, but tolerate a bare id too.
+    let guard = 0
+    while (node && guard++ < 64) {
+      const parent = (node as { parent?: unknown }).parent
+      const parentId = typeof parent === 'string'
+        ? parent
+        : (parent as { id?: string } | undefined)?.id
+      if (!parentId || out.has(parentId)) break
+      out.add(parentId)
+      node = metaObjects[parentId]
+    }
+  }
+  return [...out]
+}
+
 function subtreeObjectIds(objectId: string): string[] {
   const scene = viewer?.scene
   const metaObjects = viewer?.metaScene?.metaObjects
@@ -871,6 +943,9 @@ watch(() => props.xktUid, load)
 watch(() => props.navStep, applyNavStep)
 onBeforeUnmount(destroy)
 defineExpose({
+  // The element the object tree was built into (see treeContainerEl).
+  treeContainerEl,
+  ancestorObjectIds,
   // camera / canvas (existing)
   resize,
   resetCamera,

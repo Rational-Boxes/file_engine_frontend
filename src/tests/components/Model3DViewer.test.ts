@@ -49,6 +49,9 @@ const h = vi.hoisted(() => {
   return {
     annotations,
     annHandlers,
+    // Scene subscriptions, recorded so a test can fire the scene's own events —
+    // which is how the viewer learns about x-ray it did not itself apply.
+    sceneHandlers: {} as Record<string, Array<(...a: unknown[]) => void>>,
     loadSpy: vi.fn(),
     destroySpy: vi.fn(),
     resizeSpy: vi.fn(),
@@ -111,6 +114,10 @@ vi.mock('@xeokit/xeokit-sdk', () => ({
         return h.sceneXrayed
       },
       objects: h.sceneObjects,
+      on: (event: string, cb: (...a: unknown[]) => void) => {
+        ;(h.sceneHandlers[event] ||= []).push(cb)
+        return 0
+      },
     },
     metaScene: h.metaScene,
     cameraFlight: { flyTo: h.flyTo },
@@ -189,6 +196,10 @@ type ViewerApi = {
 describe('Model3DViewer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Each mounted viewer subscribes to the fake scene, and the registry lives in
+    // the hoisted fixture — so without this, handlers pile up across tests and a
+    // single event looks like several.
+    for (const k of Object.keys(h.sceneHandlers)) delete h.sceneHandlers[k]
     pinia = createPinia()
     setActivePinia(pinia)
     h.cameraControl = {}
@@ -687,5 +698,54 @@ describe('Model3DViewer', () => {
     const w = mountViewer({ xktUid: 'r1' })
     await flushPromises()
     expect(w.find('.m3d-err').exists()).toBe(true)
+  })
+})
+
+
+// Restoring a saved view applies see-through straight to the scene (BCF carries
+// it as `components.translucency`), without going through us. The store has to
+// learn about it anyway, or the object tree shows no markers beside a model that
+// is visibly see-through — which is exactly what was reported.
+describe('the store tracks see-through the viewer applied on its own', () => {
+  beforeEach(() => {
+    // Every mounted viewer subscribes to the fake scene and the registry lives in
+    // the hoisted fixture, so without this the handlers pile up across tests and
+    // one event looks like several.
+    for (const k of Object.keys(h.sceneHandlers)) delete h.sceneHandlers[k]
+  })
+
+  it('syncs from the scene when it reports an x-ray change', async () => {
+    const store = useModel3dStore()
+    const w = mountViewer({ xktUid: 'xkt1' })
+    await flushPromises()
+    expect(store.xrayedIds).toEqual([])
+
+    // The scene now holds x-rayed objects — as it would after a viewpoint restore.
+    h.sceneXrayed = ['wall-a', 'wall-b']
+    for (const cb of h.sceneHandlers['objectXRayed'] ?? []) cb({ id: 'wall-a' })
+    await new Promise((r) => queueMicrotask(() => r(null)))
+    await flushPromises()
+
+    expect(store.xrayedIds).toEqual(['wall-a', 'wall-b'])
+    w.unmount()
+  })
+
+  it('coalesces a burst into one store update', async () => {
+    // A restore x-rays many entities and each fires; without coalescing the store
+    // would be rewritten once per object.
+    const store = useModel3dStore()
+    const w = mountViewer({ xktUid: 'xkt1' })
+    await flushPromises()
+    const spy = vi.spyOn(store, 'setXRayed')
+
+    h.sceneXrayed = ['a', 'b', 'c']
+    for (const cb of h.sceneHandlers['objectXRayed'] ?? []) {
+      cb({ id: 'a' }); cb({ id: 'b' }); cb({ id: 'c' })
+    }
+    await new Promise((r) => queueMicrotask(() => r(null)))
+    await flushPromises()
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    w.unmount()
   })
 })
