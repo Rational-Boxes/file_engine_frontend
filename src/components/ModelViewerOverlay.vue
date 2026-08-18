@@ -291,7 +291,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
 import { loadRenditionSet, modelRendition, metamodelRendition } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
-import type { Thread } from '@/services/discussionService'
+import type {
+  Thread,
+  ModelViewpointAnchor,
+  AnchorModelSource,
+} from '@/services/discussionService'
+import { differenceService, type DiffChildRef } from '@/services/differenceService'
+import { errorMessage } from '@/services/apiClient'
 
 const model3d = useModel3dStore()
 const auth = useAuthStore()
@@ -515,7 +521,32 @@ function commentHere() {
   const anchor = viewerRef.value?.captureViewpointAnchor()
   if (!anchor) return
   discMin.value = false // make sure the comment panel is visible
-  threadPanelRef.value?.startAnnotation(anchor)
+  threadPanelRef.value?.startAnnotation(stampSource(anchor))
+}
+
+/**
+ * Record WHICH model a viewpoint was captured against.
+ *
+ * A differenced model is just another 3D model and shares the file's comments,
+ * but a viewpoint taken on the comparison means nothing over the plain model —
+ * the changed elements it frames are not there. Stamping the source is what lets
+ * activating the comment put the reader back in front of what its author saw.
+ */
+function stampSource(anchor: ModelViewpointAnchor): ModelViewpointAnchor {
+  return {
+    ...anchor,
+    model_source: model3d.diff
+      ? { kind: 'diff', base: model3d.diff.base, target: model3d.diff.target }
+      : { kind: 'model' },
+  }
+}
+
+/** Is the viewer already showing what this anchor was captured on? */
+function showingSource(src?: AnchorModelSource): boolean {
+  const want = src ?? { kind: 'model' as const }   // pre-comparison anchors are plain models
+  const have = model3d.diff
+  if (want.kind === 'model') return !have
+  return !!have && have.base === want.base && have.target === want.target
 }
 
 // On-model right-click menu (§9): the viewer picked an object; show a menu at the
@@ -544,7 +575,7 @@ function commentOnObject() {
   const anchor = viewerRef.value?.captureViewpointAnchor(m.worldPos, m.objectId)
   if (!anchor) return
   discMin.value = false
-  threadPanelRef.value?.startAnnotation(anchor)
+  threadPanelRef.value?.startAnnotation(stampSource(anchor))
 }
 // Set the navigation mode from the menu.
 function setNavFromMenu(mode: NavMode) {
@@ -602,6 +633,16 @@ function onThreads(ts: Thread[]) {
 function restoreThreadView(threadId: string, objectId?: string) {
   const anchor = threadsCache.find((t) => t.id === threadId)?.anchor
   if (anchor?.kind !== 'model-viewpoint') return
+
+  // The comment may have been made on the OTHER model — the file's own, or a
+  // comparison of two of its versions. Both share this file's comments, so a
+  // thread list mixes them freely; restoring one has to put the right model up
+  // first, or the viewpoint frames elements that are not in the scene.
+  if (!showingSource(anchor.model_source)) {
+    switchModelThenRestore(anchor.model_source, threadId, objectId)
+    return
+  }
+
   viewerRef.value?.setViewpoint(anchor.viewpoint)
   // Re-draw any measurements captured with the comment (Option B).
   viewerRef.value?.renderMeasurements(anchor.measurements)
@@ -617,6 +658,55 @@ function restoreThreadView(threadId: string, objectId?: string) {
   }
   discMin.value = false
   threadPanelRef.value?.scrollToThread(threadId)
+}
+
+// A restore waiting on a different model to finish loading. The viewpoint can
+// only be applied once the scene it describes actually exists.
+let pendingRestore: { threadId: string; objectId?: string } | null = null
+
+/**
+ * Load the model an anchor belongs to, then restore into it.
+ *
+ * Switching is asynchronous — the comparison's children have to be located and
+ * the viewer has to rebuild the scene — so the restore is parked and replayed by
+ * the `ready` watch below rather than fired at a guessed moment.
+ */
+async function switchModelThenRestore(
+  src: AnchorModelSource | undefined,
+  threadId: string,
+  objectId?: string,
+) {
+  const name = model3d.name.replace(/ — comparison$/, '')
+  pendingRestore = { threadId, objectId }
+  anchorMiss.value = false
+
+  if (!src || src.kind === 'model') {
+    // Back to the file's own model: clearing the pinned children makes the
+    // overlay resolve them again, which is its default behaviour.
+    model3d.open(model3d.uid, name)
+    return
+  }
+
+  try {
+    const res = await differenceService.getWhenReady(model3d.uid, {
+      version: src.target, base: src.base,
+    })
+    const model = res.children.find((c: DiffChildRef) => c.kind === 'model')
+    if (res.status !== 'ready' || !model) {
+      pendingRestore = null
+      resolveError.value = 'The comparison this comment was made on could not be reopened.'
+      return
+    }
+    const meta = res.children.find((c: DiffChildRef) => c.kind === 'metamodel')
+    model3d.open(model3d.uid, `${name} — comparison`, {
+      xktUid: model.uid,
+      metamodelUid: meta?.uid,
+      diff: { base: res.baseVersion, target: res.targetVersion },
+    })
+  } catch (e) {
+    pendingRestore = null
+    resolveError.value = errorMessage(e, 'Could not reopen the comparison for this comment')
+  }
 }
 
 function _q(v: unknown): string | undefined {
@@ -647,7 +737,16 @@ function onAnnotationActivate(threadId: string) {
 
 // Retry the deep-link when the viewer becomes ready or the target changes; reset
 // the once-guard each time the overlay (re)opens.
-watch(() => model3d.ready, () => maybeRestoreDeepLink())
+watch(() => model3d.ready, (ready) => {
+  // A restore that had to switch models replays here, once the scene it
+  // describes actually exists.
+  if (ready && pendingRestore) {
+    const { threadId, objectId } = pendingRestore
+    pendingRestore = null
+    restoreThreadView(threadId, objectId)
+  }
+  maybeRestoreDeepLink()
+})
 watch(
   () => route.query.view,
   () => {

@@ -950,7 +950,8 @@ async function onShowDiff(anchor: DiffViewAnchor, threadId: string) {
       const model = res.children.find((c) => c.kind === 'model')
       const meta = res.children.find((c) => c.kind === 'metamodel')
       if (model) {
-        openComparisonInModelViewer(model.uid, meta?.uid)
+        openComparisonInModelViewer(model.uid, meta?.uid,
+          { base: res.baseVersion, target: res.targetVersion })
         return
       }
     }
@@ -1027,7 +1028,8 @@ async function runDiff(pair: { base: string; target: string }) {
       const model = res.children.find((c) => c.kind === 'model')
       const meta = res.children.find((c) => c.kind === 'metamodel')
       if (model) {
-        openComparisonInModelViewer(model.uid, meta?.uid)
+        openComparisonInModelViewer(model.uid, meta?.uid,
+          { base: res.baseVersion, target: res.targetVersion })
         return
       }
     }
@@ -1076,9 +1078,13 @@ function diffFailureText(status: string) {
  * out of several, and binding it up front made the whole preview component
  * require an active Pinia just to render a PDF.
  */
-function openComparisonInModelViewer(xktUid: string, metamodelUid?: string) {
+function openComparisonInModelViewer(
+  xktUid: string,
+  metamodelUid: string | undefined,
+  pair: { base: string; target: string },
+) {
   useModel3dStore().open(props.uid, `${props.name || 'model'} — comparison`,
-    { xktUid, metamodelUid })
+    { xktUid, metamodelUid, diff: pair })
   diffView.value = null
   // A model has no document preview to return to, so leaving this surface open
   // behind the 3D viewer would strand an empty window.

@@ -42,6 +42,10 @@ interface Model3dState {
   // Empty strings keep the default resolve-on-open behaviour.
   xktUid: string
   metamodelUid: string
+  // Which pair the loaded children compare, when they are a comparison at all.
+  // null = the file's own model. A comment captured here records this, so
+  // activating it later can switch the viewer back to what its author saw.
+  diff: { base: string; target: string } | null
   // --- live viewer state (§5.3) ---
   ready: boolean // a Model3DViewer is mounted with a loaded model
   navMode: NavMode // current CameraControl nav mode
@@ -70,7 +74,7 @@ function freshViewerState() {
 
 export const useModel3dStore = defineStore('model3d', {
   state: (): Model3dState => ({
-    uid: '', name: '', xktUid: '', metamodelUid: '', ...freshViewerState(),
+    uid: '', name: '', xktUid: '', metamodelUid: '', diff: null, ...freshViewerState(),
   }),
   getters: {
     isOpen: (s): boolean => !!s.uid,
@@ -79,20 +83,39 @@ export const useModel3dStore = defineStore('model3d', {
   },
   actions: {
     // `renditions` pins the exact children to load instead of resolving the
-    // file's own model — used by the version-comparison overlay, whose diff XKT
-    // is a different child of the same source file.
-    open(uid: string, name = '', renditions?: { xktUid?: string; metamodelUid?: string }) {
+    // file's own model — used by the version comparison, whose diff XKT is a
+    // different child of the same source file.
+    //
+    // `diff` names the pair those children compare. A differenced model is just
+    // another 3D model, so `uid` stays the SOURCE FILE either way — that is what
+    // keeps its comments part of the file's own conversation rather than filed
+    // against a hidden rendition. This is how the viewer knows which of the two
+    // it is showing, so a comment can record it and restoring one can switch.
+    open(
+      uid: string,
+      name = '',
+      renditions?: { xktUid?: string; metamodelUid?: string; diff?: { base: string; target: string } },
+    ) {
       if (!uid) return
+      const changed = this.uid !== uid || this.xktUid !== (renditions?.xktUid || '')
       this.uid = uid
       this.name = name
       this.xktUid = renditions?.xktUid || ''
       this.metamodelUid = renditions?.metamodelUid || ''
+      this.diff = renditions?.diff ?? null
+      // Pointing at a different model means the mounted scene is stale — it has
+      // to be rebuilt before anything may act on it. Saying so here rather than
+      // leaving `ready` true is what lets a caller wait for the NEW model: a
+      // viewpoint applied to the outgoing scene frames elements that are about
+      // to be replaced.
+      if (changed) this.ready = false
     },
     close() {
       this.uid = ''
       this.name = ''
       this.xktUid = ''
       this.metamodelUid = ''
+      this.diff = null
       this.resetViewerState()
     },
     // --- live viewer state, written by the mounted Model3DViewer ---

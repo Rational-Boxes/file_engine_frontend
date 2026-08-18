@@ -78,8 +78,25 @@ export interface AnchorMeasurement {
   value?: number
 }
 
+/**
+ * Which 3D model a viewpoint was captured against.
+ *
+ * A differenced model is just another 3D model: it lives under the same file and
+ * shares that file's comments. But a viewpoint recorded on the comparison means
+ * nothing over the plain model — the changed elements it frames are not there.
+ * So the anchor names which of the two it belongs to, and activating a comment
+ * switches the viewer to it. Absent = the file's own model, which is what every
+ * anchor recorded before comparisons existed.
+ */
+export interface AnchorModelSource {
+  kind: 'model' | 'diff'
+  base?: string
+  target?: string
+}
+
 export interface ModelViewpointAnchor {
   kind: 'model-viewpoint'
+  model_source?: AnchorModelSource
   schema: string
   viewpoint: unknown
   marker?: { x: number; y: number; z: number }

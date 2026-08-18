@@ -215,8 +215,13 @@ describe('3D comparisons belong to the model viewer', () => {
     // files comments against the uid it is opened with, so passing the diff child
     // here would bury every comment on a hidden rendition — and a differenced
     // model is just another model, where commenting works as it always does.
-    expect(openModel).toHaveBeenCalledWith('f1', expect.stringContaining('comparison'),
-      { xktUid: 'mx', metamodelUid: 'mm' })
+    expect(openModel).toHaveBeenCalledWith('f1', expect.stringContaining('comparison'), {
+      xktUid: 'mx',
+      metamodelUid: 'mm',
+      // The pair travels with it: a comment captured on the comparison records
+      // which one, so activating it later can switch the viewer back to it.
+      diff: { base: '2026-08-16T09:00:00', target: '2026-08-17T10:00:00' },
+    })
     expect(previewClose).toHaveBeenCalled()
     expect(w.find('.dpv-stub').exists()).toBe(false)
   })
