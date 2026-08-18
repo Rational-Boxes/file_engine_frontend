@@ -96,3 +96,160 @@ describe('ThreadPanel deep-link focus', () => {
     w.unmount()
   })
 })
+
+
+// A thread can now be anchored to a comparison as well as to a 3D viewpoint. The
+// panel's job is to offer the way back to it and to hand the host the anchor
+// verbatim — the host owns rendering, the panel owns the affordance.
+describe('comparison-anchored threads', () => {
+  const DIFF_ANCHOR = {
+    kind: 'diff-view' as const,
+    file_uid: 'f1',
+    base: '2026-08-16T09:00:00',
+    target: '2026-08-17T10:00:00',
+    plugin: 'pdf',
+    plugin_version: '1',
+    page: 2,
+    view: 'difference' as const,
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    flags.mockResolvedValue({})
+    listFileReviews.mockResolvedValue([])
+    listReviews.mockResolvedValue([])
+  })
+
+  async function panel(anchor: unknown) {
+    listThreads.mockResolvedValue([{ id: 't1', status: 'open', anchor, comments: [] }])
+    const w = mount(ThreadPanel, { props: { fileUid: 'f1', embedded: true } })
+    await flushPromises()
+    return w
+  }
+
+  it('offers a way back to the comparison a thread was made against', async () => {
+    const w = await panel(DIFF_ANCHOR)
+    const btn = w.findAll('.tp-viewbtn').find((b) => b.text().includes('comparison'))
+    expect(btn).toBeTruthy()
+
+    await btn!.trigger('click')
+    // The anchor goes back to the host untouched — including the page and view, so
+    // the reader lands where the author was rather than on page 1 of the default.
+    expect(w.emitted('show-diff')?.[0]).toEqual([DIFF_ANCHOR, 't1'])
+    w.unmount()
+  })
+
+  it('does not offer 3D affordances for a comparison thread', async () => {
+    const w = await panel(DIFF_ANCHOR)
+    const labels = w.findAll('.tp-viewbtn').map((b) => b.text())
+    // 🎯 View and ⬇ BCF are meaningless without a viewpoint; offering a BCF export
+    // of a PDF comparison would produce a file nothing can open.
+    expect(labels.some((t) => t.includes('BCF'))).toBe(false)
+    expect(labels.some((t) => t.includes('🎯'))).toBe(false)
+    w.unmount()
+  })
+
+  it('reads the same for a 3D viewpoint captured on a comparison', async () => {
+    // From a reader's side, a comment on a document comparison and one on a
+    // model comparison are the same thing: "this is about a comparison, take me
+    // back to it". Different wording per viewer would suggest otherwise.
+    const w = await panel({
+      kind: 'model-viewpoint',
+      viewpoint: {},
+      model_source: { kind: 'diff', base: 'b', target: 't' },
+    })
+    const btn = w.findAll('.tp-viewbtn').find((b) => b.text().includes('comparison'))
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    expect(w.emitted('restore-view')?.[0]).toEqual(['t1'])
+    w.unmount()
+  })
+
+  it('keeps the plain wording for a viewpoint on the model itself', async () => {
+    const w = await panel({ kind: 'model-viewpoint', viewpoint: {} })
+    expect(w.findAll('.tp-viewbtn').some((b) => b.text().includes('🎯 View'))).toBe(true)
+    expect(w.findAll('.tp-viewbtn').some((b) => b.text().includes('comparison'))).toBe(false)
+    w.unmount()
+  })
+
+  it('offers plain threads the way back to the document, but only while covered', async () => {
+    // The peer of the 3D viewer returning you to the model. On the document
+    // itself these would be a row of buttons that all mean "stay here".
+    listThreads.mockResolvedValue([{ id: 't1', status: 'open', anchor: null, comments: [] }])
+    const plain = mount(ThreadPanel, { props: { fileUid: 'f1', embedded: true } })
+    await flushPromises()
+    expect(plain.findAll('.tp-viewbtn').some((b) => b.text().includes('View document'))).toBe(false)
+    plain.unmount()
+
+    const covered = mount(ThreadPanel, {
+      props: { fileUid: 'f1', embedded: true, substituteActive: true },
+    })
+    await flushPromises()
+    const btn = covered.findAll('.tp-viewbtn').find((b) => b.text().includes('View document'))
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    expect(covered.emitted('restore-plain')?.[0]).toEqual(['t1'])
+    covered.unmount()
+  })
+
+  it('marks the thread whose view is on screen', async () => {
+    // The bug: a comparison anchor belongs to the THREAD, but the id was being
+    // fed to the comment-level markup highlight, which compares against COMMENT
+    // ids — so a restored comparison left its own comment looking untouched.
+    listThreads.mockResolvedValue([
+      { id: 't1', status: 'open', anchor: DIFF_ANCHOR, comments: [] },
+      { id: 't2', status: 'open', anchor: null, comments: [] },
+    ])
+    const w = mount(ThreadPanel, {
+      props: { fileUid: 'f1', embedded: true, activeThreadId: 't1' },
+    })
+    await flushPromises()
+    const threads = w.findAll('.thread')
+    expect(threads[0].classes()).toContain('thread-active')
+    expect(threads[1].classes()).not.toContain('thread-active')
+    w.unmount()
+  })
+
+  it('offers no comparison affordance on a plain thread', async () => {
+    const w = await panel(null)
+    expect(w.findAll('.tp-viewbtn').some((b) => b.text().includes('comparison'))).toBe(false)
+    w.unmount()
+  })
+
+  it('records the interface as it stands at post time, not as it stood at capture', async () => {
+    // Attaching a view and then looking closer before posting is normal. A
+    // comment that restores to the viewport you had BEFORE you zoomed in points
+    // at the sheet rather than at the thing you were writing about.
+    const openThread = vi.fn().mockResolvedValue({ id: 't9', comments: [] })
+    const svc = await import('@/services/discussionService')
+    ;(svc.discussionService as unknown as Record<string, unknown>).openThread = openThread
+
+    const moved = { ...DIFF_ANCHOR, page: 5, view: 'before' as const, zoom: 8, pan_x: -400, pan_y: -220 }
+    listThreads.mockResolvedValue([])
+    const w = mount(ThreadPanel, {
+      props: { fileUid: 'f1', embedded: true, anchorProvider: () => moved },
+    })
+    await flushPromises()
+
+    const vm = w.vm as unknown as { startAnnotation: (a: unknown) => void; newBody: string }
+    vm.startAnnotation(DIFF_ANCHOR)
+    vm.newBody = 'the callout moved'
+    await (w.vm as unknown as { open: () => Promise<void> }).open()
+
+    expect(openThread).toHaveBeenCalledWith('f1', expect.objectContaining({ anchor: moved }))
+    w.unmount()
+  })
+
+  it('names what is attached when a comparison rides along with the next comment', async () => {
+    const w = await panel(null)
+    ;(w.vm as unknown as { startAnnotation: (a: unknown) => void }).startAnnotation(DIFF_ANCHOR)
+    await flushPromises()
+    const chip = w.get('.tp-anchor-chip').text()
+    // The chip is the author's only confirmation, so it must say "comparison" —
+    // the 3D wording it used to hard-code would be a plain lie here.
+    expect(chip).toContain('Comparison attached')
+    expect(chip).toContain('difference')
+    expect(chip).toContain('page 3') // 0-based capture, 1-based for a human
+    w.unmount()
+  })
+})

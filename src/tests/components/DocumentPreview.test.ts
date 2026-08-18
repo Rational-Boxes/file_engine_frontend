@@ -45,6 +45,11 @@ const { downloadFile, checkPermission } = vi.hoisted(() => ({
 vi.mock('@/services/fileService', () => ({ fileService: { downloadFile, checkPermission } }))
 const { open, close } = vi.hoisted(() => ({ open: vi.fn(), close: vi.fn() }))
 vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open, close }) }))
+// A comparison requested elsewhere reaches this surface through the difference
+// store; idle (no uid) is the state every test here cares about.
+vi.mock('@/stores/difference', () => ({
+  useDifferenceStore: () => ({ uid: '', name: '', target: '', base: '', close: vi.fn() }),
+}))
 const { push } = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ query: {} }) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ tenant: 'default' }) }))

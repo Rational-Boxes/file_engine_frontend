@@ -78,8 +78,25 @@ export interface AnchorMeasurement {
   value?: number
 }
 
+/**
+ * Which 3D model a viewpoint was captured against.
+ *
+ * A differenced model is just another 3D model: it lives under the same file and
+ * shares that file's comments. But a viewpoint recorded on the comparison means
+ * nothing over the plain model — the changed elements it frames are not there.
+ * So the anchor names which of the two it belongs to, and activating a comment
+ * switches the viewer to it. Absent = the file's own model, which is what every
+ * anchor recorded before comparisons existed.
+ */
+export interface AnchorModelSource {
+  kind: 'model' | 'diff'
+  base?: string
+  target?: string
+}
+
 export interface ModelViewpointAnchor {
   kind: 'model-viewpoint'
+  model_source?: AnchorModelSource
   schema: string
   viewpoint: unknown
   marker?: { x: number; y: number; z: number }
@@ -87,6 +104,39 @@ export interface ModelViewpointAnchor {
   snapshot_rendition_uid?: string
   measurements?: AnchorMeasurement[]
 }
+
+// A comparison anchor (COMMENTS_ON_DIFFERENCES §2): the *rendering set* a comment
+// was made against, named by the same cache key the service computes a diff under
+// — (file_uid, base, target, plugin, plugin_version). Naming the key rather than
+// the rendition uids is what makes the anchor durable: the children can be evicted
+// and recomputed, and this still points at the same comparison, because the
+// pipeline is deterministic. `manifest_uid` is the commit marker at capture time,
+// carried so a restore can tell "recomputed" from "never existed".
+//
+// The server stores anchors as opaque JSONB, so this needs no backend change; it
+// is the viewer for `kind` that knows how to restore one.
+export interface DiffViewAnchor {
+  kind: 'diff-view'
+  file_uid: string
+  base: string
+  target: string
+  plugin: string
+  plugin_version: string
+  manifest_uid?: string
+  /**
+   * Where the author was looking. Page and view alone are not a location on a
+   * large drawing, so the viewport comes too: `zoom` is relative to fit-width
+   * (1 = the whole page) and the pan is in fitted-page pixels.
+   */
+  page?: number
+  view?: 'before' | 'after' | 'difference'
+  zoom?: number
+  pan_x?: number
+  pan_y?: number
+}
+
+/** Every anchor kind a thread can carry. Discriminate on `kind`. */
+export type ThreadAnchor = ModelViewpointAnchor | DiffViewAnchor
 
 export interface Thread {
   id: string
@@ -100,7 +150,7 @@ export interface Thread {
   resolvedBy: string | null
   resolvedVersion: string | null
   anchorStale: boolean
-  anchor: ModelViewpointAnchor | null
+  anchor: ThreadAnchor | null
   comments?: Comment[]
 }
 
@@ -208,7 +258,7 @@ function toThread(t: Record<string, unknown>): Thread {
     resolvedBy: (t.resolved_by as string) ?? null,
     resolvedVersion: (t.resolved_version as string) ?? null,
     anchorStale: !!t.anchor_stale,
-    anchor: (t.anchor as ModelViewpointAnchor) ?? null,
+    anchor: (t.anchor as ThreadAnchor) ?? null,
     comments: Array.isArray(t.comments) ? (t.comments as Record<string, unknown>[]).map(toComment) : undefined,
   }
 }
@@ -261,7 +311,7 @@ export const discussionService = {
       body: string
       version?: string
       mentions?: string[]
-      anchor?: ModelViewpointAnchor | null
+      anchor?: ThreadAnchor | null
       markup?: CommentMarkup | null
     },
   ): Promise<Thread> {

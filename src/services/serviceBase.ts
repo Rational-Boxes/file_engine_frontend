@@ -40,6 +40,7 @@ export const SERVICE_PATHS = {
   ldapAdmin: '/ldapadmin',
   audit: '/audit',
   bcf: '/bcf',
+  difference: '/diff',
 } as const
 
 /**

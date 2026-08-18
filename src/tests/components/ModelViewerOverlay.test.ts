@@ -44,14 +44,21 @@ const hh = vi.hoisted(() => ({
   // ThreadPanel exposed methods.
   scrollToThread: vi.fn(),
   startAnnotation: vi.fn(),
+  getWhenReady: vi.fn(),
+  listVersions: vi.fn(async () => ['2026-08-17T10:00:00', '2026-08-16T09:00:00']),
 }))
+
+vi.mock('@/services/differenceService', () => ({ differenceService: { getWhenReady: hh.getWhenReady } }))
+vi.mock('@/services/apiClient', () => ({ errorMessage: (_e: unknown, m: string) => m }))
 
 vi.mock('@/services/renditions', () => ({
   loadRenditionSet: hh.loadRenditionSet,
   modelRendition: hh.modelRendition,
   metamodelRendition: hh.metamodelRendition,
 }))
-vi.mock('@/services/fileService', () => ({ fileService: { downloadFile: hh.downloadFile } }))
+vi.mock('@/services/fileService', () => ({
+  fileService: { downloadFile: hh.downloadFile, listVersions: hh.listVersions },
+}))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: hh.push }),
   useRoute: () => hh.route,
@@ -88,7 +95,7 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
 vi.mock('@/components/ThreadPanel.vue', () => ({
   default: defineComponent({
     name: 'ThreadPanel',
-    props: ['fileUid', 'embedded', 'hideDock', 'pos'],
+    props: ['fileUid', 'embedded', 'hideDock', 'pos', 'anchorProvider'],
     emits: ['threads', 'restore-view', 'count', 'layout', 'update:pos'],
     setup(_, { expose }) {
       expose({ scrollToThread: hh.scrollToThread, startAnnotation: hh.startAnnotation })
@@ -420,5 +427,211 @@ describe('ModelViewerOverlay', () => {
     })
     await flushPromises()
     expect(w.findAll('.mv-ctxitem').some((b) => b.text().includes('Slice here'))).toBe(false)
+  })
+})
+
+
+// A differenced model is just another 3D model: it lives under the same file and
+// shares that file's comments. But a viewpoint captured on the comparison means
+// nothing over the plain model — the elements it frames are not in that scene —
+// so a comment records which of the two it belongs to and activating it switches.
+describe('comments across a model and its comparison', () => {
+  // Its own pinia and clean spies — without this the suite inherits both from the
+  // describe above, and a call made by an earlier test reads as one made here.
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    hh.route.query = {}
+  })
+
+  const VIEWPOINT = { camera: 'x' }
+  const PAIR = { base: '2026-08-16T09:00:00', target: '2026-08-17T10:00:00' }
+
+  function thread(id: string, model_source?: Record<string, string>) {
+    return { id, status: 'open', comments: [], anchor: { kind: 'model-viewpoint', viewpoint: VIEWPOINT, model_source } }
+  }
+
+  async function overlay(opts?: { comparison?: boolean }) {
+    const store = useModel3dStore()
+    hh.loadRenditionSet.mockResolvedValue({})
+    hh.modelRendition.mockReturnValue({ uid: 'plain-xkt' })
+    if (opts?.comparison) {
+      store.open('f1', 'tower.ifc — comparison', { xktUid: 'diff-xkt', metamodelUid: 'diff-meta', diff: PAIR })
+    } else {
+      store.open('f1', 'tower.ifc')
+    }
+    const w = mountOverlay()
+    await flushPromises()
+    store.setReady(true)
+    await flushPromises()
+    return { w, store }
+  }
+
+  function panel(w: ReturnType<typeof mountOverlay>) {
+    return w.findComponent({ name: 'ThreadPanel' })
+  }
+
+  it('files a comparison thread against the FILE, sharing its conversation', async () => {
+    const { w } = await overlay({ comparison: true })
+    // Not the diff rendition's uid: a comment filed there would be buried on a
+    // hidden child instead of joining the document's own discussion.
+    expect(panel(w).props('fileUid')).toBe('f1')
+  })
+
+  it('records which model a viewpoint was captured on', async () => {
+    const { w } = await overlay({ comparison: true })
+    await w.get('.tp-stub')  // panel is mounted
+    ;(w.vm as unknown as { commentHere: () => void }).commentHere()
+    expect(hh.startAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({ model_source: { kind: 'diff', ...PAIR } }))
+  })
+
+  it('keeps everything the viewpoint captured', async () => {
+    // A comment on the comparison has to restore the whole view: camera,
+    // selection, x-ray, section planes, measurements. All of that lives in the
+    // BCF viewpoint the viewer captures — recording WHICH model it came from
+    // must add to that, never replace any of it.
+    const full = {
+      kind: 'model-viewpoint',
+      schema: 'fileengine.anchor.v1',
+      viewpoint: { camera: 'c', selection: ['a'], xray: ['b'], clipping_planes: [{ x: 1 }] },
+      object_refs: [{ id: 'e1' }],
+      measurements: [{ type: 'distance', points: [] }],
+    }
+    hh.captureViewpointAnchor.mockReturnValueOnce(full as never)
+    const { w } = await overlay({ comparison: true })
+    ;(w.vm as unknown as { commentHere: () => void }).commentHere()
+    expect(hh.startAnnotation).toHaveBeenCalledWith({
+      ...full,
+      model_source: { kind: 'diff', ...PAIR },
+    })
+  })
+
+  it('marks a plain-model viewpoint as such', async () => {
+    const { w } = await overlay()
+    ;(w.vm as unknown as { commentHere: () => void }).commentHere()
+    expect(hh.startAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({ model_source: { kind: 'model' } }))
+  })
+
+  it('restores in place when the right model is already up', async () => {
+    const { w } = await overlay({ comparison: true })
+    panel(w).vm.$emit('threads', [thread('t1', { kind: 'diff', ...PAIR })])
+    panel(w).vm.$emit('restore-view', 't1')
+    await flushPromises()
+    expect(hh.setViewpoint).toHaveBeenCalledWith(VIEWPOINT)
+    expect(hh.getWhenReady).not.toHaveBeenCalled()   // nothing to switch to
+  })
+
+  it('switches to the comparison when activating a comment made on it', async () => {
+    const { w, store } = await overlay()   // showing the plain model
+    hh.getWhenReady.mockResolvedValue({
+      status: 'ready', baseVersion: PAIR.base, targetVersion: PAIR.target,
+      children: [
+        { index: 0, name: 'm.xkt', uid: 'diff-xkt', mode: 'xkt', kind: 'model' },
+        { index: 1, name: 'm.json', uid: 'diff-meta', mode: 'xkt', kind: 'metamodel' },
+      ],
+    })
+
+    panel(w).vm.$emit('threads', [thread('t1', { kind: 'diff', ...PAIR })])
+    panel(w).vm.$emit('restore-view', 't1')
+    await flushPromises()
+
+    expect(hh.getWhenReady).toHaveBeenCalledWith('f1', { version: PAIR.target, base: PAIR.base })
+    expect(store.xktUid).toBe('diff-xkt')
+    expect(store.diff).toEqual(PAIR)
+    // The viewpoint waits for the new scene: applying it to the old one would
+    // frame elements that are not there.
+    expect(hh.setViewpoint).not.toHaveBeenCalled()
+
+    store.setReady(true)
+    await flushPromises()
+    expect(hh.setViewpoint).toHaveBeenCalledWith(VIEWPOINT)
+  })
+
+  it('switches back to the file own model for a plain comment', async () => {
+    const { w, store } = await overlay({ comparison: true })
+    panel(w).vm.$emit('threads', [thread('t1', { kind: 'model' })])
+    panel(w).vm.$emit('restore-view', 't1')
+    await flushPromises()
+
+    expect(store.diff).toBeNull()
+    expect(store.xktUid).toBe('')   // cleared, so the overlay resolves the file own model
+    expect(store.name).toBe('tower.ifc')
+    store.setReady(true)
+    await flushPromises()
+    expect(hh.setViewpoint).toHaveBeenCalledWith(VIEWPOINT)
+  })
+
+  it('treats an anchor with no recorded source as the plain model', async () => {
+    // Every anchor captured before comparisons existed has no model_source.
+    const { w, store } = await overlay({ comparison: true })
+    panel(w).vm.$emit('threads', [thread('t1')])
+    panel(w).vm.$emit('restore-view', 't1')
+    await flushPromises()
+    expect(store.diff).toBeNull()
+  })
+
+  it('assumes the association for a comment written on a comparison', async () => {
+    // The same rule the document surface follows: a comment written while
+    // looking at a comparison is about that comparison, so it must be able to
+    // take a reader back to it — not be filed as a plain comment that cannot.
+    const { w } = await overlay({ comparison: true })
+    const provider = w.findComponent({ name: 'ThreadPanel' }).props('anchorProvider') as
+      (p: unknown) => Record<string, unknown> | null
+    expect(provider(null)).toMatchObject({
+      kind: 'model-viewpoint',
+      model_source: { kind: 'diff', ...PAIR },
+    })
+  })
+
+  it('leaves a comment on the model itself plain', async () => {
+    // Assuming an anchor here would silently turn every passing remark into a
+    // pinned viewpoint; on the model, capturing a view stays deliberate.
+    const { w } = await overlay()
+    const provider = w.findComponent({ name: 'ThreadPanel' }).props('anchorProvider') as
+      (p: unknown) => unknown
+    expect(provider(null)).toBeNull()
+  })
+
+  it('offers the way back to the model itself', async () => {
+    // A comparison is not a separate place — it is the same model shown
+    // differently. Getting back has to be a visible step, not something you find
+    // by closing the viewer or by activating somebody else's comment.
+    const { w, store } = await overlay({ comparison: true })
+    const back = w.findAll('button').find((b) => b.text().includes('Back to the model'))
+    expect(back).toBeTruthy()
+
+    await back!.trigger('click')
+    expect(store.diff).toBeNull()
+    expect(store.xktUid).toBe('')       // resolve the file's own model again
+    expect(store.uid).toBe('f1')        // ...and the comments do not move
+    expect(store.name).toBe('tower.ifc')
+  })
+
+  it('starts a comparison from the model, in the same window', async () => {
+    const { w, store } = await overlay()
+    hh.getWhenReady.mockResolvedValue({
+      status: 'ready', baseVersion: PAIR.base, targetVersion: PAIR.target,
+      children: [{ index: 0, name: 'm.xkt', uid: 'diff-xkt', mode: 'xkt', kind: 'model' }],
+    })
+
+    await w.findAll('button').find((b) => b.text().includes('Compare versions'))!.trigger('click')
+    await flushPromises()
+    w.findComponent({ name: 'VersionPairPicker' }).vm.$emit('compare', PAIR)
+    await flushPromises()
+
+    expect(store.xktUid).toBe('diff-xkt')
+    expect(store.diff).toEqual(PAIR)
+    expect(store.uid).toBe('f1')        // same file, so the same conversation
+  })
+
+  it('says so when the comparison cannot be reopened', async () => {
+    const { w } = await overlay()
+    hh.getWhenReady.mockResolvedValue({ status: 'none', children: [] })
+    panel(w).vm.$emit('threads', [thread('t1', { kind: 'diff', ...PAIR })])
+    panel(w).vm.$emit('restore-view', 't1')
+    await flushPromises()
+    expect(w.text()).toContain('could not be reopened')
   })
 })

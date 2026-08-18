@@ -36,6 +36,40 @@
           <button class="mv-act mv-icon" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset</button>
         </div>
 
+        <!--
+          Which version of this model is on screen, and the way between them.
+          A comparison is not a separate place — it is the same model shown
+          differently, sharing one set of comments — so getting back to the plain
+          model has to be a visible step here, not something you discover by
+          closing the viewer or by activating somebody else's comment.
+        -->
+        <div class="mv-group mv-versions" role="group" aria-label="Model version">
+          <template v-if="model3d.diff">
+            <span class="mv-diffchip" :title="`Comparing ${model3d.diff.base} with ${model3d.diff.target}`">
+              🔀 Comparison
+            </span>
+            <button class="mv-act" title="Show the model itself again" @click="showPlainModel">
+              ← Back to the model
+            </button>
+          </template>
+          <button
+            v-else-if="!comparePicker"
+            class="mv-act"
+            title="Compare two versions of this model"
+            @click="comparePicker = true"
+          >🔀 Compare versions</button>
+
+          <VersionPairPicker
+            v-if="comparePicker || model3d.diff"
+            :uid="model3d.uid"
+            :base="model3d.diff?.base"
+            :target="model3d.diff?.target"
+            :busy="comparing"
+            class="mv-picker"
+            @compare="showComparison"
+          />
+        </div>
+
         <HelpIcon topic="cad-bim" label="About CAD &amp; BIM model viewing" />
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
@@ -242,6 +276,8 @@
             <ThreadPanel
               v-if="model3d.uid"
               ref="threadPanelRef"
+              :anchor-provider="liveModelAnchor"
+              :active-thread-id="activeThreadId"
               :file-uid="model3d.uid"
               embedded
               hide-dock
@@ -285,13 +321,21 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Model3DViewer from '@/components/Model3DViewer.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
+import VersionPairPicker from '@/components/VersionPairPicker.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
 import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
 import { useAuthStore } from '@/stores/auth'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
 import { loadRenditionSet, modelRendition, metamodelRendition } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
-import type { Thread } from '@/services/discussionService'
+import type {
+  Thread,
+  ThreadAnchor,
+  ModelViewpointAnchor,
+  AnchorModelSource,
+} from '@/services/discussionService'
+import { differenceService, type DiffChildRef } from '@/services/differenceService'
+import { errorMessage } from '@/services/apiClient'
 
 const model3d = useModel3dStore()
 const auth = useAuthStore()
@@ -515,7 +559,51 @@ function commentHere() {
   const anchor = viewerRef.value?.captureViewpointAnchor()
   if (!anchor) return
   discMin.value = false // make sure the comment panel is visible
-  threadPanelRef.value?.startAnnotation(anchor)
+  threadPanelRef.value?.startAnnotation(stampSource(anchor))
+}
+
+/**
+ * Record WHICH model a viewpoint was captured against.
+ *
+ * A differenced model is just another 3D model and shares the file's comments,
+ * but a viewpoint taken on the comparison means nothing over the plain model —
+ * the changed elements it frames are not there. Stamping the source is what lets
+ * activating the comment put the reader back in front of what its author saw.
+ */
+function stampSource(anchor: ModelViewpointAnchor): ModelViewpointAnchor {
+  return {
+    ...anchor,
+    model_source: model3d.diff
+      ? { kind: 'diff', base: model3d.diff.base, target: model3d.diff.target }
+      : { kind: 'model' },
+  }
+}
+
+/**
+ * The anchor to record, asked for as a comment is posted.
+ *
+ * In the difference view the association is assumed — the same rule the document
+ * surface follows. A comment written while looking at a comparison is about that
+ * comparison, so it captures the current view rather than being filed as a plain
+ * comment that can never take anyone back to what it describes.
+ *
+ * On the model itself nothing changes: a comment is plain unless the author
+ * explicitly captured a view with "Comment here". Assuming an anchor there would
+ * silently turn every passing remark into a pinned viewpoint.
+ */
+function liveModelAnchor(pending: ThreadAnchor | null): ThreadAnchor | null {
+  if (pending) return pending.kind === 'model-viewpoint' ? stampSource(pending) : null
+  if (!model3d.diff) return null
+  const captured = viewerRef.value?.captureViewpointAnchor()
+  return captured ? stampSource(captured) : null
+}
+
+/** Is the viewer already showing what this anchor was captured on? */
+function showingSource(src?: AnchorModelSource): boolean {
+  const want = src ?? { kind: 'model' as const }   // pre-comparison anchors are plain models
+  const have = model3d.diff
+  if (want.kind === 'model') return !have
+  return !!have && have.base === want.base && have.target === want.target
 }
 
 // On-model right-click menu (§9): the viewer picked an object; show a menu at the
@@ -544,7 +632,7 @@ function commentOnObject() {
   const anchor = viewerRef.value?.captureViewpointAnchor(m.worldPos, m.objectId)
   if (!anchor) return
   discMin.value = false
-  threadPanelRef.value?.startAnnotation(anchor)
+  threadPanelRef.value?.startAnnotation(stampSource(anchor))
 }
 // Set the navigation mode from the menu.
 function setNavFromMenu(mode: NavMode) {
@@ -579,15 +667,19 @@ let deepLinkRestored = false
 // so a newly-created (or teammate's live) annotation gets a marker.
 function onThreads(ts: Thread[]) {
   threadsCache = ts
+  // Threads can now carry other anchor kinds (a comparison), which this viewer
+  // has no marker for — narrowing on `kind` is what keeps them out rather than
+  // producing a marker with every field undefined.
   const markers = ts
-    .filter((t) => t.anchor?.kind === 'model-viewpoint')
-    .map((t) => ({
-      id: t.id,
-      threadId: t.id,
-      marker: t.anchor?.marker,
-      viewpoint: t.anchor?.viewpoint,
-      measurements: t.anchor?.measurements,
-    }))
+    .flatMap((t) => (t.anchor?.kind === 'model-viewpoint'
+      ? [{
+        id: t.id,
+        threadId: t.id,
+        marker: t.anchor.marker,
+        viewpoint: t.anchor.viewpoint,
+        measurements: t.anchor.measurements,
+      }]
+      : []))
   viewerRef.value?.renderAnnotations(markers)
   maybeRestoreDeepLink()
 }
@@ -598,6 +690,16 @@ function onThreads(ts: Thread[]) {
 function restoreThreadView(threadId: string, objectId?: string) {
   const anchor = threadsCache.find((t) => t.id === threadId)?.anchor
   if (anchor?.kind !== 'model-viewpoint') return
+
+  // The comment may have been made on the OTHER model — the file's own, or a
+  // comparison of two of its versions. Both share this file's comments, so a
+  // thread list mixes them freely; restoring one has to put the right model up
+  // first, or the viewpoint frames elements that are not in the scene.
+  if (!showingSource(anchor.model_source)) {
+    switchModelThenRestore(anchor.model_source, threadId, objectId)
+    return
+  }
+
   viewerRef.value?.setViewpoint(anchor.viewpoint)
   // Re-draw any measurements captured with the comment (Option B).
   viewerRef.value?.renderMeasurements(anchor.measurements)
@@ -612,7 +714,93 @@ function restoreThreadView(threadId: string, objectId?: string) {
     else anchorMiss.value = true
   }
   discMin.value = false
+  activeThreadId.value = threadId
   threadPanelRef.value?.scrollToThread(threadId)
+}
+
+// The thread whose view is on screen, so the comment that put you here is
+// marked as such — the same signal the document surface gives.
+const activeThreadId = ref<string | null>(null)
+
+const comparePicker = ref(false)   // the picker is revealed on the plain model
+const comparing = ref(false)
+
+/** The model's own name, with any comparison suffix removed. */
+function plainName(): string {
+  return model3d.name.replace(/ — comparison$/, '')
+}
+
+/**
+ * Back to the model itself. Clearing the pinned children is what does it: with
+ * none set the overlay resolves the file's own model, which is its default.
+ * The uid never changes — a comparison was always the same file — so the
+ * comments beside it do not move.
+ */
+function showPlainModel() {
+  comparePicker.value = false
+  model3d.open(model3d.uid, plainName())
+}
+
+/** Show a comparison of two versions of this model, in place. */
+async function showComparison(pair: { base: string; target: string }) {
+  comparing.value = true
+  resolveError.value = ''
+  try {
+    const res = await differenceService.getWhenReady(model3d.uid, {
+      version: pair.target, base: pair.base,
+    })
+    const model = res.children.find((c: DiffChildRef) => c.kind === 'model')
+    if (res.status !== 'ready' || !model) {
+      resolveError.value = res.detail || 'No comparison could be produced for these two versions.'
+      return
+    }
+    const meta = res.children.find((c: DiffChildRef) => c.kind === 'metamodel')
+    comparePicker.value = false
+    model3d.open(model3d.uid, `${plainName()} — comparison`, {
+      xktUid: model.uid,
+      metamodelUid: meta?.uid,
+      diff: { base: res.baseVersion, target: res.targetVersion },
+    })
+  } catch (e) {
+    resolveError.value = errorMessage(e, 'Could not compare these two versions')
+  } finally {
+    comparing.value = false
+  }
+}
+
+// A restore waiting on a different model to finish loading. The viewpoint can
+// only be applied once the scene it describes actually exists.
+let pendingRestore: { threadId: string; objectId?: string } | null = null
+
+/**
+ * Load the model an anchor belongs to, then restore into it.
+ *
+ * Switching is asynchronous — the comparison's children have to be located and
+ * the viewer has to rebuild the scene — so the restore is parked and replayed by
+ * the `ready` watch below rather than fired at a guessed moment.
+ */
+async function switchModelThenRestore(
+  src: AnchorModelSource | undefined,
+  threadId: string,
+  objectId?: string,
+) {
+  pendingRestore = { threadId, objectId }
+  anchorMiss.value = false
+
+  if (!src || src.kind === 'model') {
+    showPlainModel()
+    return
+  }
+
+  await showComparison({ base: src.base ?? '', target: src.target ?? '' })
+  // showComparison reports its own failure; if it could not switch, the parked
+  // restore would otherwise sit waiting for a model that is never coming.
+  if (!showingSource(src)) {
+    pendingRestore = null
+    if (resolveError.value) {
+      resolveError.value = 'The comparison this comment was made on could not be reopened.'
+    }
+  }
 }
 
 function _q(v: unknown): string | undefined {
@@ -638,12 +826,22 @@ function onRestoreView(threadId: string) {
 // A marker was clicked: the viewer already restored the viewpoint; focus the thread.
 function onAnnotationActivate(threadId: string) {
   discMin.value = false
+  activeThreadId.value = threadId
   threadPanelRef.value?.scrollToThread(threadId)
 }
 
 // Retry the deep-link when the viewer becomes ready or the target changes; reset
 // the once-guard each time the overlay (re)opens.
-watch(() => model3d.ready, () => maybeRestoreDeepLink())
+watch(() => model3d.ready, (ready) => {
+  // A restore that had to switch models replays here, once the scene it
+  // describes actually exists.
+  if (ready && pendingRestore) {
+    const { threadId, objectId } = pendingRestore
+    pendingRestore = null
+    restoreThreadView(threadId, objectId)
+  }
+  maybeRestoreDeepLink()
+})
 watch(
   () => route.query.view,
   () => {
@@ -675,15 +873,29 @@ async function toggleSidebar() {
 }
 
 // Resolve the source file's `model` (.xkt) rendition whenever the viewer opens.
+//
+// A caller may instead PIN the exact children to load (model3d.xktUid): the
+// version-comparison overlay does this, because a diff model is a different child
+// of the same source file and resolving the file's own `model` rendition would
+// silently open the current model instead of the comparison — the wrong thing,
+// shown confidently.
 watch(
-  () => model3d.uid,
-  async (uid) => {
+  () => `${model3d.uid}|${model3d.xktUid}`,
+  async () => {
+    const uid = model3d.uid
     xktUid.value = ''
     metamodelUid.value = ''
     resolveError.value = ''
     if (!uid) return
     document.body.style.overflow = 'hidden'
     await nextTick() // ensure the sidebar tree container exists before the viewer mounts
+
+    if (model3d.xktUid) {
+      xktUid.value = model3d.xktUid
+      metamodelUid.value = model3d.metamodelUid || ''
+      return
+    }
+
     try {
       const set = await loadRenditionSet(uid)
       const model = modelRendition(set)
@@ -757,6 +969,17 @@ onBeforeUnmount(() => {
 }
 .mv-toggle,
 .mv-act,
+.mv-versions { gap: 0.4rem; align-items: center; }
+.mv-diffchip {
+  font-size: 0.78rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  opacity: 0.9;
+}
+/* The picker is a light-surface control dropped into dark chrome. */
+.mv-picker { --card: rgba(255, 255, 255, 0.08); --border: rgba(255, 255, 255, 0.3); --fg: #f3f4f6; --muted: #cbd5e1; }
+
 .mv-x {
   background: transparent;
   border: 1px solid #3a3d42;
