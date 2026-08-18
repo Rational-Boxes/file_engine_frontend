@@ -86,7 +86,7 @@
           @state="diffPos = $event"
         />
         <div class="dp-actions">
-          <span class="dp-markup-tag">🔀 Comparison — {{ diffLabel }}</span>
+          <span class="dp-markup-tag" :title="diffLabelFull">🔀 Comparison — {{ diffLabel }}</span>
           <VersionPairPicker
             :uid="uid"
             :base="diffView.anchor?.base"
@@ -368,7 +368,7 @@ import { fileService } from '@/services/fileService'
 import { usePreviewStore } from '@/stores/preview'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
-import { formatVersionMinute } from '@/utils/format'
+import { formatVersionMinute, formatVersionTimestamp } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -521,6 +521,16 @@ const openHint = computed(() =>
 
 // Names the pair on screen. Timestamps are what a version *is* in this system, so
 // the label uses them rather than inventing revision numbers that don't exist.
+// The tooltip behind the (clipped) header label. Deliberately the FULLER form —
+// a tooltip is where the seconds are worth having, since that is what
+// distinguishes two versions saved a minute apart.
+const diffLabelFull = computed(() => {
+  const a = diffView.value?.anchor
+  if (!a) return ''
+  const when = (v: string) => (v ? formatVersionTimestamp(v) : 'the previous version')
+  return `Comparing ${when(a.base)} with ${when(a.target)}`
+})
+
 const diffLabel = computed(() => {
   const a = diffView.value?.anchor
   if (!a) return ''
@@ -1481,6 +1491,12 @@ function cleanup() {
   font-size: 12px;
   color: var(--primary);
   font-weight: 600;
+  /* The action bar is crowded; clip rather than wrap it onto a second line.
+     The title carries the unabbreviated pair. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 28ch;
 }
 .dp-hint {
   font-size: 12px;

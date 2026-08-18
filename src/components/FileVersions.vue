@@ -40,7 +40,11 @@
             <!-- Who put this version here. Shown only when the core actually
                  recorded it: older rows have no uploader, and a blank is honest
                  where a guess would not be. -->
-            <span v-if="uploaderOf(ts)" class="v-by" :title="`Uploaded by ${uploaderOf(ts)}`">
+            <span
+              v-if="uploaderOf(ts)"
+              class="v-by"
+              :title="`${formatVersionTimestamp(ts)} — uploaded by ${uploaderOf(ts)}`"
+            >
               {{ uploaderOf(ts) }}
             </span>
           </td>
@@ -337,6 +341,12 @@ async function purge() {
   display: block;
   font-size: 0.75rem;
   color: var(--muted);
+  /* Clip rather than wrap or stretch the column — a long address would
+     otherwise push the actions off the row. The title carries the full value. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
 }
 
 .v-cur {
