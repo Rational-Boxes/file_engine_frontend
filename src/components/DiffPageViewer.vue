@@ -138,6 +138,7 @@
       <div
         v-if="showNavigator"
         class="dv-map"
+        :class="{ active: navDragging }"
         title="Click or drag to move the view"
         @pointerdown.stop="startNavDrag"
         @pointermove.stop="onNavMove"
@@ -303,7 +304,7 @@ const navBoxStyle = computed(() => {
   }
 })
 
-let navDragging = false
+const navDragging = ref(false)
 
 /** Centre the view on the point of the page under the pointer. */
 function navMoveTo(clientX: number, clientY: number) {
@@ -320,18 +321,18 @@ function navMoveTo(clientX: number, clientY: number) {
 }
 
 function startNavDrag(e: PointerEvent) {
-  navDragging = true
+  navDragging.value = true
   ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
   navMoveTo(e.clientX, e.clientY)
   e.preventDefault()
 }
 
 function onNavMove(e: PointerEvent) {
-  if (navDragging) navMoveTo(e.clientX, e.clientY)
+  if (navDragging.value) navMoveTo(e.clientX, e.clientY)
 }
 
 function endNavDrag(e: PointerEvent) {
-  navDragging = false
+  navDragging.value = false
   ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
 }
 
@@ -635,6 +636,27 @@ watch([pageIndex, view, zoom, panX, panY], () => emit('state', {
   cursor: crosshair;
   line-height: 0;
   touch-action: none; /* pointer-drag to pan, not a scroll gesture */
+
+  /*
+   * Faded until wanted. The map sits ON the drawing, so at full strength it hides
+   * the top-left corner of the very page it is there to help you read. Translucent
+   * it still answers "where am I" at a glance, and solidifies the moment you go to
+   * use it.
+   */
+  opacity: 0.4;
+  transition: opacity 0.15s ease-out;
+}
+
+/* `active` covers the drag: the pointer is captured, so it can leave the map
+   entirely mid-drag and :hover would drop out from under it. */
+.dv-map:hover,
+.dv-map:focus-within,
+.dv-map.active {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-map { transition: none; }
 }
 
 .dv-map-thumb {

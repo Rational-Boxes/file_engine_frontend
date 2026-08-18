@@ -433,6 +433,22 @@ describe('the pan navigator', () => {
     expect(box(w)).toEqual(settled)
   })
 
+  it('stays solid for the whole drag, not just while the pointer is over it', async () => {
+    // The pointer is captured during a drag, so it can leave the map entirely —
+    // :hover alone would drop out from under it and the map would fade mid-use.
+    const w = await viewer({ w: 800, h: 600 })
+    const el = map(w)
+    expect(w.get('.dv-map').classes()).not.toContain('active')
+
+    point(el, 'pointerdown', 84, 84)
+    await flushPromises()
+    expect(w.get('.dv-map').classes()).toContain('active')
+
+    point(el, 'pointerup', 84, 84)
+    await flushPromises()
+    expect(w.get('.dv-map').classes()).not.toContain('active')
+  })
+
   it('does not let the map gesture reach the page underneath', async () => {
     // The stage pans on pointerdown too; without stopping propagation a click on
     // the map would recentre AND start a drag of the page.
