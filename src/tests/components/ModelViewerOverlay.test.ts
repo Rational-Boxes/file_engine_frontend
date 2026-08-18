@@ -95,7 +95,7 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
 vi.mock('@/components/ThreadPanel.vue', () => ({
   default: defineComponent({
     name: 'ThreadPanel',
-    props: ['fileUid', 'embedded', 'hideDock', 'pos'],
+    props: ['fileUid', 'embedded', 'hideDock', 'pos', 'anchorProvider'],
     emits: ['threads', 'restore-view', 'count', 'layout', 'update:pos'],
     setup(_, { expose }) {
       expose({ scrollToThread: hh.scrollToThread, startAnnotation: hh.startAnnotation })
@@ -570,6 +570,28 @@ describe('comments across a model and its comparison', () => {
     panel(w).vm.$emit('restore-view', 't1')
     await flushPromises()
     expect(store.diff).toBeNull()
+  })
+
+  it('assumes the association for a comment written on a comparison', async () => {
+    // The same rule the document surface follows: a comment written while
+    // looking at a comparison is about that comparison, so it must be able to
+    // take a reader back to it — not be filed as a plain comment that cannot.
+    const { w } = await overlay({ comparison: true })
+    const provider = w.findComponent({ name: 'ThreadPanel' }).props('anchorProvider') as
+      (p: unknown) => Record<string, unknown> | null
+    expect(provider(null)).toMatchObject({
+      kind: 'model-viewpoint',
+      model_source: { kind: 'diff', ...PAIR },
+    })
+  })
+
+  it('leaves a comment on the model itself plain', async () => {
+    // Assuming an anchor here would silently turn every passing remark into a
+    // pinned viewpoint; on the model, capturing a view stays deliberate.
+    const { w } = await overlay()
+    const provider = w.findComponent({ name: 'ThreadPanel' }).props('anchorProvider') as
+      (p: unknown) => unknown
+    expect(provider(null)).toBeNull()
   })
 
   it('offers the way back to the model itself', async () => {

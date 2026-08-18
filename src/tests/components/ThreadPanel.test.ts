@@ -149,6 +149,29 @@ describe('comparison-anchored threads', () => {
     w.unmount()
   })
 
+  it('reads the same for a 3D viewpoint captured on a comparison', async () => {
+    // From a reader's side, a comment on a document comparison and one on a
+    // model comparison are the same thing: "this is about a comparison, take me
+    // back to it". Different wording per viewer would suggest otherwise.
+    const w = await panel({
+      kind: 'model-viewpoint',
+      viewpoint: {},
+      model_source: { kind: 'diff', base: 'b', target: 't' },
+    })
+    const btn = w.findAll('.tp-viewbtn').find((b) => b.text().includes('comparison'))
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    expect(w.emitted('restore-view')?.[0]).toEqual(['t1'])
+    w.unmount()
+  })
+
+  it('keeps the plain wording for a viewpoint on the model itself', async () => {
+    const w = await panel({ kind: 'model-viewpoint', viewpoint: {} })
+    expect(w.findAll('.tp-viewbtn').some((b) => b.text().includes('🎯 View'))).toBe(true)
+    expect(w.findAll('.tp-viewbtn').some((b) => b.text().includes('comparison'))).toBe(false)
+    w.unmount()
+  })
+
   it('offers no comparison affordance on a plain thread', async () => {
     const w = await panel(null)
     expect(w.findAll('.tp-viewbtn').some((b) => b.text().includes('comparison'))).toBe(false)

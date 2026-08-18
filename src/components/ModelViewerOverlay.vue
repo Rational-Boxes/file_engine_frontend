@@ -276,6 +276,7 @@
             <ThreadPanel
               v-if="model3d.uid"
               ref="threadPanelRef"
+              :anchor-provider="liveModelAnchor"
               :file-uid="model3d.uid"
               embedded
               hide-dock
@@ -328,6 +329,7 @@ import { loadRenditionSet, modelRendition, metamodelRendition } from '@/services
 import { fileService } from '@/services/fileService'
 import type {
   Thread,
+  ThreadAnchor,
   ModelViewpointAnchor,
   AnchorModelSource,
 } from '@/services/discussionService'
@@ -574,6 +576,25 @@ function stampSource(anchor: ModelViewpointAnchor): ModelViewpointAnchor {
       ? { kind: 'diff', base: model3d.diff.base, target: model3d.diff.target }
       : { kind: 'model' },
   }
+}
+
+/**
+ * The anchor to record, asked for as a comment is posted.
+ *
+ * In the difference view the association is assumed — the same rule the document
+ * surface follows. A comment written while looking at a comparison is about that
+ * comparison, so it captures the current view rather than being filed as a plain
+ * comment that can never take anyone back to what it describes.
+ *
+ * On the model itself nothing changes: a comment is plain unless the author
+ * explicitly captured a view with "Comment here". Assuming an anchor there would
+ * silently turn every passing remark into a pinned viewpoint.
+ */
+function liveModelAnchor(pending: ThreadAnchor | null): ThreadAnchor | null {
+  if (pending) return pending.kind === 'model-viewpoint' ? stampSource(pending) : null
+  if (!model3d.diff) return null
+  const captured = viewerRef.value?.captureViewpointAnchor()
+  return captured ? stampSource(captured) : null
 }
 
 /** Is the viewer already showing what this anchor was captured on? */

@@ -117,14 +117,22 @@
         <div v-if="t.anchorStale || t.status === 'resolved' || t.status === 'open'" class="thread-head">
           <span v-if="t.anchorStale" class="stale" title="Commented on an earlier revision">stale</span>
           <span v-if="t.status === 'resolved'" class="badge-res">resolved</span>
-          <!-- Annotation thread: restore the author's captured 3D view (§9). -->
+          <!--
+            Annotation thread: restore the author's captured 3D view (§9).
+
+            A viewpoint captured on a version comparison says so, and reads the
+            same as one on a document comparison — from the reader's side both
+            are "this comment is about a comparison; take me back to it", and
+            calling them different things in different viewers would suggest they
+            are different kinds of thing.
+          -->
           <button
             v-if="t.anchor?.kind === 'model-viewpoint'"
             type="button"
             class="tp-viewbtn"
-            title="Restore this 3D view"
+            :title="onComparison(t) ? 'Reopen this comparison' : 'Restore this 3D view'"
             @click="emit('restore-view', t.id)"
-          >🎯 View</button>
+          >{{ onComparison(t) ? '🔀 View comparison' : '🎯 View' }}</button>
           <!-- Comparison thread: reopen the exact rendering set the author was
                looking at — the peer of 🎯 View and of "view marked-up copy". -->
           <button
@@ -571,6 +579,11 @@ function scrollToThread(threadId: string) {
   })
 }
 defineExpose({ startAnnotation, clearPendingAnchor, scrollToThread })
+
+// Was this comment made on a version comparison rather than the model itself?
+function onComparison(t: Thread): boolean {
+  return t.anchor?.kind === 'model-viewpoint' && t.anchor.model_source?.kind === 'diff'
+}
 
 // What to record at post time. Asked for even with nothing attached, so a host
 // showing something anchorable (a comparison) can say so.
