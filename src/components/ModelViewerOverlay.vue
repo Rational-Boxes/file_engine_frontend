@@ -969,17 +969,6 @@ onBeforeUnmount(() => {
 }
 .mv-toggle,
 .mv-act,
-.mv-versions { gap: 0.4rem; align-items: center; }
-.mv-diffchip {
-  font-size: 0.78rem;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 999px;
-  padding: 0.05rem 0.5rem;
-  opacity: 0.9;
-}
-/* The picker is a light-surface control dropped into dark chrome. */
-.mv-picker { --card: rgba(255, 255, 255, 0.08); --border: rgba(255, 255, 255, 0.3); --fg: #f3f4f6; --muted: #cbd5e1; }
-
 .mv-x {
   background: transparent;
   border: 1px solid #3a3d42;
@@ -988,6 +977,33 @@ onBeforeUnmount(() => {
   padding: 0.25rem 0.5rem;
   cursor: pointer;
   white-space: nowrap;
+}
+
+/* Version navigation: the comparison chip, the way back, and the pair picker. */
+.mv-versions {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.mv-diffchip {
+  font-size: 0.78rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  opacity: 0.9;
+}
+
+/* The picker is built for a light surface; retint its tokens for dark chrome.
+   Its <select>s are native controls, so their popup list is drawn by the browser
+   — `color-scheme` is what makes that list dark too, rather than a white menu
+   springing out of a dark toolbar. */
+.mv-picker {
+  --card: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.3);
+  --fg: #f3f4f6;
+  --muted: #cbd5e1;
+  color-scheme: dark;
 }
 
 .mv-act:hover {
