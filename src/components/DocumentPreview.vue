@@ -368,6 +368,7 @@ import { fileService } from '@/services/fileService'
 import { usePreviewStore } from '@/stores/preview'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
+import { formatVersionMinute } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -523,8 +524,8 @@ const openHint = computed(() =>
 const diffLabel = computed(() => {
   const a = diffView.value?.anchor
   if (!a) return ''
-  const short = (v: string) => (v || '').replace('T', ' ').slice(0, 19) || 'previous'
-  return `${short(a.base)} → ${short(a.target)}`
+  const when = (v: string) => (v ? formatVersionMinute(v) : 'previous')
+  return `${when(a.base)} → ${when(a.target)}`
 })
 
 // What the PDF.js viewer renders: a comment's marked-up copy (read-only) when

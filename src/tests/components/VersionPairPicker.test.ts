@@ -122,8 +122,10 @@ describe('who uploaded each version', () => {
     expect(labels.some((t) => t.includes('ana@example.com'))).toBe(true)
     expect(labels.some((t) => t.includes('bo@example.com'))).toBe(true)
     // A version the core has no uploader for shows the timestamp alone rather
-    // than a dangling separator.
+    // than a dangling separator — and to the MINUTE: versions are minutes or
+    // hours apart, so seconds are noise that makes two of them harder to tell
+    // apart rather than easier.
     const bare = labels.find((t) => t.startsWith('2026-08-15'))
-    expect(bare).toBe('2026-08-15 08:00:00')
+    expect(bare).toBe('2026-08-15 08:00')
   })
 })

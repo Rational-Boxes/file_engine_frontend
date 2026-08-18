@@ -64,6 +64,7 @@
 import { computed, ref, watch } from 'vue'
 import { fileService } from '@/services/fileService'
 import { errorMessage } from '@/services/apiClient'
+import { formatVersionMinute } from '@/utils/format'
 
 const props = defineProps<{
   uid: string
@@ -106,7 +107,7 @@ function label(v: string) {
   // revision numbers the rest of the stack does not have. The uploader is
   // appended when the core recorded one — on a shared document "which version"
   // is usually really a question about who changed it.
-  const when = (v || '').replace('T', ' ').slice(0, 19) || v
+  const when = formatVersionMinute(v)
   const who = uploaders.value[v]
   return who ? `${when} — ${who}` : when
 }
