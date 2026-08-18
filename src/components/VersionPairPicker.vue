@@ -32,8 +32,18 @@
   <div class="vp-root">
     <label class="vp-field">
       <span class="vp-lbl">Before</span>
-      <select v-model="pickBase" class="vp-sel" :disabled="busy || loading" @change="onPick">
-        <option v-for="v in baseOptions" :key="v" :value="v">{{ label(v) }}</option>
+      <!-- title on both the select and its options: the control is capped at
+           13rem, so a timestamp with a long uploader beside it is clipped both in
+           the closed control and in the open list. The tooltip is the only way to
+           read the whole thing without widening the layout. -->
+      <select
+        v-model="pickBase"
+        class="vp-sel"
+        :title="label(pickBase)"
+        :disabled="busy || loading"
+        @change="onPick"
+      >
+        <option v-for="v in baseOptions" :key="v" :value="v" :title="label(v)">{{ label(v) }}</option>
       </select>
     </label>
 
@@ -41,8 +51,14 @@
 
     <label class="vp-field">
       <span class="vp-lbl">After</span>
-      <select v-model="pickTarget" class="vp-sel" :disabled="busy || loading" @change="onPick">
-        <option v-for="v in targetOptions" :key="v" :value="v">{{ label(v) }}</option>
+      <select
+        v-model="pickTarget"
+        class="vp-sel"
+        :title="label(pickTarget)"
+        :disabled="busy || loading"
+        @change="onPick"
+      >
+        <option v-for="v in targetOptions" :key="v" :value="v" :title="label(v)">{{ label(v) }}</option>
       </select>
     </label>
 

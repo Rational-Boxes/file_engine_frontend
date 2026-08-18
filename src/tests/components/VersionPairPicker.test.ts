@@ -84,6 +84,28 @@ describe('the pair stays comparable', () => {
   })
 })
 
+describe('tooltips where the layout clips', () => {
+  it('carries the full timestamp-and-uploader on the option and the control', async () => {
+    // The select is capped at 13rem, so a timestamp with a long address beside
+    // it is cut off both closed and open. The tooltip is the only way to read it
+    // without widening the layout.
+    listVersionDetails.mockResolvedValue([
+      { version: V[0], revised_by: 'a-rather-long-name@department.example.com' },
+      { version: V[1], revised_by: 'bo@example.com' },
+      { version: V[2], revised_by: '' },
+    ])
+    const w = await picker()
+
+    const opts = w.findAll('option')
+    const long = opts.find((o) => o.text().includes('a-rather-long-name'))
+    expect(long!.attributes('title')).toBe(long!.text())
+
+    // ...and the closed control shows what is currently selected.
+    const after = w.findAll('select')[1]
+    expect(after.attributes('title')).toContain('a-rather-long-name@department.example.com')
+  })
+})
+
 describe('emitting', () => {
   it('emits the chosen pair', async () => {
     const w = await picker({ base: V[2], target: V[0] })
