@@ -37,6 +37,12 @@
           </td>
           <td class="v-ts">
             {{ formatVersionTimestamp(ts) }}<span v-if="ts === current" class="v-cur">current</span>
+            <!-- Who put this version here. Shown only when the core actually
+                 recorded it: older rows have no uploader, and a blank is honest
+                 where a guess would not be. -->
+            <span v-if="uploaderOf(ts)" class="v-by" :title="`Uploaded by ${uploaderOf(ts)}`">
+              {{ uploaderOf(ts) }}
+            </span>
           </td>
           <td class="v-act">
             <button class="link" :disabled="busy" @click="download(ts)">download</button>
@@ -105,6 +111,8 @@ const difference = useDifferenceStore()
 const preview = usePreviewStore()
 
 const versions = ref<string[]>([])
+// version timestamp -> uploader. Empty for versions the core has no record for.
+const uploaders = ref<Record<string, string>>({})
 // At most two, in click order. The cap is enforced on the inputs as well, so the
 // invalid state is unreachable rather than merely rejected on submit.
 const selected = ref<string[]>([])
@@ -122,8 +130,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const list = await fileService.listVersions(props.uid)
-    versions.value = [...list].sort().reverse() // timestamp ids → newest first
+    const entries = await fileService.listVersionDetails(props.uid)
+    uploaders.value = Object.fromEntries(entries.map((e) => [e.version, e.revised_by]))
+    versions.value = entries.map((e) => e.version).sort().reverse() // newest first
     // With exactly two versions there is only ONE possible pair, so asking the
     // reviewer to tick both is busywork — preselect it and leave Compare ready.
     // With three or more the choice is real and must stay explicit.
@@ -134,6 +143,11 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+/** The user who uploaded a version, or '' when the core has no record. */
+function uploaderOf(ts: string): string {
+  return uploaders.value[ts] || ''
 }
 
 function isPicked(ts: string): boolean {
@@ -317,6 +331,12 @@ async function purge() {
 
 .v-list tr.current .v-ts {
   font-weight: 600;
+}
+
+.v-by {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .v-cur {

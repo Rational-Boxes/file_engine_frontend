@@ -17,15 +17,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
-const { listVersions, getVersion, restoreVersion, purgeVersions } = vi.hoisted(() => ({
-  listVersions: vi.fn(),
+const { listVersionDetails, getVersion, restoreVersion, purgeVersions } = vi.hoisted(() => ({
+  listVersionDetails: vi.fn(),
   getVersion: vi.fn(),
   restoreVersion: vi.fn(),
   purgeVersions: vi.fn(),
 }))
 
 vi.mock('@/services/fileService', () => ({
-  fileService: { listVersions, getVersion, restoreVersion, purgeVersions },
+  fileService: { listVersionDetails, getVersion, restoreVersion, purgeVersions },
 }))
 vi.mock('@/services/apiClient', () => ({ errorMessage: (e: unknown) => String(e) }))
 
@@ -40,7 +40,7 @@ describe('FileVersions', () => {
     // FileVersions now opens the comparison store from its `compare` action.
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    listVersions.mockResolvedValue(['v1', 'v3', 'v2'])
+    listVersionDetails.mockResolvedValue(['v1', 'v3', 'v2'].map((version) => ({ version, revised_by: '' })))
     restoreVersion.mockResolvedValue('v3')
     purgeVersions.mockResolvedValue(undefined)
   })
@@ -59,12 +59,12 @@ describe('FileVersions', () => {
   it('restores a non-current version and re-emits changed', async () => {
     const w = mountIt()
     await flushPromises()
-    listVersions.mockClear()
+    listVersionDetails.mockClear()
     const restoreBtn = w.findAll('tbody tr')[2].findAll('button').find((b) => b.text() === 'restore')! // v1
     await restoreBtn.trigger('click')
     await flushPromises()
     expect(restoreVersion).toHaveBeenCalledWith('f1', 'v1')
-    expect(listVersions).toHaveBeenCalled() // reloaded
+    expect(listVersionDetails).toHaveBeenCalled() // reloaded
     expect(w.emitted('changed')).toBeTruthy()
   })
 
@@ -111,7 +111,7 @@ describe('FileVersions — compare', () => {
     w.findAll('button').find((b) => b.text().includes('Compare selected'))!
 
   it('offers a checkbox per version and a disabled compare button', async () => {
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
 
@@ -122,7 +122,7 @@ describe('FileVersions — compare', () => {
   it('enables compare only when exactly two are selected', async () => {
     // A diff is defined between a PAIR: one has nothing to compare against and
     // three has no single answer.
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
 
@@ -134,7 +134,7 @@ describe('FileVersions — compare', () => {
   })
 
   it('makes a third selection unreachable rather than rejecting it later', async () => {
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
 
@@ -144,7 +144,7 @@ describe('FileVersions — compare', () => {
   })
 
   it('deselecting frees the third checkbox again', async () => {
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
 
@@ -157,7 +157,7 @@ describe('FileVersions — compare', () => {
   it('opens the pair the right way round however it was ticked', async () => {
     // versions render newest-first, so list POSITION decides old/new — ticking
     // bottom-up must not invert the comparison.
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt({ name: 'plan.pdf' })
     await flushPromises()
 
@@ -176,7 +176,7 @@ describe('FileVersions — compare', () => {
   })
 
   it('compares two adjacent versions as an explicit pair', async () => {
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
     const { useDifferenceStore } = await import('@/stores/difference')
@@ -191,7 +191,7 @@ describe('FileVersions — compare', () => {
   })
 
   it('clears the selection', async () => {
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
 
@@ -201,7 +201,7 @@ describe('FileVersions — compare', () => {
   })
 
   it('hides the compare bar when there is only one version', async () => {
-    listVersions.mockResolvedValue(['v1'])
+    listVersionDetails.mockResolvedValue(['v1'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
     expect(w.findAll('button').some((b) => b.text().includes('Compare selected'))).toBe(false)
@@ -212,12 +212,12 @@ describe('FileVersions — compare', () => {
     // The second file has THREE versions on purpose: a two-version file
     // preselects its own pair, which would mask whether the old selection was
     // actually cleared.
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
     await boxes(w)[0].trigger('change')
 
-    listVersions.mockResolvedValue(['x1', 'x2', 'x3'])
+    listVersionDetails.mockResolvedValue(['x1', 'x2', 'x3'].map((version) => ({ version, revised_by: '' })))
     await w.setProps({ uid: 'f2' })
     await flushPromises()
     expect(compareBtn(w).attributes('disabled')).toBeDefined()
@@ -233,7 +233,7 @@ describe('FileVersions — two-version convenience', () => {
 
   it('preselects both when there are exactly two versions', async () => {
     // Only one pair is possible, so making the reviewer tick both is busywork.
-    listVersions.mockResolvedValue(['v1', 'v2'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
 
@@ -245,7 +245,7 @@ describe('FileVersions — two-version convenience', () => {
   })
 
   it('compares that pair the right way round without any clicks', async () => {
-    listVersions.mockResolvedValue(['v1', 'v2'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt({ name: 'plan.pdf' })
     await flushPromises()
 
@@ -261,7 +261,7 @@ describe('FileVersions — two-version convenience', () => {
     // There used to be a second, comparison-only window. A reader in it had no
     // comments, and a reader in the preview had no comparison. Compare now names
     // the pair AND opens the one surface that shows both.
-    listVersions.mockResolvedValue(['v1', 'v2'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt({ uid: 'f1', name: 'plan.pdf' })
     await flushPromises()
 
@@ -276,7 +276,7 @@ describe('FileVersions — two-version convenience', () => {
   it('does NOT preselect when the choice is real', async () => {
     // Three or more versions means a genuine decision; guessing one would be
     // worse than asking, because a wrong default is invisible.
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
 
@@ -289,11 +289,11 @@ describe('FileVersions — two-version convenience', () => {
   })
 
   it('re-preselects when switching to another two-version file', async () => {
-    listVersions.mockResolvedValue(['v1', 'v2', 'v3'])
+    listVersionDetails.mockResolvedValue(['v1', 'v2', 'v3'].map((version) => ({ version, revised_by: '' })))
     const w = mountIt()
     await flushPromises()
 
-    listVersions.mockResolvedValue(['x1', 'x2'])
+    listVersionDetails.mockResolvedValue(['x1', 'x2'].map((version) => ({ version, revised_by: '' })))
     await w.setProps({ uid: 'f2' })
     await flushPromises()
 

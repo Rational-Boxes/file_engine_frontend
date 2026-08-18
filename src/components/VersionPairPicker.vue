@@ -77,6 +77,9 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'compare', pair: { base: string; target: string }): void }>()
 
 const versions = ref<string[]>([])
+// version -> uploader, so the menus can say WHO as well as when. Empty for
+// versions the core has no record for.
+const uploaders = ref<Record<string, string>>({})
 const loading = ref(false)
 const error = ref('')
 const pickBase = ref('')
@@ -100,8 +103,12 @@ const canCompare = computed(() =>
 
 function label(v: string) {
   // Versions ARE timestamps in this system; showing them as such beats inventing
-  // revision numbers the rest of the stack does not have.
-  return (v || '').replace('T', ' ').slice(0, 19) || v
+  // revision numbers the rest of the stack does not have. The uploader is
+  // appended when the core recorded one — on a shared document "which version"
+  // is usually really a question about who changed it.
+  const when = (v || '').replace('T', ' ').slice(0, 19) || v
+  const who = uploaders.value[v]
+  return who ? `${when} — ${who}` : when
 }
 
 // Keep the pair coherent when the reader changes "after" to something older than
@@ -123,7 +130,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    versions.value = await fileService.listVersions(props.uid)
+    const entries = await fileService.listVersionDetails(props.uid)
+    versions.value = entries.map((e) => e.version)
+    uploaders.value = Object.fromEntries(entries.map((e) => [e.version, e.revised_by]))
     // Default to what the caller is showing; fall back to the newest pair, which
     // is the same default the service itself applies.
     pickTarget.value = props.target || versions.value[0] || ''

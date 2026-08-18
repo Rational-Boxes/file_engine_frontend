@@ -16,9 +16,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const { listVersions } = vi.hoisted(() => ({ listVersions: vi.fn() }))
+const { listVersionDetails } = vi.hoisted(() => ({ listVersionDetails: vi.fn() }))
 
-vi.mock('@/services/fileService', () => ({ fileService: { listVersions } }))
+vi.mock('@/services/fileService', () => ({ fileService: { listVersionDetails } }))
 vi.mock('@/services/apiClient', () => ({ errorMessage: (_e: unknown, m: string) => m }))
 
 import VersionPairPicker from '@/components/VersionPairPicker.vue'
@@ -28,8 +28,9 @@ import VersionPairPicker from '@/components/VersionPairPicker.vue'
 const V = ['2026-08-17T10:00:00', '2026-08-16T09:00:00', '2026-08-15T08:00:00']
 
 beforeEach(() => {
-  listVersions.mockReset()
-  listVersions.mockResolvedValue([...V])
+  listVersionDetails.mockReset()
+  // The picker now asks for uploaders too; `revised_by` is what the menus append.
+  listVersionDetails.mockResolvedValue(V.map((version) => ({ version, revised_by: '' })))
 })
 
 async function picker(props: Record<string, unknown> = {}) {
@@ -100,8 +101,29 @@ describe('emitting', () => {
 
 describe('failure', () => {
   it('reports a version list it could not load rather than showing an empty menu', async () => {
-    listVersions.mockRejectedValueOnce(new Error('boom'))
+    listVersionDetails.mockRejectedValueOnce(new Error('boom'))
     const w = await picker()
     expect(w.get('.vp-err').text()).toBe('Failed to load the version list')
+  })
+})
+
+
+describe('who uploaded each version', () => {
+  it('names the uploader beside the timestamp', async () => {
+    // On a shared document "which version" is usually really a question about
+    // who changed it, so the menus say both.
+    listVersionDetails.mockResolvedValue([
+      { version: V[0], revised_by: 'ana@example.com' },
+      { version: V[1], revised_by: 'bo@example.com' },
+      { version: V[2], revised_by: '' },
+    ])
+    const w = await picker()
+    const labels = w.findAll('option').map((o) => o.text())
+    expect(labels.some((t) => t.includes('ana@example.com'))).toBe(true)
+    expect(labels.some((t) => t.includes('bo@example.com'))).toBe(true)
+    // A version the core has no uploader for shows the timestamp alone rather
+    // than a dangling separator.
+    const bare = labels.find((t) => t.startsWith('2026-08-15'))
+    expect(bare).toBe('2026-08-15 08:00:00')
   })
 })

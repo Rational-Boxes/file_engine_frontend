@@ -89,6 +89,13 @@ function toItem(e: DirEntry): FileItem {
 // REST client for the bridge filesystem. The bridge is UID-native, so every
 // operation addresses a node by its uid; throws an AxiosError on failure (the
 // caller maps it to a user message via errorMessage()).
+/** One stored version: its timestamp and who uploaded it. */
+export interface VersionEntry {
+  version: string
+  /** Empty when the core has no record of who uploaded it. */
+  revised_by: string
+}
+
 export const fileService = {
   // List a directory. With `deleted: true` the bridge returns soft-deleted
   // entries too (each carrying `deleted`), for the "show deleted" view — requires
@@ -184,6 +191,22 @@ export const fileService = {
   async listVersions(uid: string): Promise<string[]> {
     const { data } = await apiClient.get<{ versions: string[] }>(`/v1/files/${uid}/versions`)
     return data.versions || []
+  },
+
+  /**
+   * Versions with the user who uploaded each one, newest first.
+   *
+   * The bridge returns `entries` alongside the older timestamp-only `versions`.
+   * Falling back to `versions` keeps this working against a bridge that predates
+   * the change, with an empty uploader rather than a wrong one — the SDKs used to
+   * fill this field with the CALLING user, which read as fact and never was.
+   */
+  async listVersionDetails(uid: string): Promise<VersionEntry[]> {
+    const { data } = await apiClient.get<{ versions?: string[]; entries?: VersionEntry[] }>(
+      `/v1/files/${uid}/versions`,
+    )
+    if (data.entries?.length) return data.entries
+    return (data.versions || []).map((version) => ({ version, revised_by: '' }))
   },
 
   async getVersion(uid: string, ts: string): Promise<Blob> {
