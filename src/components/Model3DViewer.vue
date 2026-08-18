@@ -154,6 +154,33 @@ async function load() {
       console.warn('[Model3DViewer] object tree unavailable (model may have no metadata)', e)
     }
 
+    // Keep the store's see-through set tracking the SCENE, not just our own
+    // calls into it.
+    //
+    // syncXRayFromScene() was only invoked where we knew we had changed
+    // something, which left the store blind to anything the viewer did on its
+    // own — restoring a saved viewpoint being the case that matters: BCF carries
+    // x-ray as `components.translucency`, so the 3D view came back correctly
+    // see-through while the store still believed nothing was, and the object
+    // tree showed no markers beside it.
+    //
+    // Subscribing to the scene's own event makes the store authoritative
+    // whatever the cause. Coalesced onto a microtask because a restore x-rays
+    // many entities in a burst and each one fires.
+    try {
+      let pending = false
+      viewer.scene.on('objectXRayed', () => {
+        if (pending) return
+        pending = true
+        queueMicrotask(() => {
+          pending = false
+          syncXRayFromScene()
+        })
+      })
+    } catch {
+      /* best-effort: the store then only tracks our own changes, as before */
+    }
+
     // Instantiate the markup / BCF plugin suite. Each is the backing capability
     // for one imperative method below; a plugin that fails to construct must
     // never break the preview, so each is isolated (same discipline as the tree).
