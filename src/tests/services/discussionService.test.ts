@@ -101,8 +101,37 @@ describe('discussionService', () => {
     expect(client.post).toHaveBeenCalledWith('/reviews/r1/acknowledge')
     expect(r.status).toBe('acknowledged')
 
+    // NOT /complete. Approve and reject are separate endpoints because they emit
+    // review.approved / review.rejected, which the discussion service promotes to
+    // the shared fileengine:events stream; folder_actions' move-on-decision
+    // automations listen for exactly those. The legacy /complete endpoint emits
+    // review.completed, which is NOT promoted — so routing through it would leave
+    // reviews working and the automations silently dead.
+    //
+    // This test asserted /complete for months after the routing changed, which is
+    // why it failed: it was pinning the behaviour that breaks the chain.
     await discussionService.completeReview('r1', 'approved')
-    expect(client.post).toHaveBeenCalledWith('/reviews/r1/complete', { outcome: 'approved' })
+    expect(client.post).toHaveBeenCalledWith('/reviews/r1/approve', { outcome: 'approved' })
+  })
+
+  it('routes every non-approval outcome to reject', async () => {
+    client.post.mockResolvedValue({
+      data: { id: 'r1', file_uid: 'f1', requester: 'bob', reviewer: 'carol', status: 'rejected',
+              version: '', thread_id: null, outcome: 'rejected', created_at: 'x',
+              acknowledged_at: 'y', completed_at: 'z' },
+    })
+
+    await discussionService.completeReview('r1', 'rejected')
+    expect(client.post).toHaveBeenCalledWith('/reviews/r1/reject', { outcome: 'rejected' })
+
+    // 'changes requested' is a rejection as far as the workflow is concerned: it
+    // is not an approval, so it must not travel the approve path.
+    await discussionService.completeReview('r1', 'changes')
+    expect(client.post).toHaveBeenCalledWith('/reviews/r1/reject', { outcome: 'changes' })
+
+    // ...as is an outcome nobody supplied.
+    await discussionService.completeReview('r1')
+    expect(client.post).toHaveBeenCalledWith('/reviews/r1/reject', { outcome: undefined })
   })
 
   it('listReviews forwards role + status', async () => {
