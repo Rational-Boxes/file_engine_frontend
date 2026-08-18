@@ -1172,6 +1172,35 @@ onBeforeUnmount(() => {
 .mv-tree {
   font-size: 0.85rem;
 }
+
+/*
+ * See-through objects are marked in the tree.
+ *
+ * xeokit already tracks this: its objectXRayed listener calls
+ * RenderService.setXRayed, which puts an `xrayed-node` class on the row. Nothing
+ * ever styled that class, so the tree gave no sign which objects were affected —
+ * the only feedback was in the 3D view, where a see-through object is exactly the
+ * one that is easy to lose track of. With several applied, "what did I make
+ * transparent?" had no answer short of resetting them all.
+ *
+ * `:deep()` because the tree is built by the plugin, not by Vue, so a scoped
+ * selector would never reach it. The child combinator matters: the class sits on
+ * one row's <li>, and without `>` the marker would also land on every nested
+ * descendant row inside it.
+ *
+ * The glyph is the same one as the toolbar's "🔲 See-through" button, so the
+ * marker and the control that causes it read as the same thing.
+ */
+.mv-tree :deep(.xrayed-node) > span {
+  opacity: 0.65;
+  font-style: italic;
+}
+
+.mv-tree :deep(.xrayed-node) > span::after {
+  content: ' 🔲';
+  font-style: normal;
+  opacity: 0.9;
+}
 /* See-through controls above the object tree. */
 .mv-objtools {
   display: flex;
