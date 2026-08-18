@@ -667,13 +667,23 @@ const anchorMiss = ref(false)
  * Rows are found by DOM id. The plugin builds it as `${treeId}-${objectId}`, so
  * matching on the `-<objectId>` SUFFIX avoids needing its private instance id.
  * The leading hyphen is what keeps "wall1" from also matching a row for
- * "outerwall1".
+ * "outerwall1", and requiring an <li> keeps it to tree rows.
+ *
+ * The container comes FROM THE VIEWER, not from getElementById: the plugin caches
+ * the element it was given, so looking the id up separately can land on a
+ * different element — a stale one left by a previous mount, say — and mark rows
+ * nobody can see while the visible tree stays untouched.
  */
+function treeEl(): HTMLElement | null {
+  return viewerRef.value?.treeContainerEl ?? document.getElementById('mv-object-tree')
+}
+
 function markXRayedRows(ids: readonly string[]): void {
-  const tree = document.getElementById('mv-object-tree')
+  const tree = treeEl()
   if (!tree) return
-  for (const el of Array.from(tree.querySelectorAll('.mv-xrayed'))) {
+  for (const el of Array.from(tree.querySelectorAll('.mv-xrayed, .mv-xrayed-within'))) {
     el.classList.remove('mv-xrayed')
+    el.classList.remove('mv-xrayed-within')
   }
   for (const id of ids) {
     if (!id) continue
@@ -681,20 +691,92 @@ function markXRayedRows(ids: readonly string[]): void {
     const needle = id.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
     let row: Element | null = null
     try {
-      row = tree.querySelector(`[id$="-${needle}"]`)
+      row = tree.querySelector(`li[id$="-${needle}"]`)
     } catch {
       row = null   // an id that cannot be expressed as a selector: skip it
     }
     if (row) row.classList.add('mv-xrayed')
   }
+
+  // ...and mark the rows ABOVE them.
+  //
+  // See-through lands on leaves: x-raying a layer resolves to its elements,
+  // because only ids with geometry can be x-rayed. So the row the user clicked is
+  // never in the set itself, and with the tree expanded one level its marked
+  // children are not even rendered — which is why a comparison, whose layers are
+  // what one x-rays, showed nothing at all while a plain model looked fine.
+  for (const id of viewerRef.value?.ancestorObjectIds?.(ids) ?? []) {
+    const needle = String(id).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    let row: Element | null = null
+    try {
+      row = tree.querySelector(`li[id$="-${needle}"]`)
+    } catch {
+      row = null
+    }
+    // Never downgrade a row that is itself see-through.
+    if (row && !row.classList.contains('mv-xrayed')) {
+      row.classList.add('mv-xrayed-within')
+    }
+  }
 }
 
-// Re-mark whenever the see-through set changes, and when a model finishes
-// loading — the tree is rebuilt then, which drops any marks it was carrying.
+// Re-mark whenever the see-through set changes.
 watch(() => model3d.xrayedIds, (ids) => markXRayedRows(ids ?? []), { deep: true })
-watch(() => model3d.ready, (ready) => {
-  if (ready) nextTick(() => markXRayedRows(model3d.xrayedIds ?? []))
-})
+
+/**
+ * Re-mark whenever the tree's DOM changes.
+ *
+ * Marking at chosen moments does not work, and the diagnostics were unambiguous
+ * about why: at every point we had a reason to mark — the set changing, the model
+ * becoming ready, the viewpoint being restored — the container still held ZERO
+ * rows. The plugin builds the tree after all of those, and creates child rows
+ * lazily as branches are expanded, so a row that appears later was never marked
+ * and a row rebuilt on expand silently lost its mark.
+ *
+ * Watching the container removes the guesswork: whenever rows appear, change or
+ * are rebuilt, they are marked from the current state. Coalesced onto an
+ * animation frame because building a large tree is thousands of mutations.
+ */
+let treeObserver: MutationObserver | null = null
+let observedTree: HTMLElement | null = null
+
+function observeTree(): void {
+  const tree = treeEl()
+  if (!tree) return                       // the viewer has not built one yet
+  if (treeObserver && observedTree === tree) return   // already watching this one
+
+  treeObserver?.disconnect()
+  observedTree = tree
+  let queued = false
+  treeObserver = new MutationObserver(() => {
+    if (queued) return
+    queued = true
+    requestAnimationFrame(() => {
+      queued = false
+      markXRayedRows(model3d.xrayedIds ?? [])
+    })
+  })
+  treeObserver.observe(tree, { childList: true, subtree: true })
+  markXRayedRows(model3d.xrayedIds ?? [])   // whatever is already there
+}
+
+// Try to attach on every event that could produce a tree: the overlay opening,
+// the model becoming ready, the model being swapped. Attaching is idempotent —
+// it re-attaches only if the container is a different element — so this costs
+// nothing when there is nothing new to watch.
+watch(
+  () => [model3d.isOpen, model3d.ready, model3d.xktUid] as const,
+  ([open]) => {
+    if (!open) {
+      treeObserver?.disconnect()
+      treeObserver = null
+      observedTree = null
+      return
+    }
+    nextTick(observeTree)
+  },
+  { immediate: true },
+)
 
 // Latest thread set from the panel; also the lookup for deep-link / restore-view.
 let threadsCache: Thread[] = []
@@ -1247,6 +1329,15 @@ onBeforeUnmount(() => {
   content: ' 🔲';
   font-style: normal;
   opacity: 0.9;
+}
+
+/* A row that is not itself see-through but contains something that is. Marked
+   without the dimming, since the row's own object is still solid — it answers
+   "there is something see-through under here", which on a collapsed branch is
+   the only place that can be said at all. */
+.mv-tree :deep(.mv-xrayed-within) > span::after {
+  content: ' 🔲';
+  opacity: 0.45;
 }
 /* See-through controls above the object tree. */
 .mv-objtools {
