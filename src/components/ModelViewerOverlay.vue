@@ -656,6 +656,46 @@ function sliceHere() {
 // model (a drifted anchor — see restoreThreadView). Cleared on the next restore.
 const anchorMiss = ref(false)
 
+/**
+ * Mark the tree rows whose objects are currently see-through.
+ *
+ * Driven from the store rather than from xeokit's own `xrayed-node` class: we
+ * already know which objects are x-rayed, so depending on a plugin's internal
+ * listener to tell us is both weaker and, in practice, did not produce a marked
+ * row at all.
+ *
+ * Rows are found by DOM id. The plugin builds it as `${treeId}-${objectId}`, so
+ * matching on the `-<objectId>` SUFFIX avoids needing its private instance id.
+ * The leading hyphen is what keeps "wall1" from also matching a row for
+ * "outerwall1".
+ */
+function markXRayedRows(ids: readonly string[]): void {
+  const tree = document.getElementById('mv-object-tree')
+  if (!tree) return
+  for (const el of Array.from(tree.querySelectorAll('.mv-xrayed'))) {
+    el.classList.remove('mv-xrayed')
+  }
+  for (const id of ids) {
+    if (!id) continue
+    // Escape for use inside an attribute-selector string, not as an identifier.
+    const needle = id.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    let row: Element | null = null
+    try {
+      row = tree.querySelector(`[id$="-${needle}"]`)
+    } catch {
+      row = null   // an id that cannot be expressed as a selector: skip it
+    }
+    if (row) row.classList.add('mv-xrayed')
+  }
+}
+
+// Re-mark whenever the see-through set changes, and when a model finishes
+// loading — the tree is rebuilt then, which drops any marks it was carrying.
+watch(() => model3d.xrayedIds, (ids) => markXRayedRows(ids ?? []), { deep: true })
+watch(() => model3d.ready, (ready) => {
+  if (ready) nextTick(() => markXRayedRows(model3d.xrayedIds ?? []))
+})
+
 // Latest thread set from the panel; also the lookup for deep-link / restore-view.
 let threadsCache: Thread[] = []
 // A ?view deep-link is consumed once per open (guarded so it doesn't re-fire as
@@ -716,6 +756,13 @@ function restoreThreadView(threadId: string, objectId?: string) {
   discMin.value = false
   activeThreadId.value = threadId
   threadPanelRef.value?.scrollToThread(threadId)
+
+  // Restoring a comment's view replays its see-through state onto the scene
+  // directly (setViewpoint), and the viewer reconciles the store afterwards. Mark
+  // on the next tick so the rows reflect what was just restored — and so a
+  // restore that ALSO switched models marks the freshly rebuilt tree rather than
+  // the one just thrown away.
+  nextTick(() => markXRayedRows(model3d.xrayedIds ?? []))
 }
 
 // The thread whose view is on screen, so the comment that put you here is
@@ -1176,12 +1223,12 @@ onBeforeUnmount(() => {
 /*
  * See-through objects are marked in the tree.
  *
- * xeokit already tracks this: its objectXRayed listener calls
- * RenderService.setXRayed, which puts an `xrayed-node` class on the row. Nothing
- * ever styled that class, so the tree gave no sign which objects were affected —
- * the only feedback was in the 3D view, where a see-through object is exactly the
- * one that is easy to lose track of. With several applied, "what did I make
- * transparent?" had no answer short of resetting them all.
+ * xeokit has its own `xrayed-node` class for this, driven from its objectXRayed
+ * listener — but styling that alone did nothing in practice, and every link in
+ * that chain checked out on inspection, so the marker is driven from OUR state
+ * instead. The store already knows which objects are see-through; depending on a
+ * plugin's internal listener to tell us something we already know was the weaker
+ * design regardless of why it was not firing.
  *
  * `:deep()` because the tree is built by the plugin, not by Vue, so a scoped
  * selector would never reach it. The child combinator matters: the class sits on
@@ -1191,12 +1238,12 @@ onBeforeUnmount(() => {
  * The glyph is the same one as the toolbar's "🔲 See-through" button, so the
  * marker and the control that causes it read as the same thing.
  */
-.mv-tree :deep(.xrayed-node) > span {
+.mv-tree :deep(.mv-xrayed) > span {
   opacity: 0.65;
   font-style: italic;
 }
 
-.mv-tree :deep(.xrayed-node) > span::after {
+.mv-tree :deep(.mv-xrayed) > span::after {
   content: ' 🔲';
   font-style: normal;
   opacity: 0.9;
