@@ -277,6 +277,7 @@
               v-if="model3d.uid"
               ref="threadPanelRef"
               :anchor-provider="liveModelAnchor"
+              :active-thread-id="activeThreadId"
               :file-uid="model3d.uid"
               embedded
               hide-dock
@@ -713,8 +714,13 @@ function restoreThreadView(threadId: string, objectId?: string) {
     else anchorMiss.value = true
   }
   discMin.value = false
+  activeThreadId.value = threadId
   threadPanelRef.value?.scrollToThread(threadId)
 }
+
+// The thread whose view is on screen, so the comment that put you here is
+// marked as such — the same signal the document surface gives.
+const activeThreadId = ref<string | null>(null)
 
 const comparePicker = ref(false)   // the picker is revealed on the plain model
 const comparing = ref(false)
@@ -820,6 +826,7 @@ function onRestoreView(threadId: string) {
 // A marker was clicked: the viewer already restored the viewpoint; focus the thread.
 function onAnnotationActivate(threadId: string) {
   discMin.value = false
+  activeThreadId.value = threadId
   threadPanelRef.value?.scrollToThread(threadId)
 }
 

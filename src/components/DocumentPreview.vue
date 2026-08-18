@@ -308,6 +308,7 @@
           :markup-provider="attachMarkup"
           :anchor-provider="liveDiffAnchor"
           :active-comment-id="activeMarkupCommentId"
+          :active-thread-id="activeThreadId"
           :substitute-active="!!diffView || !!markupView"
           :class="['dp-thread', { 'dp-thread-min': discLayout === 'collapsed' }]"
           @layout="discLayout = $event"
@@ -451,6 +452,11 @@ const markupView = ref<CommentMarkup | null>(null)
 const markupUrl = ref('')
 const markupDownloading = ref(false)
 const activeMarkupCommentId = ref<string | null>(null) // the comment whose copy is shown
+// The thread whose view is on screen. Kept apart from activeMarkupCommentId
+// because a comparison anchor belongs to the THREAD: feeding a thread id to the
+// comment-level highlight matched nothing, which is why a restored comparison
+// left its own comment looking untouched.
+const activeThreadId = ref<string | null>(null)
 // The comparison substitute: the rendering set on screen, the anchor it was
 // restored from (null when the reader opened it themselves), and where they are
 // looking now. Mutually exclusive with markupView — see the template comment.
@@ -931,7 +937,7 @@ async function onShowDiff(anchor: DiffViewAnchor, threadId: string) {
   diffError.value = ''
   diffLoading.value = true
   diffView.value = { anchor, pages: [], manifestUid: '' }
-  activeMarkupCommentId.value = threadId
+  activeThreadId.value = threadId
   try {
     const res = await differenceService.getWhenReady(anchor.file_uid, {
       version: anchor.target,
@@ -1161,13 +1167,13 @@ watch(
 function onRestorePlain(threadId: string) {
   if (markupView.value) closeMarkupView()
   else closeDiffView()
-  activeMarkupCommentId.value = threadId
+  activeThreadId.value = threadId
 }
 
 function closeDiffView() {
   diffView.value = null
   diffError.value = ''
-  activeMarkupCommentId.value = null
+  activeThreadId.value = null
   // Drop the attachment with the comparison it describes. Left behind, the next
   // comment on the live document would quietly carry an anchor to something the
   // author is no longer looking at.

@@ -192,6 +192,24 @@ describe('comparison-anchored threads', () => {
     covered.unmount()
   })
 
+  it('marks the thread whose view is on screen', async () => {
+    // The bug: a comparison anchor belongs to the THREAD, but the id was being
+    // fed to the comment-level markup highlight, which compares against COMMENT
+    // ids — so a restored comparison left its own comment looking untouched.
+    listThreads.mockResolvedValue([
+      { id: 't1', status: 'open', anchor: DIFF_ANCHOR, comments: [] },
+      { id: 't2', status: 'open', anchor: null, comments: [] },
+    ])
+    const w = mount(ThreadPanel, {
+      props: { fileUid: 'f1', embedded: true, activeThreadId: 't1' },
+    })
+    await flushPromises()
+    const threads = w.findAll('.thread')
+    expect(threads[0].classes()).toContain('thread-active')
+    expect(threads[1].classes()).not.toContain('thread-active')
+    w.unmount()
+  })
+
   it('offers no comparison affordance on a plain thread', async () => {
     const w = await panel(null)
     expect(w.findAll('.tp-viewbtn').some((b) => b.text().includes('comparison'))).toBe(false)

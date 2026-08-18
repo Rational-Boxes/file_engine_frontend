@@ -112,7 +112,7 @@
         :id="`thread-${t.id}`"
         :key="t.id"
         class="thread"
-        :class="{ resolved: t.status === 'resolved' }"
+        :class="{ resolved: t.status === 'resolved', 'thread-active': t.id === activeThreadId }"
       >
         <div v-if="t.anchorStale || t.status === 'resolved' || t.status === 'open'" class="thread-head">
           <span v-if="t.anchorStale" class="stale" title="Commented on an earlier revision">stale</span>
@@ -317,7 +317,14 @@ const props = defineProps<{
    */
   anchorProvider?: (pending: ThreadAnchor | null) => ThreadAnchor | null
   // The comment whose marked-up copy is currently being viewed (highlighted).
+  /** The comment whose marked-up copy is on screen (comment-level highlight). */
   activeCommentId?: string | null
+  /**
+   * The thread whose view is on screen — a comparison, or a restored 3D
+   * viewpoint. Thread-level rather than comment-level because that is where
+   * those anchors live: they belong to the conversation, not to one message.
+   */
+  activeThreadId?: string | null
 }>()
 const emit = defineEmits<{
   (e: 'layout', l: 'collapsed' | 'right' | 'bottom'): void
@@ -1072,6 +1079,15 @@ onBeforeUnmount(() => session?.close())
 .tp-err {
   color: var(--danger);
 }
+/* Reads the same as a shown marked-up copy (.cn-item.markup-active) — from the
+   reader's side both mean "this is the one you are looking at", so they must not
+   look like different kinds of state. */
+.thread.thread-active {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--primary);
+  border-radius: 6px;
+}
+
 .thread {
   border: 1px solid var(--border);
   border-radius: 8px;

@@ -66,7 +66,7 @@ const { startAnnotation, clearPendingAnchor } = vi.hoisted(() => ({
 vi.mock('@/components/ThreadPanel.vue', () => ({
   default: {
     name: 'ThreadPanel',
-    props: ['fileUid', 'markupProvider', 'anchorProvider', 'activeCommentId', 'substituteActive'],
+    props: ['fileUid', 'markupProvider', 'anchorProvider', 'activeCommentId', 'activeThreadId', 'substituteActive'],
     methods: { startAnnotation, clearPendingAnchor },
     render: () => null,
   },
@@ -227,6 +227,36 @@ describe('3D comparisons belong to the model viewer', () => {
   })
 })
 
+
+describe('marking the comment you are looking at', () => {
+  it('marks the thread when its comparison is restored', async () => {
+    const w = surface()
+    await flushPromises()
+    const panel = w.findComponent({ name: 'ThreadPanel' })
+
+    ;(w.vm as unknown as { onShowDiff: (a: unknown, id: string) => Promise<void> })
+      .onShowDiff({ kind: 'diff-view', file_uid: 'f1', base: 'b', target: 't' }, 't7')
+    await flushPromises()
+
+    // The THREAD, not the comment-level markup highlight: that one compares
+    // against comment ids and would never match a thread id.
+    expect(panel.props('activeThreadId')).toBe('t7')
+    expect(panel.props('activeCommentId')).toBeNull()
+  })
+
+  it('drops the mark when the comparison is closed', async () => {
+    request()
+    const w = surface()
+    await flushPromises()
+    const panel = w.findComponent({ name: 'ThreadPanel' })
+
+    ;(w.vm as unknown as { onShowDiff: (a: unknown, id: string) => Promise<void> })
+      .onShowDiff({ kind: 'diff-view', file_uid: 'f1', base: 'b', target: 't' }, 't7')
+    await flushPromises()
+    await w.findAll('button').find((b) => b.text().includes('Back to document'))!.trigger('click')
+    expect(panel.props('activeThreadId')).toBeNull()
+  })
+})
 
 describe('getting back to the document', () => {
   it('tells the rail it is covered, and uncovers on a plain comment', async () => {
