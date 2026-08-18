@@ -45,6 +45,7 @@ const hh = vi.hoisted(() => ({
   scrollToThread: vi.fn(),
   startAnnotation: vi.fn(),
   getWhenReady: vi.fn(),
+  listVersions: vi.fn(async () => ['2026-08-17T10:00:00', '2026-08-16T09:00:00']),
 }))
 
 vi.mock('@/services/differenceService', () => ({ differenceService: { getWhenReady: hh.getWhenReady } }))
@@ -55,7 +56,9 @@ vi.mock('@/services/renditions', () => ({
   modelRendition: hh.modelRendition,
   metamodelRendition: hh.metamodelRendition,
 }))
-vi.mock('@/services/fileService', () => ({ fileService: { downloadFile: hh.downloadFile } }))
+vi.mock('@/services/fileService', () => ({
+  fileService: { downloadFile: hh.downloadFile, listVersions: hh.listVersions },
+}))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: hh.push }),
   useRoute: () => hh.route,
@@ -567,6 +570,38 @@ describe('comments across a model and its comparison', () => {
     panel(w).vm.$emit('restore-view', 't1')
     await flushPromises()
     expect(store.diff).toBeNull()
+  })
+
+  it('offers the way back to the model itself', async () => {
+    // A comparison is not a separate place — it is the same model shown
+    // differently. Getting back has to be a visible step, not something you find
+    // by closing the viewer or by activating somebody else's comment.
+    const { w, store } = await overlay({ comparison: true })
+    const back = w.findAll('button').find((b) => b.text().includes('Back to the model'))
+    expect(back).toBeTruthy()
+
+    await back!.trigger('click')
+    expect(store.diff).toBeNull()
+    expect(store.xktUid).toBe('')       // resolve the file's own model again
+    expect(store.uid).toBe('f1')        // ...and the comments do not move
+    expect(store.name).toBe('tower.ifc')
+  })
+
+  it('starts a comparison from the model, in the same window', async () => {
+    const { w, store } = await overlay()
+    hh.getWhenReady.mockResolvedValue({
+      status: 'ready', baseVersion: PAIR.base, targetVersion: PAIR.target,
+      children: [{ index: 0, name: 'm.xkt', uid: 'diff-xkt', mode: 'xkt', kind: 'model' }],
+    })
+
+    await w.findAll('button').find((b) => b.text().includes('Compare versions'))!.trigger('click')
+    await flushPromises()
+    w.findComponent({ name: 'VersionPairPicker' }).vm.$emit('compare', PAIR)
+    await flushPromises()
+
+    expect(store.xktUid).toBe('diff-xkt')
+    expect(store.diff).toEqual(PAIR)
+    expect(store.uid).toBe('f1')        // same file, so the same conversation
   })
 
   it('says so when the comparison cannot be reopened', async () => {

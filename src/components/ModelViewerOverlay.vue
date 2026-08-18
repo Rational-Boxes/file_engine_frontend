@@ -36,6 +36,40 @@
           <button class="mv-act mv-icon" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset</button>
         </div>
 
+        <!--
+          Which version of this model is on screen, and the way between them.
+          A comparison is not a separate place — it is the same model shown
+          differently, sharing one set of comments — so getting back to the plain
+          model has to be a visible step here, not something you discover by
+          closing the viewer or by activating somebody else's comment.
+        -->
+        <div class="mv-group mv-versions" role="group" aria-label="Model version">
+          <template v-if="model3d.diff">
+            <span class="mv-diffchip" :title="`Comparing ${model3d.diff.base} with ${model3d.diff.target}`">
+              🔀 Comparison
+            </span>
+            <button class="mv-act" title="Show the model itself again" @click="showPlainModel">
+              ← Back to the model
+            </button>
+          </template>
+          <button
+            v-else-if="!comparePicker"
+            class="mv-act"
+            title="Compare two versions of this model"
+            @click="comparePicker = true"
+          >🔀 Compare versions</button>
+
+          <VersionPairPicker
+            v-if="comparePicker || model3d.diff"
+            :uid="model3d.uid"
+            :base="model3d.diff?.base"
+            :target="model3d.diff?.target"
+            :busy="comparing"
+            class="mv-picker"
+            @compare="showComparison"
+          />
+        </div>
+
         <HelpIcon topic="cad-bim" label="About CAD &amp; BIM model viewing" />
         <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
         <button class="mv-act" @click="openLocation">📂 Open file location</button>
@@ -285,6 +319,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Model3DViewer from '@/components/Model3DViewer.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
+import VersionPairPicker from '@/components/VersionPairPicker.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
 import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
 import { useAuthStore } from '@/stores/auth'
@@ -660,6 +695,52 @@ function restoreThreadView(threadId: string, objectId?: string) {
   threadPanelRef.value?.scrollToThread(threadId)
 }
 
+const comparePicker = ref(false)   // the picker is revealed on the plain model
+const comparing = ref(false)
+
+/** The model's own name, with any comparison suffix removed. */
+function plainName(): string {
+  return model3d.name.replace(/ — comparison$/, '')
+}
+
+/**
+ * Back to the model itself. Clearing the pinned children is what does it: with
+ * none set the overlay resolves the file's own model, which is its default.
+ * The uid never changes — a comparison was always the same file — so the
+ * comments beside it do not move.
+ */
+function showPlainModel() {
+  comparePicker.value = false
+  model3d.open(model3d.uid, plainName())
+}
+
+/** Show a comparison of two versions of this model, in place. */
+async function showComparison(pair: { base: string; target: string }) {
+  comparing.value = true
+  resolveError.value = ''
+  try {
+    const res = await differenceService.getWhenReady(model3d.uid, {
+      version: pair.target, base: pair.base,
+    })
+    const model = res.children.find((c: DiffChildRef) => c.kind === 'model')
+    if (res.status !== 'ready' || !model) {
+      resolveError.value = res.detail || 'No comparison could be produced for these two versions.'
+      return
+    }
+    const meta = res.children.find((c: DiffChildRef) => c.kind === 'metamodel')
+    comparePicker.value = false
+    model3d.open(model3d.uid, `${plainName()} — comparison`, {
+      xktUid: model.uid,
+      metamodelUid: meta?.uid,
+      diff: { base: res.baseVersion, target: res.targetVersion },
+    })
+  } catch (e) {
+    resolveError.value = errorMessage(e, 'Could not compare these two versions')
+  } finally {
+    comparing.value = false
+  }
+}
+
 // A restore waiting on a different model to finish loading. The viewpoint can
 // only be applied once the scene it describes actually exists.
 let pendingRestore: { threadId: string; objectId?: string } | null = null
@@ -676,36 +757,22 @@ async function switchModelThenRestore(
   threadId: string,
   objectId?: string,
 ) {
-  const name = model3d.name.replace(/ — comparison$/, '')
   pendingRestore = { threadId, objectId }
   anchorMiss.value = false
 
   if (!src || src.kind === 'model') {
-    // Back to the file's own model: clearing the pinned children makes the
-    // overlay resolve them again, which is its default behaviour.
-    model3d.open(model3d.uid, name)
+    showPlainModel()
     return
   }
 
-  try {
-    const res = await differenceService.getWhenReady(model3d.uid, {
-      version: src.target, base: src.base,
-    })
-    const model = res.children.find((c: DiffChildRef) => c.kind === 'model')
-    if (res.status !== 'ready' || !model) {
-      pendingRestore = null
-      resolveError.value = 'The comparison this comment was made on could not be reopened.'
-      return
-    }
-    const meta = res.children.find((c: DiffChildRef) => c.kind === 'metamodel')
-    model3d.open(model3d.uid, `${name} — comparison`, {
-      xktUid: model.uid,
-      metamodelUid: meta?.uid,
-      diff: { base: res.baseVersion, target: res.targetVersion },
-    })
-  } catch (e) {
+  await showComparison({ base: src.base ?? '', target: src.target ?? '' })
+  // showComparison reports its own failure; if it could not switch, the parked
+  // restore would otherwise sit waiting for a model that is never coming.
+  if (!showingSource(src)) {
     pendingRestore = null
-    resolveError.value = errorMessage(e, 'Could not reopen the comparison for this comment')
+    if (resolveError.value) {
+      resolveError.value = 'The comparison this comment was made on could not be reopened.'
+    }
   }
 }
 
@@ -874,6 +941,17 @@ onBeforeUnmount(() => {
 }
 .mv-toggle,
 .mv-act,
+.mv-versions { gap: 0.4rem; align-items: center; }
+.mv-diffchip {
+  font-size: 0.78rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  opacity: 0.9;
+}
+/* The picker is a light-surface control dropped into dark chrome. */
+.mv-picker { --card: rgba(255, 255, 255, 0.08); --border: rgba(255, 255, 255, 0.3); --fg: #f3f4f6; --muted: #cbd5e1; }
+
 .mv-x {
   background: transparent;
   border: 1px solid #3a3d42;
