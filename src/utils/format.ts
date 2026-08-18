@@ -58,6 +58,44 @@ export function versionFilename(name: string, ts: string): string {
 // UTC (the core uses gmtime). Render them as a localized, human-readable date-time
 // — parse the components as UTC (Date.UTC), NOT local, or the displayed time is
 // off by the viewer's UTC offset. Falls back to the raw value if it doesn't match.
+/**
+ * A version timestamp as `YYYY-MM-DD HH:MM`, in local time.
+ *
+ * ISO-shaped because that sorts and reads unambiguously for an international
+ * audience — 2026-08-18 is the same date everywhere, where 08/18 is not.
+ *
+ * Cut to the minute deliberately: versions are minutes or hours apart in
+ * practice, so seconds and milliseconds are noise that makes two timestamps
+ * harder to tell apart at a glance, not easier. Local time, matching
+ * formatVersionTimestamp, so the same version never reads as two different
+ * moments in two different parts of the UI.
+ *
+ * Accepts the core's own format (`20260818_055834.440`) and an ISO-ish string,
+ * and returns anything else untouched rather than inventing a date.
+ */
+export function formatVersionMinute(v: string): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const asLocalMinute = (d: Date) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}`
+
+  const core = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:\.(\d+))?$/.exec(v || '')
+  if (core) {
+    const [, y, mo, d, h, mi, s, ms] = core
+    const date = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s, ms ? +ms : 0))
+    return isNaN(date.getTime()) ? v : asLocalMinute(date)
+  }
+
+  // An ISO-ish string (what a test fixture or a future API might hand us).
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(v || '')) {
+    const date = new Date(v)
+    if (!isNaN(date.getTime())) return asLocalMinute(date)
+    return v.replace('T', ' ').slice(0, 16)   // unparseable but well-formed: just trim
+  }
+
+  return v || '—'
+}
+
 export function formatVersionTimestamp(v: string): string {
   const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:\.(\d+))?$/.exec(v || '')
   if (!m) return v || '—'

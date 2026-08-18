@@ -14,7 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { describe, it, expect } from 'vitest'
-import { formatSize, formatVersionTimestamp, versionFilename, formatDateTime, truncateMiddle } from '@/utils/format'
+import { formatSize, formatVersionTimestamp, versionFilename, formatDateTime, truncateMiddle , formatVersionMinute } from '@/utils/format'
 
 describe('truncateMiddle', () => {
   it('returns short strings unchanged', () => {
@@ -91,5 +91,38 @@ describe('formatVersionTimestamp', () => {
   it('falls back to the raw value for non-timestamp ids', () => {
     expect(formatVersionTimestamp('v3')).toBe('v3')
     expect(formatVersionTimestamp('')).toBe('—')
+  })
+})
+
+
+// Timestamps in the difference interface, cut to the minute.
+describe('formatVersionMinute', () => {
+  it('renders the core format as ISO-shaped local time, to the minute', () => {
+    // ISO shape because 2026-08-18 means the same date everywhere, where 08/18
+    // does not — and the seconds and milliseconds the core stores are noise when
+    // versions are minutes apart.
+    const out = formatVersionMinute('20260818_055834.440')
+    expect(out).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+    expect(out).not.toMatch(/:\d{2}:\d{2}/)   // no seconds
+  })
+
+  it('agrees with formatVersionTimestamp about which moment it is', () => {
+    // The same version must not read as two different times in two parts of the
+    // UI, so both render in local time from the same UTC source.
+    const v = '20260818_055834.440'
+    const full = new Date(Date.UTC(2026, 7, 18, 5, 58, 34, 440))
+    const pad = (n: number) => String(n).padStart(2, '0')
+    expect(formatVersionMinute(v)).toBe(
+      `${full.getFullYear()}-${pad(full.getMonth() + 1)}-${pad(full.getDate())} ` +
+      `${pad(full.getHours())}:${pad(full.getMinutes())}`)
+  })
+
+  it('also trims an ISO-ish string', () => {
+    expect(formatVersionMinute('2026-08-15T08:00:00')).toMatch(/^2026-08-15 \d{2}:\d{2}$/)
+  })
+
+  it('returns anything it cannot parse untouched, rather than inventing a date', () => {
+    expect(formatVersionMinute('not-a-timestamp')).toBe('not-a-timestamp')
+    expect(formatVersionMinute('')).toBe('—')
   })
 })
