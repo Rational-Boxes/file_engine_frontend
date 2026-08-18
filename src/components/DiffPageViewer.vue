@@ -118,17 +118,50 @@
       @dblclick="fit"
     >
       <div
+        ref="canvasEl"
         class="dv-canvas"
         :class="[`view-${view}`, `mode-${currentMode}`]"
         :style="canvasStyle"
         v-html="svg"
       />
+
+      <!--
+        Mini-map, the same affordance the image preview uses: a whole-page
+        thumbnail with a box marking what is on screen; click or drag it to move
+        the viewport. Zoomed into the corner of a drawing you lose all sense of
+        where you are, and hunting for the right area by dragging is slow.
+
+        The thumbnail is the SAME already-loaded SVG rendered small — no second
+        fetch, and it follows the Before/After/Difference selection, so what you
+        are navigating always matches what you are looking at.
+      -->
+      <div
+        v-if="showNavigator"
+        class="dv-map"
+        title="Click or drag to move the view"
+        @pointerdown.stop="startNavDrag"
+        @pointermove.stop="onNavMove"
+        @pointerup.stop="endNavDrag"
+        @pointercancel.stop="endNavDrag"
+        @wheel.stop.prevent
+        @dblclick.stop
+      >
+        <div
+          ref="navThumbEl"
+          class="dv-map-thumb dv-canvas"
+          :class="[`view-${view}`, `mode-${currentMode}`]"
+          :style="navThumbStyle"
+          aria-hidden="true"
+          v-html="svg"
+        />
+        <div class="dv-map-box" :style="navBoxStyle"></div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { renditionText } from '@/services/renditions'
 import { errorMessage } from '@/services/apiClient'
 import type { DiffChildRef, DiffMode } from '@/services/differenceService'
@@ -218,6 +251,90 @@ const stageEl = ref<HTMLElement | null>(null)
 
 let dragFrom: { x: number; y: number; panX: number; panY: number } | null = null
 
+const canvasEl = ref<HTMLElement | null>(null)
+const navThumbEl = ref<HTMLElement | null>(null)
+// The page's UNSCALED layout size. Layout happens before the transform, so this is
+// the page at fit-width — the frame of reference everything below works in.
+const content = ref({ w: 0, h: 0 })
+const NAV_MAX = 168 // px — the mini-map's longer side, matching the image preview's
+
+function measure() {
+  const el = canvasEl.value
+  if (!el) return
+  content.value = { w: el.offsetWidth, h: el.offsetHeight }
+}
+
+// Only worth showing when there is something off-screen to navigate to.
+const showNavigator = computed(() => zoom.value > 1 && content.value.w > 0 && content.value.h > 0)
+
+// Aspect-preserving, bounded on the longer side — the page shape has to be
+// recognisable or the map is useless.
+const navThumb = computed(() => {
+  const { w, h } = content.value
+  if (!w || !h) return { w: 0, h: 0 }
+  return w >= h
+    ? { w: NAV_MAX, h: Math.round((NAV_MAX * h) / w) }
+    : { w: Math.round((NAV_MAX * w) / h), h: NAV_MAX }
+})
+
+const navThumbStyle = computed(() => ({
+  width: `${navThumb.value.w}px`,
+  height: `${navThumb.value.h}px`,
+}))
+
+/**
+ * The viewport box: what is on screen, as a fraction of the whole page.
+ *
+ * A content point cx maps to the screen at `panX + cx * zoom`, so the visible
+ * span in page coordinates runs from `-panX / zoom` for `stage / zoom`.
+ */
+const navBoxStyle = computed(() => {
+  const el = stageEl.value
+  const t = navThumb.value
+  const c = content.value
+  if (!el || !t.w || !c.w) return {}
+  const fx = -panX.value / (zoom.value * c.w)
+  const fy = -panY.value / (zoom.value * c.h)
+  return {
+    left: `${fx * t.w}px`,
+    top: `${fy * t.h}px`,
+    width: `${Math.min(1, el.clientWidth / (c.w * zoom.value)) * t.w}px`,
+    height: `${Math.min(1, el.clientHeight / (c.h * zoom.value)) * t.h}px`,
+  }
+})
+
+let navDragging = false
+
+/** Centre the view on the point of the page under the pointer. */
+function navMoveTo(clientX: number, clientY: number) {
+  const el = stageEl.value
+  const thumb = navThumbEl.value
+  if (!el || !thumb) return
+  const r = thumb.getBoundingClientRect()
+  if (!r.width || !r.height) return
+  const fx = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
+  const fy = Math.min(1, Math.max(0, (clientY - r.top) / r.height))
+  panX.value = el.clientWidth / 2 - fx * content.value.w * zoom.value
+  panY.value = el.clientHeight / 2 - fy * content.value.h * zoom.value
+  clampPan()
+}
+
+function startNavDrag(e: PointerEvent) {
+  navDragging = true
+  ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+  navMoveTo(e.clientX, e.clientY)
+  e.preventDefault()
+}
+
+function onNavMove(e: PointerEvent) {
+  if (navDragging) navMoveTo(e.clientX, e.clientY)
+}
+
+function endNavDrag(e: PointerEvent) {
+  navDragging = false
+  ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
+}
+
 const atFit = computed(() => zoom.value === 1 && panX.value === 0 && panY.value === 0)
 
 const canvasStyle = computed(() => ({
@@ -234,10 +351,12 @@ function clampZoom(z: number) {
 function clampPan() {
   const el = stageEl.value
   if (!el) return
-  const overflowX = el.clientWidth * (zoom.value - 1)
-  const overflowY = el.scrollHeight * zoom.value - el.clientHeight
+  const w = content.value.w || el.clientWidth
+  const h = content.value.h || el.clientHeight
+  const overflowX = Math.max(0, w * zoom.value - el.clientWidth)
+  const overflowY = Math.max(0, h * zoom.value - el.clientHeight)
   panX.value = Math.min(0, Math.max(-overflowX, panX.value))
-  panY.value = Math.min(0, Math.max(-Math.max(0, overflowY), panY.value))
+  panY.value = Math.min(0, Math.max(-overflowY, panY.value))
 }
 
 function fit() {
@@ -316,6 +435,7 @@ async function loadPage() {
   const cached = cache.get(child.uid)
   if (cached) {
     svg.value = cached
+    await remeasure()
     return
   }
 
@@ -329,6 +449,16 @@ async function loadPage() {
   } finally {
     loading.value = false
   }
+  await remeasure()
+}
+
+// The page's layout size — which the mini-map is built entirely from — is only
+// knowable once the SVG is actually in the DOM. That means AFTER `loading` is
+// cleared: while it is set, the stage renders the "Loading page…" line instead
+// and the canvas the measurement needs does not exist yet.
+async function remeasure() {
+  await nextTick()
+  measure()
 }
 
 // Reset when a different comparison is shown, so a reader is never left on page 9
@@ -344,6 +474,25 @@ watch(() => props.pages, () => {
 }, { immediate: true, deep: false })
 
 watch(pageIndex, loadPage)
+
+// The page is laid out at the width of its container, so every measurement above
+// changes when the window does — including the mini-map's aspect ratio.
+let ro: ResizeObserver | null = null
+
+onMounted(() => {
+  measure()
+  if (typeof ResizeObserver === 'undefined') return
+  ro = new ResizeObserver(() => {
+    measure()
+    clampPan()
+  })
+  if (stageEl.value) ro.observe(stageEl.value)
+})
+
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  ro = null
+})
 
 // Zoom survives a page change on purpose: a reviewer checking the same detail
 // across sheets should not have to zoom back in every time. It resets only when
@@ -468,6 +617,48 @@ watch([pageIndex, view, zoom, panX, panY], () => emit('state', {
 .dv-key.added::before { background: var(--diff-added); }
 .dv-key.deleted::before { background: var(--diff-deleted); }
 .dv-key.modified::before { background: var(--diff-modified); }
+
+/*
+ * Mini-map. Pinned to the stage rather than the canvas, so it stays put while the
+ * page moves under it — a navigator that pans with the content navigates nothing.
+ */
+.dv-map {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  padding: 3px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  cursor: crosshair;
+  line-height: 0;
+  touch-action: none; /* pointer-drag to pan, not a scroll gesture */
+}
+
+.dv-map-thumb {
+  position: relative;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--diff-paper);
+  opacity: 0.95;
+  user-select: none;
+}
+
+/* The thumbnail carries .dv-canvas too, so it inherits the layer and state rules
+   and shows the same view as the stage. It must NOT inherit the transform. */
+.dv-map-thumb { transform: none !important; will-change: auto; }
+
+/* The viewport rectangle — what is on screen. Clicks pass through to the map
+   (which recentres), so the box itself is not a pointer target. */
+.dv-map-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  pointer-events: none;
+}
 
 .dv-err { color: var(--danger); }
 .dv-muted { color: var(--muted); }

@@ -103,14 +103,14 @@ describe('ThreadPanel deep-link focus', () => {
 // verbatim — the host owns rendering, the panel owns the affordance.
 describe('comparison-anchored threads', () => {
   const DIFF_ANCHOR = {
-    kind: 'diff-view',
+    kind: 'diff-view' as const,
     file_uid: 'f1',
     base: '2026-08-16T09:00:00',
     target: '2026-08-17T10:00:00',
     plugin: 'pdf',
     plugin_version: '1',
     page: 2,
-    view: 'difference',
+    view: 'difference' as const,
   }
 
   beforeEach(() => {
@@ -163,7 +163,7 @@ describe('comparison-anchored threads', () => {
     const svc = await import('@/services/discussionService')
     ;(svc.discussionService as unknown as Record<string, unknown>).openThread = openThread
 
-    const moved = { ...DIFF_ANCHOR, page: 5, view: 'before', zoom: 8, pan_x: -400, pan_y: -220 }
+    const moved = { ...DIFF_ANCHOR, page: 5, view: 'before' as const, zoom: 8, pan_x: -400, pan_y: -220 }
     listThreads.mockResolvedValue([])
     const w = mount(ThreadPanel, {
       props: { fileUid: 'f1', embedded: true, anchorProvider: () => moved },

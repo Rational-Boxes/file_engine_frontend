@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
 const { renditionText } = vi.hoisted(() => ({ renditionText: vi.fn() }))
@@ -294,5 +294,155 @@ describe('zoom and pan', () => {
     expect(w.get('.dv-canvas').classes()).toContain('view-after')
     expect((w.get('.dv-canvas').element as HTMLElement).style.transform)
       .toBe('translate(-120px, -80px) scale(4)')
+  })
+})
+
+
+// The mini-map, matching the image preview's: a whole-page thumbnail with a box
+// marking what is on screen. Zoomed into a corner of a drawing you lose all sense
+// of where you are, and hunting by dragging is slow.
+describe('the pan navigator', () => {
+  // jsdom lays nothing out and the map is computed entirely from layout, so the
+  // page's size has to be faked on the prototype BEFORE mounting — the first
+  // measurement happens as soon as the page's SVG lands.
+  const saved: Array<[string, PropertyDescriptor | undefined]> = []
+
+  function fakeLayout(pageW: number, pageH: number) {
+    const defs: Record<string, () => number> = {
+      offsetWidth: function (this: HTMLElement) {
+        if (this.classList.contains('dv-map-thumb')) return 0
+        return this.classList.contains('dv-canvas') ? pageW : 0
+      },
+      offsetHeight: function (this: HTMLElement) {
+        if (this.classList.contains('dv-map-thumb')) return 0
+        return this.classList.contains('dv-canvas') ? pageH : 0
+      },
+      clientWidth: function (this: HTMLElement) {
+        return this.classList.contains('dv-stage') ? 800 : 0
+      },
+      clientHeight: function (this: HTMLElement) {
+        return this.classList.contains('dv-stage') ? 600 : 0
+      },
+    }
+    for (const [name, get] of Object.entries(defs)) {
+      saved.push([name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)])
+      Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get })
+    }
+  }
+
+  afterEach(() => {
+    for (const [name, desc] of saved.reverse()) {
+      if (desc) Object.defineProperty(HTMLElement.prototype, name, desc)
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name]
+    }
+    saved.length = 0
+  })
+
+  async function viewer({ w = 800, h = 1132, zoomed = true } = {}) {
+    fakeLayout(w, h)
+    const wrapper = mount(DiffPageViewer, { props: { pages: pages(2) } })
+    await flushPromises()
+    const stage = wrapper.get('.dv-stage').element as HTMLElement
+    stage.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect
+    if (zoomed) {
+      await wrapper.get('[aria-label="Zoom in"]').trigger('click')
+      await flushPromises()
+    }
+    return wrapper
+  }
+
+  function map(w: ReturnType<typeof mount>) {
+    const el = w.get('.dv-map').element as HTMLElement
+    el.setPointerCapture = () => {}
+    el.releasePointerCapture = () => {}
+    const thumb = w.get('.dv-map-thumb').element as HTMLElement
+    thumb.getBoundingClientRect = () => ({ left: 0, top: 0, width: 168, height: 168 }) as DOMRect
+    return el
+  }
+
+  function point(el: HTMLElement, type: string, x: number, y: number) {
+    el.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }))
+  }
+
+  function box(w: ReturnType<typeof mount>) {
+    const s = (w.get('.dv-map-box').element as HTMLElement).style
+    return {
+      left: parseFloat(s.left), top: parseFloat(s.top),
+      width: parseFloat(s.width), height: parseFloat(s.height),
+    }
+  }
+
+  it('stays hidden while the whole page is showing', async () => {
+    const w = await viewer({ zoomed: false })
+    expect(w.find('.dv-map').exists()).toBe(false)
+  })
+
+  it('appears once zoomed, as a thumbnail of the page in the current view', async () => {
+    const w = await viewer()
+    expect(w.find('.dv-map').exists()).toBe(true)
+    // The same already-loaded SVG rendered small — no second fetch — following
+    // the Before/After/Difference selection.
+    expect(renditionText).toHaveBeenCalledTimes(1)
+    expect(w.get('.dv-map-thumb').classes()).toContain('view-difference')
+    expect(w.get('.dv-map-thumb').html()).toContain('id="diff-changes"')
+  })
+
+  it('keeps the page shape, bounded on the longer side', async () => {
+    const w = await viewer({ w: 800, h: 400 })   // a landscape sheet
+    const s = (w.get('.dv-map-thumb').element as HTMLElement).style
+    expect(s.width).toBe('168px')
+    expect(s.height).toBe('84px')
+  })
+
+  it('sizes the box to the visible fraction of the page', async () => {
+    const w = await viewer({ w: 800, h: 600 })
+    // An 800x600 page maps to a 168x126 thumbnail; at 125% of a page that exactly
+    // fits the window, 1/1.25 of it is on screen in each direction.
+    const b = box(w)
+    expect(b.width).toBeCloseTo(168 * 0.8, 1)
+    expect(b.height).toBeCloseTo(126 * 0.8, 1)
+  })
+
+  it('moves the view to the point clicked on the map', async () => {
+    const w = await viewer({ w: 800, h: 600 })
+    // The far corner: the view lands at the end of the page, clamped so it
+    // cannot run past it.
+    point(map(w), 'pointerdown', 168, 168)
+    await flushPromises()
+    const b = box(w)
+    expect(b.left + b.width).toBeCloseTo(168, 0)   // thumbnail is 168 wide...
+    expect(b.top + b.height).toBeCloseTo(126, 0)   // ...and 126 tall for this page
+  })
+
+  it('drags the viewport around the map', async () => {
+    const w = await viewer({ w: 800, h: 600 })
+    const el = map(w)
+    point(el, 'pointerdown', 168, 168)
+    await flushPromises()
+    const corner = box(w)
+
+    point(el, 'pointermove', 0, 0)
+    await flushPromises()
+    expect(box(w).left).toBeLessThan(corner.left)
+
+    // Once the drag ends, further movement must not keep panning.
+    point(el, 'pointerup', 0, 0)
+    const settled = box(w)
+    point(el, 'pointermove', 168, 168)
+    await flushPromises()
+    expect(box(w)).toEqual(settled)
+  })
+
+  it('does not let the map gesture reach the page underneath', async () => {
+    // The stage pans on pointerdown too; without stopping propagation a click on
+    // the map would recentre AND start a drag of the page.
+    const w = await viewer({ w: 800, h: 600 })
+    point(map(w), 'pointerdown', 84, 84)
+    await flushPromises()
+    const centred = box(w)
+
+    point(w.get('.dv-stage').element as HTMLElement, 'pointermove', 700, 500)
+    await flushPromises()
+    expect(box(w)).toEqual(centred)
   })
 })
