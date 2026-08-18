@@ -950,15 +950,7 @@ async function onShowDiff(anchor: DiffViewAnchor, threadId: string) {
       const model = res.children.find((c) => c.kind === 'model')
       const meta = res.children.find((c) => c.kind === 'metamodel')
       if (model) {
-        // Resolved here rather than at setup: a 3D comparison is one path out of
-        // several, and binding the store up front made the entire preview
-        // component require an active Pinia just to render a PDF.
-        useModel3dStore().open(model.uid, props.name || 'Comparison',
-          { xktUid: model.uid, metamodelUid: meta?.uid })
-        diffView.value = null
-        // A model has no document preview to return to, so leaving this surface
-        // open behind the 3D viewer would strand an empty window.
-        handOffToModelViewer()
+        openComparisonInModelViewer(model.uid, meta?.uid)
         return
       }
     }
@@ -1035,15 +1027,7 @@ async function runDiff(pair: { base: string; target: string }) {
       const model = res.children.find((c) => c.kind === 'model')
       const meta = res.children.find((c) => c.kind === 'metamodel')
       if (model) {
-        // Resolved here rather than at setup: a 3D comparison is one path out of
-        // several, and binding the store up front made the entire preview
-        // component require an active Pinia just to render a PDF.
-        useModel3dStore().open(model.uid, props.name || 'Comparison',
-          { xktUid: model.uid, metamodelUid: meta?.uid })
-        diffView.value = null
-        // A model has no document preview to return to, so leaving this surface
-        // open behind the 3D viewer would strand an empty window.
-        handOffToModelViewer()
+        openComparisonInModelViewer(model.uid, meta?.uid)
         return
       }
     }
@@ -1060,6 +1044,7 @@ async function runDiff(pair: { base: string; target: string }) {
       pages: res.children.filter((c) => c.kind !== 'metamodel'),
       manifestUid: res.manifest?.key ?? '',
     }
+
   } catch (e) {
     diffError.value = errorMessage(e, 'Failed to compare these versions')
   } finally {
@@ -1075,6 +1060,31 @@ function diffFailureText(status: string) {
 
 // Attach the comparison on screen to the next comment, so the thread reopens
 // exactly here — same pair, same page, same view.
+/**
+ * Show a 3D comparison in the model viewer.
+ *
+ * A differenced model is just another 3D model, so everything there — including
+ * commenting — behaves exactly as it does on any model: the viewer captures a
+ * viewpoint anchor and the thread belongs to the FILE.
+ *
+ * Hence `props.uid`, not the rendition's. The viewer files threads against the
+ * uid it is opened with, so handing it the diff child would attach every comment
+ * to a hidden rendition instead of the document, where nobody would find them
+ * again. The diff children are passed separately, as the model to render.
+ *
+ * The store is resolved here rather than at setup: a 3D comparison is one path
+ * out of several, and binding it up front made the whole preview component
+ * require an active Pinia just to render a PDF.
+ */
+function openComparisonInModelViewer(xktUid: string, metamodelUid?: string) {
+  useModel3dStore().open(props.uid, `${props.name || 'model'} — comparison`,
+    { xktUid, metamodelUid })
+  diffView.value = null
+  // A model has no document preview to return to, so leaving this surface open
+  // behind the 3D viewer would strand an empty window.
+  handOffToModelViewer()
+}
+
 function commentOnDiff() {
   const d = diffView.value
   if (!d) return
@@ -1100,9 +1110,14 @@ function commentOnDiff() {
  * Re-read at post time rather than frozen at capture: adjusting the view while
  * writing about what you found is normal, and a comment that restores to the
  * viewport you had before you looked closer points at the wrong thing.
+ *
+ * Applies whether or not the author pressed "Comment on this comparison". A
+ * comment written while looking at a comparison is *about* that comparison —
+ * requiring a button press first meant a comment that looked anchored, read as
+ * anchored, and silently was not.
  */
-function liveDiffAnchor(pending: ThreadAnchor): ThreadAnchor | null {
-  if (pending.kind !== 'diff-view') return null   // a 3D viewpoint is a moment, not a live feed
+function liveDiffAnchor(pending: ThreadAnchor | null): ThreadAnchor | null {
+  if (pending && pending.kind !== 'diff-view') return null  // a 3D viewpoint is a moment, not a live feed
   const d = diffView.value
   if (!d?.anchor) return null
   return {
@@ -1115,10 +1130,32 @@ function liveDiffAnchor(pending: ThreadAnchor): ThreadAnchor | null {
   }
 }
 
+// In the difference view the association is assumed: a comment written while
+// looking at a comparison is about that comparison. The anchorProvider is what
+// guarantees it gets recorded; this only makes it VISIBLE, by showing the chip
+// so the author can see what their comment will carry (and detach it if they
+// meant something else).
+//
+// Driven by a watch rather than called when the comparison lands, because the
+// two are not ordered: the discussion panel mounts once the document's preview
+// resolves, which can be after the comparison is already on screen. Attaching at
+// one fixed moment silently did nothing whenever the panel was not there yet.
+watch(
+  () => [!!diffView.value?.anchor, !!threadPanelRef.value] as const,
+  ([hasDiff, hasPanel]) => {
+    if (hasDiff && hasPanel) commentOnDiff()
+  },
+  { immediate: true },
+)
+
 function closeDiffView() {
   diffView.value = null
   diffError.value = ''
   activeMarkupCommentId.value = null
+  // Drop the attachment with the comparison it describes. Left behind, the next
+  // comment on the live document would quietly carry an anchor to something the
+  // author is no longer looking at.
+  threadPanelRef.value?.clearPendingAnchor?.()
 }
 
 // Close a shown marked-up copy without the discard prompt — the caller has

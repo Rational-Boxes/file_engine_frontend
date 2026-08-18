@@ -42,11 +42,14 @@ vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ tenant: 'default' }) })
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => ({ query: {} }) }))
 
 vi.mock('@/services/renditions', () => ({
-  loadRenditionSet: vi.fn().mockResolvedValue({}),
-  renditionObjectUrl: vi.fn(),
+  loadRenditionSet: vi.fn().mockResolvedValue({
+    pdf: { uid: 'pdf1', ext: 'pdf' },
+    preview: { uid: 'prev1', ext: 'png' },
+  }),
+  renditionObjectUrl: vi.fn().mockResolvedValue('blob:doc'),
   renditionText: vi.fn(),
   revokeRenditionUrl: vi.fn(),
-  previewImage: () => undefined,
+  previewImage: (set: { preview?: unknown }) => set?.preview,
 }))
 vi.mock('@/services/searchService', () => ({ searchService: { generatePreview: vi.fn() } }))
 vi.mock('@/services/fileService', () => ({
@@ -54,7 +57,20 @@ vi.mock('@/services/fileService', () => ({
 }))
 vi.mock('@/services/apiClient', () => ({ errorMessage: (_e: unknown, m: string) => m }))
 
-vi.mock('@/components/ThreadPanel.vue', () => ({ default: { name: 'ThreadPanel', render: () => null } }))
+// Exposes startAnnotation like the real panel: the "Comment on this comparison"
+// button calls it through a template ref, and a stub without it turns that whole
+// path into a silent no-op that a test would never notice.
+const { startAnnotation, clearPendingAnchor } = vi.hoisted(() => ({
+  startAnnotation: vi.fn(), clearPendingAnchor: vi.fn(),
+}))
+vi.mock('@/components/ThreadPanel.vue', () => ({
+  default: {
+    name: 'ThreadPanel',
+    props: ['fileUid', 'markupProvider', 'anchorProvider', 'activeCommentId'],
+    methods: { startAnnotation, clearPendingAnchor },
+    render: () => null,
+  },
+}))
 vi.mock('@/components/ThreadOverlay.vue', () => ({ default: { name: 'ThreadOverlay', render: () => null } }))
 vi.mock('@/components/PdfViewer.vue', () => ({ default: { name: 'PdfViewer', props: ['src'], render: () => null } }))
 vi.mock('@/components/VersionPairPicker.vue', () => ({
@@ -195,9 +211,72 @@ describe('3D comparisons belong to the model viewer', () => {
     const w = surface()
     await flushPromises()
 
-    expect(openModel).toHaveBeenCalledWith('mx', expect.any(String),
+    // The thread must belong to the FILE, not the diff rendition. The viewer
+    // files comments against the uid it is opened with, so passing the diff child
+    // here would bury every comment on a hidden rendition — and a differenced
+    // model is just another model, where commenting works as it always does.
+    expect(openModel).toHaveBeenCalledWith('f1', expect.stringContaining('comparison'),
       { xktUid: 'mx', metamodelUid: 'mm' })
     expect(previewClose).toHaveBeenCalled()
     expect(w.find('.dpv-stub').exists()).toBe(false)
+  })
+})
+
+
+describe('attaching the comparison to a comment', () => {
+  const DIFF_ANCHOR = expect.objectContaining({
+    kind: 'diff-view',
+    file_uid: 'f1',
+    base: '2026-08-16T09:00:00',
+    target: '2026-08-17T10:00:00',
+  })
+
+  it('attaches the comparison as soon as it is showing, without being asked', async () => {
+    // The regression this covers: anchoring used to require finding a button, so
+    // a comment written while inspecting a difference was silently unanchored and
+    // came back with no way to return to what it was about.
+    request()
+    surface()
+    await flushPromises()
+    expect(startAnnotation).toHaveBeenCalledWith(DIFF_ANCHOR)
+  })
+
+  it('still offers the explicit affordance', async () => {
+    request()
+    const w = surface()
+    await flushPromises()
+    startAnnotation.mockClear()
+
+    const btn = w.findAll('button').find((b) => b.text().includes('Comment on this comparison'))
+    expect(btn, 'the affordance must be on screen when a comparison is').toBeTruthy()
+    await btn!.trigger('click')
+    expect(startAnnotation).toHaveBeenCalledWith(DIFF_ANCHOR)
+  })
+
+  it('records the comparison for a comment posted without pressing anything', async () => {
+    // What the anchorProvider is for: the panel asks the host at post time, even
+    // when nothing was explicitly attached.
+    request()
+    const w = surface()
+    await flushPromises()
+
+    const provider = w.findComponent({ name: 'ThreadPanel' }).props('anchorProvider') as
+      (p: unknown) => Record<string, unknown> | null
+    expect(provider(null)).toMatchObject({ kind: 'diff-view', file_uid: 'f1' })
+  })
+
+  it('drops the attachment when the reader returns to the document', async () => {
+    // Left behind, the next comment on the live document would quietly carry an
+    // anchor to something the author is no longer looking at.
+    request()
+    const w = surface()
+    await flushPromises()
+
+    await w.findAll('button').find((b) => b.text().includes('Back to document'))!.trigger('click')
+    expect(clearPendingAnchor).toHaveBeenCalled()
+
+    const provider = w.findComponent({ name: 'ThreadPanel' }).props('anchorProvider') as
+      (p: unknown) => unknown
+    expect(provider(null)).toBeNull()
   })
 })

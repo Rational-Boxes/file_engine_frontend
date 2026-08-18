@@ -272,13 +272,20 @@ const props = defineProps<{
   // the current PDF markup here, so no separate "save markup" step is needed.
   markupProvider?: () => Promise<CommentMarkup | null>
   /**
-   * Refresh a pending anchor at post time. Attaching a view and then adjusting it
-   * before posting is normal — a reader zooms in further while writing about what
-   * they found — and a comment that restores to a stale viewport points at the
-   * wrong thing. The host returns the anchor's current state, or null to keep
-   * what was captured (a 3D viewpoint is deliberately a moment, not a live feed).
+   * The anchor to record, asked for at post time.
+   *
+   * Called with whatever was explicitly attached, or null if nothing was. Two
+   * jobs. It refreshes a stale attachment — adjusting the view while writing
+   * about what you found is normal, and a comment that restores to the viewport
+   * you had before you looked closer points at the wrong thing. And it lets the
+   * host anchor a comment the author never explicitly attached anything to,
+   * which is what makes commenting on a comparison work by default rather than
+   * only when someone finds the button.
+   *
+   * Returning null keeps what was attached (a 3D viewpoint is deliberately a
+   * moment, not a live feed) — or keeps the comment unanchored.
    */
-  anchorProvider?: (pending: ThreadAnchor) => ThreadAnchor | null
+  anchorProvider?: (pending: ThreadAnchor | null) => ThreadAnchor | null
   // The comment whose marked-up copy is currently being viewed (highlighted).
   activeCommentId?: string | null
 }>()
@@ -563,12 +570,12 @@ function scrollToThread(threadId: string) {
     document.getElementById(`thread-${threadId}`)?.scrollIntoView({ block: 'center' })
   })
 }
-defineExpose({ startAnnotation, scrollToThread })
+defineExpose({ startAnnotation, clearPendingAnchor, scrollToThread })
 
-// The pending anchor as it stands at post time, not as it stood when attached.
+// What to record at post time. Asked for even with nothing attached, so a host
+// showing something anchorable (a comparison) can say so.
 function liveAnchor(): ThreadAnchor | null {
   const pending = pendingAnchor.value
-  if (!pending) return null
   return props.anchorProvider?.(pending) ?? pending
 }
 
