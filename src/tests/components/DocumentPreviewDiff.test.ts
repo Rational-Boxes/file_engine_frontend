@@ -66,7 +66,7 @@ const { startAnnotation, clearPendingAnchor } = vi.hoisted(() => ({
 vi.mock('@/components/ThreadPanel.vue', () => ({
   default: {
     name: 'ThreadPanel',
-    props: ['fileUid', 'markupProvider', 'anchorProvider', 'activeCommentId'],
+    props: ['fileUid', 'markupProvider', 'anchorProvider', 'activeCommentId', 'substituteActive'],
     methods: { startAnnotation, clearPendingAnchor },
     render: () => null,
   },
@@ -227,6 +227,22 @@ describe('3D comparisons belong to the model viewer', () => {
   })
 })
 
+
+describe('getting back to the document', () => {
+  it('tells the rail it is covered, and uncovers on a plain comment', async () => {
+    request()
+    const w = surface()
+    await flushPromises()
+
+    const panel = w.findComponent({ name: 'ThreadPanel' })
+    expect(panel.props('substituteActive')).toBe(true)
+
+    panel.vm.$emit('restore-plain', 't1')
+    await flushPromises()
+    expect(w.find('.dpv-stub').exists()).toBe(false)
+    expect(panel.props('substituteActive')).toBe(false)
+  })
+})
 
 describe('attaching the comparison to a comment', () => {
   const DIFF_ANCHOR = expect.objectContaining({

@@ -133,6 +133,23 @@
             :title="onComparison(t) ? 'Reopen this comparison' : 'Restore this 3D view'"
             @click="emit('restore-view', t.id)"
           >{{ onComparison(t) ? '🔀 View comparison' : '🎯 View' }}</button>
+          <!--
+            A plain comment is about the document itself. While the surface is
+            showing something else — a comparison, a marked-up copy — that is a
+            place to get back to, so it is offered as one. The peer of the 3D
+            viewer taking you back to the model when you activate a comment made
+            on the model.
+
+            Only while a substitute is up: on the document these would be a row
+            of buttons that all mean "stay here".
+          -->
+          <button
+            v-if="substituteActive && !t.anchor"
+            type="button"
+            class="tp-viewbtn"
+            title="Show the document itself"
+            @click="emit('restore-plain', t.id)"
+          >📄 View document</button>
           <!-- Comparison thread: reopen the exact rendering set the author was
                looking at — the peer of 🎯 View and of "view marked-up copy". -->
           <button
@@ -278,6 +295,11 @@ const props = defineProps<{
   // Phase 7.1: called right before a comment is posted; returns a marked-up-PDF
   // pointer to link to it (or null). The host (DocumentPreview) captures + uploads
   // the current PDF markup here, so no separate "save markup" step is needed.
+  /**
+   * The host is showing something other than the document itself (a comparison,
+   * a marked-up copy). Plain threads then offer the way back to it.
+   */
+  substituteActive?: boolean
   markupProvider?: () => Promise<CommentMarkup | null>
   /**
    * The anchor to record, asked for at post time.
@@ -308,6 +330,7 @@ const emit = defineEmits<{
   // Reshow a comment's marked-up PDF copy (host loads the rendition + highlights it).
   (e: 'show-markup', markup: CommentMarkup, commentId: string): void
   (e: 'show-diff', anchor: DiffViewAnchor, threadId: string): void
+  (e: 'restore-plain', threadId: string): void
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'

@@ -67,7 +67,7 @@
           class="dv-zoom-lbl"
           :title="atFit ? 'Fitted to the window' : 'Reset to fit the window'"
           @click="fit"
-        >{{ Math.round(zoom * 100) }}%</button>
+        >{{ Math.round((zoom / fitZoom) * 100) }}%</button>
         <button class="dv-nav" title="Zoom in" aria-label="Zoom in" @click="zoomBy(STEP)">+</button>
         <button class="dv-nav dv-fit" :disabled="atFit" title="Fit the page to the window" @click="fit">Fit</button>
       </div>
@@ -109,7 +109,7 @@
       v-else
       ref="stageEl"
       class="dv-stage"
-      :class="{ panning, pannable: zoom > 1 }"
+      :class="{ panning, pannable: overflowing }"
       @wheel.prevent="onWheel"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
@@ -241,7 +241,6 @@ const modeHelp = computed(() => {
 // the reader's monitor. Percentages are therefore relative to fit, which is what
 // the label says and what a drawing reviewer actually thinks in.
 const STEP = 1.25
-const MIN_ZOOM = 1        // below fit there is nothing to see — the page is already whole
 const MAX_ZOOM = 24       // enough to read a dimension callout on a large sheet
 
 const zoom = ref(1)
@@ -252,6 +251,12 @@ const stageEl = ref<HTMLElement | null>(null)
 
 let dragFrom: { x: number; y: number; panX: number; panY: number } | null = null
 
+// Has the reader chosen a zoom? Until they have, the view follows `fitZoom`,
+// which is only knowable once the page has been measured — so a freshly opened
+// comparison settles on the whole page rather than on whatever scale happened to
+// apply before the SVG had a size.
+let userZoomed = false
+
 const canvasEl = ref<HTMLElement | null>(null)
 const navThumbEl = ref<HTMLElement | null>(null)
 // The page's UNSCALED layout size. Layout happens before the transform, so this is
@@ -259,14 +264,36 @@ const navThumbEl = ref<HTMLElement | null>(null)
 const content = ref({ w: 0, h: 0 })
 const NAV_MAX = 168 // px — the mini-map's longer side, matching the image preview's
 
+// The stage's own size, kept in sync so `fitZoom` recomputes when the window
+// changes shape — the scale that shows a whole page depends on both.
+const stageSize = ref({ w: 0, h: 0 })
+
 function measure() {
   const el = canvasEl.value
-  if (!el) return
-  content.value = { w: el.offsetWidth, h: el.offsetHeight }
+  const stage = stageEl.value
+  if (stage) stageSize.value = { w: stage.clientWidth, h: stage.clientHeight }
+  if (el) content.value = { w: el.offsetWidth, h: el.offsetHeight }
 }
 
+/**
+ * The scale at which the WHOLE page is visible.
+ *
+ * The page is laid out at the width of the stage, so a portrait sheet is taller
+ * than the window before any zooming happens. Treating 1.0 as "fits" was wrong
+ * for exactly that case: the bottom of the page was clipped and, with panning
+ * gated on zoom > 1, unreachable — a reader had to scroll the surrounding page
+ * to see the rest of a document that was supposedly fitted.
+ */
+const fitZoom = computed(() => {
+  const c = content.value
+  const st = stageSize.value
+  if (!c.h || !st.h) return 1
+  return Math.min(1, st.h / c.h)
+})
+
 // Only worth showing when there is something off-screen to navigate to.
-const showNavigator = computed(() => zoom.value > 1 && content.value.w > 0 && content.value.h > 0)
+const showNavigator = computed(() =>
+  overflowing.value && content.value.w > 0 && content.value.h > 0)
 
 // Aspect-preserving, bounded on the longer side — the page shape has to be
 // recognisable or the map is useless.
@@ -336,7 +363,8 @@ function endNavDrag(e: PointerEvent) {
   ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
 }
 
-const atFit = computed(() => zoom.value === 1 && panX.value === 0 && panY.value === 0)
+const atFit = computed(() =>
+  !overflowing.value && panX.value === 0 && panY.value === 0)
 
 const canvasStyle = computed(() => ({
   transform: `translate(${panX.value}px, ${panY.value}px) scale(${zoom.value})`,
@@ -344,7 +372,9 @@ const canvasStyle = computed(() => ({
 }))
 
 function clampZoom(z: number) {
-  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
+  // Never below the whole page: there is nothing more to reveal by shrinking it
+  // into a corner of an empty field.
+  return Math.min(MAX_ZOOM, Math.max(fitZoom.value, z))
 }
 
 // Keep the page inside the viewport: panning a drawing off-screen and having to
@@ -361,10 +391,14 @@ function clampPan() {
 }
 
 function fit() {
-  zoom.value = 1
+  userZoomed = false
+  zoom.value = fitZoom.value
   panX.value = 0
   panY.value = 0
 }
+
+/** Is any of the page off-screen? Everything that pans depends on this. */
+const overflowing = computed(() => zoom.value > fitZoom.value + 0.001)
 
 /** Zoom about the centre of the viewport (the toolbar buttons). */
 function zoomBy(factor: number) {
@@ -380,11 +414,12 @@ function zoomBy(factor: number) {
 function zoomAbout(factor: number, cx: number, cy: number) {
   const next = clampZoom(zoom.value * factor)
   if (next === zoom.value) return
+  userZoomed = true
   const k = next / zoom.value
   panX.value = cx - (cx - panX.value) * k
   panY.value = cy - (cy - panY.value) * k
   zoom.value = next
-  if (next === 1) { panX.value = 0; panY.value = 0 } else clampPan()
+  if (!overflowing.value) { panX.value = 0; panY.value = 0 } else clampPan()
 }
 
 function onWheel(e: WheelEvent) {
@@ -398,7 +433,7 @@ function onWheel(e: WheelEvent) {
 }
 
 function onPointerDown(e: PointerEvent) {
-  if (zoom.value === 1 || e.button !== 0) return  // nothing to pan when the page is whole
+  if (!overflowing.value || e.button !== 0) return  // nothing to pan when the page is whole
   dragFrom = { x: e.clientX, y: e.clientY, panX: panX.value, panY: panY.value }
   panning.value = true
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -460,6 +495,7 @@ async function loadPage() {
 async function remeasure() {
   await nextTick()
   measure()
+  if (!userZoomed) fit()
 }
 
 // Reset when a different comparison is shown, so a reader is never left on page 9
@@ -468,7 +504,10 @@ async function remeasure() {
 watch(() => props.pages, () => {
   pageIndex.value = Math.min(props.initialPage ?? 0, Math.max(props.pages.length - 1, 0))
   if (props.initialView) view.value = props.initialView
-  zoom.value = clampZoom(props.initialZoom ?? 1)
+  // A restored comment names its own scale and must keep it; anything else waits
+  // for the measurement and takes the whole page.
+  userZoomed = !!props.initialZoom
+  zoom.value = props.initialZoom ? clampZoom(props.initialZoom) : fitZoom.value
   panX.value = props.initialPanX ?? 0
   panY.value = props.initialPanY ?? 0
   loadPage()
@@ -485,7 +524,8 @@ onMounted(() => {
   if (typeof ResizeObserver === 'undefined') return
   ro = new ResizeObserver(() => {
     measure()
-    clampPan()
+    if (userZoomed) clampPan()
+    else fit()
   })
   if (stageEl.value) ro.observe(stageEl.value)
 })

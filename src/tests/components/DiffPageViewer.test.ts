@@ -462,3 +462,103 @@ describe('the pan navigator', () => {
     expect(box(w)).toEqual(centred)
   })
 })
+
+
+// The bug this covers: a portrait page is TALLER than the window once laid out at
+// the window's width. Treating 1.0 as "fits" clipped the bottom of it, and with
+// panning gated on zoom > 1 that part of the document was unreachable — a reader
+// had to scroll the surrounding page to see the rest of a supposedly fitted page.
+describe('a page taller than the window', () => {
+  const saved: Array<[string, PropertyDescriptor | undefined]> = []
+
+  function fakeLayout(pageH: number) {
+    const defs: Record<string, () => number> = {
+      offsetWidth: function (this: HTMLElement) {
+        return this.classList.contains('dv-map-thumb') ? 0
+          : this.classList.contains('dv-canvas') ? 800 : 0
+      },
+      offsetHeight: function (this: HTMLElement) {
+        return this.classList.contains('dv-map-thumb') ? 0
+          : this.classList.contains('dv-canvas') ? pageH : 0
+      },
+      clientWidth: function (this: HTMLElement) {
+        return this.classList.contains('dv-stage') ? 800 : 0
+      },
+      clientHeight: function (this: HTMLElement) {
+        return this.classList.contains('dv-stage') ? 600 : 0
+      },
+    }
+    for (const [name, get] of Object.entries(defs)) {
+      saved.push([name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)])
+      Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get })
+    }
+  }
+
+  afterEach(() => {
+    for (const [name, desc] of saved.reverse()) {
+      if (desc) Object.defineProperty(HTMLElement.prototype, name, desc)
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name]
+    }
+    saved.length = 0
+  })
+
+  // A4 portrait at 800 wide is ~1132 tall in a 600-tall window: fit is 600/1132.
+  const FIT = 600 / 1132
+
+  async function viewer(props: Record<string, unknown> = {}) {
+    fakeLayout(1132)
+    const w = mount(DiffPageViewer, { props: { pages: pages(2), ...props } })
+    await flushPromises()
+    const stage = w.get('.dv-stage').element as HTMLElement
+    stage.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect
+    return w
+  }
+
+  function scale(w: ReturnType<typeof mount>) {
+    const m = /scale\(([\d.]+)\)/.exec((w.get('.dv-canvas').element as HTMLElement).style.transform)!
+    return Number(m[1])
+  }
+
+  it('opens showing the WHOLE page, not just its width', async () => {
+    const w = await viewer()
+    expect(scale(w)).toBeCloseTo(FIT, 3)
+    expect(w.get('.dv-zoom-lbl').text()).toBe('100%')  // 100% means the whole page
+  })
+
+  it('will not zoom out past the whole page', async () => {
+    const w = await viewer()
+    await w.get('[aria-label="Zoom out"]').trigger('click')
+    expect(scale(w)).toBeCloseTo(FIT, 3)
+  })
+
+  it('pans the moment there is anything off-screen', async () => {
+    // The regression: panning was gated on zoom > 1, so on a tall page a reader
+    // could neither see nor reach the bottom of it.
+    const w = await viewer()
+    await w.get('[aria-label="Zoom in"]').trigger('click')
+    expect(w.get('.dv-stage').classes()).toContain('pannable')
+
+    const stage = w.get('.dv-stage').element as HTMLElement
+    stage.setPointerCapture = () => {}
+    stage.releasePointerCapture = () => {}
+    stage.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 400, clientY: 400, bubbles: true }))
+    stage.dispatchEvent(new MouseEvent('pointermove', { button: 0, clientX: 400, clientY: 300, bubbles: true }))
+    await flushPromises()
+
+    const t = (w.get('.dv-canvas').element as HTMLElement).style.transform
+    expect(t).not.toContain('translate(0px, 0px)')   // it moved down the page
+  })
+
+  it('keeps a restored comment scale instead of refitting over it', async () => {
+    // A comment names the scale its author was reading at; snapping that back to
+    // the whole page would throw away the detail it points at.
+    const w = await viewer({ initialZoom: 4, initialPanX: -100, initialPanY: -900 })
+    expect(scale(w)).toBeCloseTo(4, 3)
+  })
+
+  it('offers the map, since part of the page is off-screen', async () => {
+    const w = await viewer()
+    await w.get('[aria-label="Zoom in"]').trigger('click')
+    expect(w.find('.dv-map').exists()).toBe(true)
+  })
+})

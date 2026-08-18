@@ -308,11 +308,13 @@
           :markup-provider="attachMarkup"
           :anchor-provider="liveDiffAnchor"
           :active-comment-id="activeMarkupCommentId"
+          :substitute-active="!!diffView || !!markupView"
           :class="['dp-thread', { 'dp-thread-min': discLayout === 'collapsed' }]"
           @layout="discLayout = $event"
           @update:pos="setPos"
           @show-markup="onShowMarkup"
           @show-diff="onShowDiff"
+          @restore-plain="onRestorePlain"
         />
         <button v-else class="btn dp-discuss-btn" @click="discussionOpen = true">
           💬 Discussion
@@ -1153,6 +1155,14 @@ watch(
   },
   { immediate: true },
 )
+
+// A plain comment is about the document itself, so activating one puts the
+// document back — whichever substitute was covering it.
+function onRestorePlain(threadId: string) {
+  if (markupView.value) closeMarkupView()
+  else closeDiffView()
+  activeMarkupCommentId.value = threadId
+}
 
 function closeDiffView() {
   diffView.value = null

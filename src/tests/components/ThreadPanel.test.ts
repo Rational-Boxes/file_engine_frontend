@@ -172,6 +172,26 @@ describe('comparison-anchored threads', () => {
     w.unmount()
   })
 
+  it('offers plain threads the way back to the document, but only while covered', async () => {
+    // The peer of the 3D viewer returning you to the model. On the document
+    // itself these would be a row of buttons that all mean "stay here".
+    listThreads.mockResolvedValue([{ id: 't1', status: 'open', anchor: null, comments: [] }])
+    const plain = mount(ThreadPanel, { props: { fileUid: 'f1', embedded: true } })
+    await flushPromises()
+    expect(plain.findAll('.tp-viewbtn').some((b) => b.text().includes('View document'))).toBe(false)
+    plain.unmount()
+
+    const covered = mount(ThreadPanel, {
+      props: { fileUid: 'f1', embedded: true, substituteActive: true },
+    })
+    await flushPromises()
+    const btn = covered.findAll('.tp-viewbtn').find((b) => b.text().includes('View document'))
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    expect(covered.emitted('restore-plain')?.[0]).toEqual(['t1'])
+    covered.unmount()
+  })
+
   it('offers no comparison affordance on a plain thread', async () => {
     const w = await panel(null)
     expect(w.findAll('.tp-viewbtn').some((b) => b.text().includes('comparison'))).toBe(false)
