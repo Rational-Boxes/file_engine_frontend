@@ -24,6 +24,9 @@
         <component :is="Component" />
       </KeepAlive>
     </router-view>
+    <!-- Load-shedding toast: shown while any service reports 503. Mounted at the
+         app root so it appears whichever view is open. -->
+    <ServerBusyNotice />
     <PdfPreviewOverlay />
     <ModelViewerOverlay />
     <ThreadOverlay
@@ -42,6 +45,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useCommentsStore } from '@/stores/comments'
 import { initTheme } from '@/composables/useTheme'
 import PdfPreviewOverlay from '@/components/PdfPreviewOverlay.vue'
+import ServerBusyNotice from '@/components/ServerBusyNotice.vue'
 import ModelViewerOverlay from '@/components/ModelViewerOverlay.vue'
 import ThreadOverlay from '@/components/ThreadOverlay.vue'
 import HelpModal from '@/components/HelpModal.vue'

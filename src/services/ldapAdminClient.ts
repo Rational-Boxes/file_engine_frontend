@@ -14,6 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import axios, { type AxiosInstance } from 'axios'
+import { installOverloadHandling } from '@/services/serverBusy'
 import { tokenStorage } from '@/utils/tokenStorage'
 import { SERVICE_PATHS, serviceBase } from '@/services/serviceBase'
 
@@ -39,3 +40,8 @@ ldapAdminClient.interceptors.request.use((config) => {
 })
 
 export default ldapAdminClient
+
+// A 503 means the service is shedding load, not that it is broken: show the busy
+// toast and retry safe requests. Shared with every other client so the behaviour
+// is the same whichever service is out of capacity.
+installOverloadHandling(ldapAdminClient)
