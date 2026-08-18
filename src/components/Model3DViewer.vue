@@ -190,10 +190,19 @@ async function load() {
 // presence (a version bump could drop one — see the plugin smoke test) and
 // wrapped so a constructor failure only warns.
 function makePlugins(xeokit: any) {
-  const mk = (label: string, Ctor: any): any => {
+  // ALWAYS pass a config object. Not every plugin defaults it: AnnotationsPlugin
+  // is declared `constructor(viewer, cfg)` and dereferences `cfg.labelHTML`
+  // immediately, so `new Ctor(viewer)` threw — and because `super()` registers
+  // the plugin with the viewer BEFORE that line, each attempt left a
+  // half-constructed plugin attached to it.
+  //
+  // The visible cost was that annotations were silently absent: renderAnnotations
+  // is what draws a comment's marker in the scene, so anchored comments had no
+  // markers and clicking one could never bring you back.
+  const mk = (label: string, Ctor: any, cfg: Record<string, unknown> = {}): any => {
     if (typeof Ctor !== 'function') return null
     try {
-      return new Ctor(viewer)
+      return new Ctor(viewer, cfg)
     } catch (e) {
       console.warn(`[Model3DViewer] ${label} plugin unavailable`, e)
       return null
@@ -202,7 +211,9 @@ function makePlugins(xeokit: any) {
   sectionPlanes = mk('section planes', xeokit.SectionPlanesPlugin)
   distanceMeasurements = mk('distance measurement', xeokit.DistanceMeasurementsPlugin)
   angleMeasurements = mk('angle measurement', xeokit.AngleMeasurementsPlugin)
-  annotations = mk('annotations', xeokit.AnnotationsPlugin)
+  // surfaceOffset is documented as defaulting to 0.3 but is assigned straight from
+  // cfg, so omitting it leaves the marker offset undefined.
+  annotations = mk('annotations', xeokit.AnnotationsPlugin, { surfaceOffset: 0.3 })
   bcfViewpoints = mk('BCF viewpoints', xeokit.BCFViewpointsPlugin)
   wireAnnotationClicks()
 }
