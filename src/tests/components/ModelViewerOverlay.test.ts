@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h as createEl } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
@@ -633,5 +633,111 @@ describe('comments across a model and its comparison', () => {
     panel(w).vm.$emit('restore-view', 't1')
     await flushPromises()
     expect(w.text()).toContain('could not be reopened')
+  })
+})
+
+
+// Which objects are see-through has to be visible in the TREE, not only in the
+// 3D view — a transparent object is exactly the one that is easy to lose track
+// of, and with several applied "what did I make see-through?" otherwise has no
+// answer short of resetting them all.
+//
+// Driven from the store rather than from xeokit's own `xrayed-node` class:
+// styling that class alone produced no marked row in practice, and we already
+// know which objects are x-rayed.
+describe('see-through markers in the object tree', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    hh.route.query = {}
+    hh.loadRenditionSet.mockResolvedValue({})
+    hh.modelRendition.mockReturnValue({ uid: 'xkt1' })
+  })
+
+  /** The rows xeokit builds: <li id="${treeId}-${objectId}"> … <span>label</span>. */
+  function plantTree(objectIds: string[], treeId = 'tree7') {
+    const host = document.createElement('div')
+    host.id = 'mv-object-tree'
+    for (const oid of objectIds) {
+      const li = document.createElement('li')
+      li.id = `${treeId}-${oid}`
+      const span = document.createElement('span')
+      span.textContent = oid
+      li.appendChild(span)
+      host.appendChild(li)
+    }
+    document.body.appendChild(host)
+    return host
+  }
+
+  function rowFor(host: HTMLElement, oid: string) {
+    return host.querySelector(`[id$="-${oid}"]`)!
+  }
+
+  afterEach(() => {
+    document.getElementById('mv-object-tree')?.remove()
+  })
+
+  it('marks the row for each see-through object, and only those', async () => {
+    const host = plantTree(['wall-a', 'wall-b', 'roof'])
+    const store = useModel3dStore()
+    store.open('f1', 'tower.ifc')
+    mountOverlay()
+    await flushPromises()
+
+    store.setXRayed(['wall-b'])
+    await flushPromises()
+
+    expect(rowFor(host, 'wall-b').classList.contains('mv-xrayed')).toBe(true)
+    expect(rowFor(host, 'wall-a').classList.contains('mv-xrayed')).toBe(false)
+    expect(rowFor(host, 'roof').classList.contains('mv-xrayed')).toBe(false)
+  })
+
+  it('clears the mark when the effect is removed', async () => {
+    const host = plantTree(['wall-a'])
+    const store = useModel3dStore()
+    store.open('f1', 'tower.ifc')
+    mountOverlay()
+    await flushPromises()
+
+    store.setXRayed(['wall-a'])
+    await flushPromises()
+    expect(rowFor(host, 'wall-a').classList.contains('mv-xrayed')).toBe(true)
+
+    store.setXRayed([])
+    await flushPromises()
+    expect(rowFor(host, 'wall-a').classList.contains('mv-xrayed')).toBe(false)
+  })
+
+  it('does not mark a row whose id merely ENDS with another object id', async () => {
+    // Rows are matched on the `-<objectId>` suffix; the leading hyphen is what
+    // stops "wall1" from also selecting the row for "outerwall1".
+    const host = plantTree(['wall1', 'outerwall1'])
+    const store = useModel3dStore()
+    store.open('f1', 'tower.ifc')
+    mountOverlay()
+    await flushPromises()
+
+    store.setXRayed(['wall1'])
+    await flushPromises()
+    expect(rowFor(host, 'outerwall1').classList.contains('mv-xrayed')).toBe(false)
+  })
+
+  it('re-marks after a model loads, since the tree is rebuilt then', async () => {
+    // A rebuilt tree carries no marks; without this the see-through state would
+    // be applied in the 3D view and invisible in the tree beside it.
+    const store = useModel3dStore()
+    store.open('f1', 'tower.ifc')
+    mountOverlay()
+    await flushPromises()
+    store.setXRayed(['wall-a'])
+    await flushPromises()
+
+    const host = plantTree(['wall-a'])          // the tree comes back fresh
+    store.setReady(true)
+    await flushPromises()
+    await flushPromises()
+
+    expect(rowFor(host, 'wall-a').classList.contains('mv-xrayed')).toBe(true)
   })
 })
