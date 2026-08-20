@@ -175,21 +175,35 @@ watch(() => props.linkUid, () => void load(), { immediate: true })
 </script>
 
 <style scoped>
-.sld { padding: .4rem 0 .2rem 1rem; border-left: 2px solid var(--border, #e5e5e5); }
-.sld h4 { margin: .5rem 0 .25rem; font-size: .8rem; text-transform: uppercase; color: #666; }
+/* Theme tokens throughout, never literal greys. The global
+   `button { color: inherit }` gives buttons the theme ink — light in dark mode —
+   so anything that sets no background of its own ends up light-on-light. Badges
+   have the same problem: a hardcoded #eee fill under light ink is unreadable. */
+.sld { padding: .4rem 0 .2rem 1rem; border-left: 2px solid var(--border); }
+.sld h4 { margin: .5rem 0 .25rem; font-size: .8rem; text-transform: uppercase; color: var(--muted); }
 .sld-list { list-style: none; margin: 0; padding: 0; }
 .sld-row { display: flex; align-items: center; gap: .5rem; padding: .2rem 0; flex-wrap: wrap; }
 .sld-who { font-size: .85rem; }
-.sld-st { font-size: .75rem; padding: .05rem .35rem; border-radius: .25rem; background: #eee; }
-.sld-st[data-st='used'] { background: #dff5e1; }
-.sld-st[data-st='removed'] { background: #eee; color: #888; text-decoration: line-through; }
-.sld-warn { font-size: .75rem; color: #a33; }
+.sld-st {
+  font-size: .75rem; padding: .05rem .35rem; border-radius: .25rem;
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+}
+/* Tinted by INK rather than fill: a fill light enough to read against dark ink
+   is too light to read against light ink, and vice versa. */
+.sld-st[data-st='used'] { color: var(--success); border-color: var(--success); }
+.sld-st[data-st='removed'] { color: var(--muted); text-decoration: line-through; }
+.sld-warn { font-size: .75rem; color: var(--danger); }
 .sld-ip { font-family: monospace; font-size: .75rem; }
-.sld-btn { padding: .1rem .4rem; font-size: .75rem; cursor: pointer; }
+.sld-btn {
+  padding: .1rem .4rem; font-size: .75rem; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--card); color: var(--fg);
+}
+.sld-btn:hover { border-color: var(--primary); }
 .sld-add { display: flex; gap: .4rem; margin: .3rem 0; }
 .sld-add input { flex: 1; }
 .sld-link { font-size: .75rem; }
-.sld-err { color: #a33; font-size: .8rem; }
-.muted { color: #666; font-size: .8rem; }
-time { font-size: .75rem; color: #666; }
+.sld-err { color: var(--danger); font-size: .8rem; }
+.muted { color: var(--muted); font-size: .8rem; }
+time { font-size: .75rem; color: var(--muted); }
 </style>

@@ -141,16 +141,20 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Theme tokens only — a literal grey is right in exactly one theme. */
 .si { margin: .5rem 0; }
 .si h2 { font-size: .95rem; margin: 0 0 .3rem; }
-.si-group { font-size: .75rem; text-transform: uppercase; color: #666; margin: .5rem 0 .15rem; }
-.si-group.si-warn { color: #a33; }
+.si-group { font-size: .75rem; text-transform: uppercase; color: var(--muted); margin: .5rem 0 .15rem; }
+.si-group.si-warn { color: var(--danger); }
 .si-list { list-style: none; margin: 0; padding: 0; }
 .si-row { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; padding: .15rem 0; }
 .si-what { font-size: .85rem; }
-.si-why { font-size: .8rem; color: #a33; }
-.si-st { font-size: .72rem; padding: .05rem .3rem; border-radius: .25rem; background: #eee; }
-.si-st[data-st='active'] { background: #dff5e1; }
-.si-err { color: #a33; font-size: .8rem; }
-.muted { color: #666; font-size: .8rem; }
+.si-why { font-size: .8rem; color: var(--danger); }
+.si-st {
+  font-size: .72rem; padding: .05rem .3rem; border-radius: .25rem;
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+}
+.si-st[data-st='active'] { color: var(--success); border-color: var(--success); }
+.si-err { color: var(--danger); font-size: .8rem; }
+.muted { color: var(--muted); font-size: .8rem; }
 </style>

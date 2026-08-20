@@ -322,32 +322,64 @@ watch(() => props.resourceUid, () => {
 .share-list { list-style: none; margin: 0; padding: 0; }
 .share-item {
   display: flex; align-items: center; gap: .5rem;
-  padding: .35rem 0; border-bottom: 1px solid var(--border, #e5e5e5);
+  padding: .35rem 0; border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
 .share-kind { font-weight: 600; }
-.share-badge { font-size: .75rem; padding: .1rem .4rem; border-radius: .25rem; background: #eee; }
-.share-badge[data-st='active'] { background: #dff5e1; }
-.share-badge[data-st='revoked'], .share-badge[data-st='expired'] { background: #eee; color: #666; }
-.share-badge[data-st='not_working'], .share-badge[data-st='blocked'] { background: #fde2e1; }
-.share-uses, .share-exp { font-size: .8rem; color: #666; }
+/* Tinted by INK, not by fill. A fill light enough to read against dark ink is
+   too light to read against light ink — so the state colour goes on the text
+   and the border, and the fill stays a theme surface in both. */
+.share-badge {
+  font-size: .75rem; padding: .1rem .4rem; border-radius: .25rem;
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+}
+.share-badge[data-st='active'] { color: var(--success); border-color: var(--success); }
+.share-badge[data-st='revoked'], .share-badge[data-st='expired'] { color: var(--muted); }
+.share-badge[data-st='not_working'], .share-badge[data-st='blocked'] {
+  color: var(--danger); border-color: var(--danger);
+}
+.share-uses, .share-exp { font-size: .8rem; color: var(--muted); }
 .share-detail { flex-basis: 100%; }
-.share-warn { flex-basis: 100%; margin: .25rem 0 0; font-size: .8rem; color: #a33; }
+.share-warn { flex-basis: 100%; margin: .25rem 0 0; font-size: .8rem; color: var(--danger); }
 .share-field { display: flex; flex-direction: column; gap: .2rem; margin-bottom: .6rem; }
 .share-field > span { font-size: .8rem; font-weight: 600; }
 .share-check { display: flex; gap: .4rem; align-items: flex-start; margin-bottom: .6rem; }
-.share-btn { padding: .25rem .6rem; cursor: pointer; }
-.share-btn.primary { font-weight: 600; }
+/* Themed explicitly. The global `button { color: inherit }` rule gives a button
+   the theme ink, which in dark mode is LIGHT — so a button that sets no
+   background of its own keeps the UA's light grey and ends up light-on-light.
+   Setting both is the only way to be right in both themes. */
+.share-btn {
+  padding: .25rem .6rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
+}
+.share-btn:hover:not(:disabled) { border-color: var(--primary); }
+.share-btn.primary {
+  font-weight: 600;
+  background: var(--primary);
+  border-color: var(--primary);
+  /* Not var(--fg): the primary fill is blue in BOTH themes, so its text is
+     white in both. Theme ink here would be dark-on-blue in light mode. */
+  color: #fff;
+}
+.share-btn.primary:hover:not(:disabled) { background: var(--primary-hover); }
+.share-btn:disabled { opacity: .5; cursor: not-allowed; }
 .share-created {
-  padding: .6rem; border: 1px solid var(--border, #e5e5e5); border-radius: .3rem;
-  background: var(--surface-2, #fafafa);
+  padding: .6rem; border: 1px solid var(--border); border-radius: .3rem;
+  /* --surface-2 is not a token this app defines, so the light literal was
+     ALWAYS used and this panel stayed near-white in dark mode. --bg is the
+     recessed surface (the card sits on it), which is what this wants. */
+  background: var(--bg);
 }
 .share-once { font-size: .8rem; font-weight: 600; margin: 0 0 .4rem; }
 .share-url { display: flex; gap: .4rem; }
 .share-url input { flex: 1; font-family: monospace; font-size: .8rem; }
 .share-msg textarea { width: 100%; font-size: .8rem; margin: .3rem 0; }
-.share-err { color: #a33; font-size: .85rem; }
+.share-err { color: var(--danger); font-size: .85rem; }
 .share-foot { font-size: .8rem; }
 .link { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; }
-.muted { color: #666; }
+.muted { color: var(--muted); }
 </style>

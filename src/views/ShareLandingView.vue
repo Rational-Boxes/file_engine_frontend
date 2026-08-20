@@ -343,23 +343,50 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 </script>
 
 <style scoped>
-.sl { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+/* Theme tokens, same as every other surface. Two things were wrong here:
+   `--surface` is not a token this app defines (the card token is `--card`), so
+   the fallback was ALWAYS used and the card was white in dark mode; and the
+   buttons set no colours, so the global `button { color: inherit }` left them
+   light-on-light exactly as elsewhere.
+
+   The page paints its own background explicitly rather than inheriting: it is a
+   full-viewport standalone view, and an unpainted body shows the UA's white
+   behind a dark card. */
+.sl {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 1rem; background: var(--bg); color: var(--fg);
+}
 .sl-card {
   width: min(30rem, 100%); padding: 1.5rem;
-  border: 1px solid var(--border, #e5e5e5); border-radius: .5rem;
-  background: var(--surface, #fff);
+  border: 1px solid var(--border); border-radius: .5rem;
+  background: var(--card);
 }
 .sl-card h1 { font-size: 1.15rem; margin: 0 0 .5rem; }
-.sl-lead { font-size: .9rem; color: #444; }
+.sl-lead { font-size: .9rem; color: var(--fg); }
 .sl-sent { font-size: .85rem; }
 .sl-field { display: flex; flex-direction: column; gap: .2rem; margin: .6rem 0; }
 .sl-field > span { font-size: .8rem; font-weight: 600; }
-.sl-btn { display: inline-block; padding: .4rem .8rem; margin: .2rem .3rem .2rem 0; cursor: pointer; }
-.sl-btn.primary { font-weight: 600; }
-.sl-err { color: #a33; font-size: .85rem; }
-.sl-note { font-size: .8rem; color: #555; }
+.sl-field input {
+  padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); color: var(--fg);
+}
+.sl-btn {
+  display: inline-block; padding: .4rem .8rem; margin: .2rem .3rem .2rem 0;
+  cursor: pointer; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--card); color: var(--fg); text-decoration: none;
+}
+.sl-btn:hover:not(:disabled) { border-color: var(--primary); }
+.sl-btn:disabled { opacity: .5; cursor: not-allowed; }
+.sl-btn.primary {
+  font-weight: 600; background: var(--primary); border-color: var(--primary);
+  /* White in both themes: the primary fill is blue in both. */
+  color: #fff;
+}
+.sl-btn.primary:hover:not(:disabled) { background: var(--primary-hover); }
+.sl-err { color: var(--danger); font-size: .85rem; }
+.sl-note { font-size: .8rem; color: var(--muted); }
 .sl-manifest { margin-top: .8rem; font-size: .85rem; }
 .sl-manifest ul { max-height: 12rem; overflow: auto; padding-left: 1rem; }
 .sl-dropped { list-style: none; padding: 0; font-size: .85rem; }
-.muted { color: #666; font-size: .85rem; }
+.muted { color: var(--muted); font-size: .85rem; }
 </style>

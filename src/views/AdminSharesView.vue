@@ -315,28 +315,42 @@ onMounted(() => void load())
 </script>
 
 <style scoped>
+/* Theme tokens only. A button that sets no background keeps the UA's light grey
+   while the global `button { color: inherit }` gives it light ink in dark mode —
+   light-on-light. Badges fail the same way with a hardcoded fill. */
 .ash-main { padding: 1rem; }
 .ash-head h1 { font-size: 1.2rem; margin: 0 0 .2rem; }
 .ash-filters { display: flex; gap: .6rem; flex-wrap: wrap; align-items: flex-end; margin: .8rem 0; }
 .ash-filters label { display: flex; flex-direction: column; gap: .15rem; }
 .ash-filters span { font-size: .75rem; font-weight: 600; }
-.ash-btn { padding: .3rem .7rem; cursor: pointer; }
-.ash-btn.danger { color: #a33; }
+.ash-btn {
+  padding: .3rem .7rem; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--card); color: var(--fg);
+}
+.ash-btn:hover:not(:disabled) { border-color: var(--primary); }
+.ash-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ash-btn.danger { color: var(--danger); border-color: var(--danger); }
 .ash-bulk { margin: .5rem 0; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 .ash-confirm { font-size: .85rem; display: flex; gap: .4rem; align-items: center; }
 .ash-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-.ash-table th { text-align: left; font-size: .75rem; text-transform: uppercase; color: #666; }
-.ash-table td, .ash-table th { padding: .3rem .4rem; border-bottom: 1px solid var(--border, #eee); }
-.ash-table tr.dead { color: #888; }
+.ash-table th { text-align: left; font-size: .75rem; text-transform: uppercase; color: var(--muted); }
+.ash-table td, .ash-table th { padding: .3rem .4rem; border-bottom: 1px solid var(--border); }
+.ash-table tr.dead { color: var(--muted); }
 .ash-res { font-family: monospace; }
-.ash-linkish { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; font: inherit; }
-.ash-st { font-size: .75rem; padding: .05rem .35rem; border-radius: .25rem; background: #eee; }
-.ash-st[data-st='active'] { background: #dff5e1; }
-.ash-st[data-st='revoked'] { background: #eee; color: #888; }
-.ash-st[data-st='blocked'] { background: #fde2e2; color: #a33; }
-.ash-err { color: #a33; font-size: .85rem; }
-.ash-trunc { font-size: .8rem; color: #a60; }
+.ash-linkish { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; font: inherit; color: inherit; }
+.ash-st {
+  font-size: .75rem; padding: .05rem .35rem; border-radius: .25rem;
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+}
+.ash-st[data-st='active'] { color: var(--success); border-color: var(--success); }
+.ash-st[data-st='revoked'] { color: var(--muted); }
+.ash-st[data-st='blocked'] { color: var(--danger); border-color: var(--danger); }
+.ash-err { color: var(--danger); font-size: .85rem; }
+/* No warning token in the palette; danger is the honest nearest neighbour and
+   truncation IS a "you are not seeing everything" warning. */
+.ash-trunc { font-size: .8rem; color: var(--danger); }
 .ash-empty { margin: 1.5rem 0; }
 .ash-caveat { margin-top: 1rem; font-size: .8rem; }
-.muted { color: #666; }
+.muted { color: var(--muted); }
 </style>

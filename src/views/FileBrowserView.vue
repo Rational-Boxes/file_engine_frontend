@@ -1083,8 +1083,8 @@ onDeactivated(() => {
   font-size: 11px;
   line-height: 18px;
   border-radius: 10px;
-  border: 1px solid var(--border, #ddd);
-  color: #555;
+  border: 1px solid var(--border);
+  color: var(--muted);
   white-space: nowrap;
   max-width: 22ch;
   overflow: hidden;
