@@ -59,7 +59,15 @@ apiClient.interceptors.response.use(
     const needs2fa = status === 403 && error.response?.data?.error === '2fa_required'
     if (status === 401 || needs2fa) {
       tokenStorage.clearTokens()
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      // /s/ is the outside-recipient landing page. Whoever is there has no
+      // account, so sending them to /login strands them — and it would discard
+      // a verified recipient session mid-transfer. Their own calls never come
+      // through this client (sharePublicService has no interceptor at all), so
+      // a 401 reaching here belongs to some other, incidental request.
+      const onShareLanding = typeof window !== 'undefined'
+        && window.location.pathname.startsWith('/s/')
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login'
+          && !onShareLanding) {
         window.location.assign(needs2fa ? '/login?reason=2fa' : '/login')
       }
     }
