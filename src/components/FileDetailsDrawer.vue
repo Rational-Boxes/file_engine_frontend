@@ -134,6 +134,17 @@
       <p v-else class="muted">Folders are not versioned.</p>
     </section>
 
+    <!-- Share (outside links) -->
+    <section v-show="tab === 'Share'" class="pane">
+      <ShareTab
+        v-if="item"
+        :resource-uid="item.uid"
+        :is-folder="!!item.isDirectory"
+        :name="item.name"
+        @go-access="tab = 'Access'"
+      />
+    </section>
+
     <!-- Access -->
     <section v-show="tab === 'Access'" class="pane">
       <dl><dt>Owner</dt><dd>{{ info?.owner || '—' }}</dd></dl>
@@ -178,6 +189,7 @@ import FolderActionsPanel from '@/components/FolderActionsPanel.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import FileVersions from '@/components/FileVersions.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
+import ShareTab from '@/components/ShareTab.vue'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'
@@ -243,15 +255,22 @@ async function generateModel() {
 }
 
 const tabs = ['Info', 'Metadata', 'Versions', 'Access'] as const
-// 'Actions' is folder-only, appended via visibleTabs — widen Tab to include it.
-type Tab = (typeof tabs)[number] | 'Actions'
+// 'Actions' is folder-only and 'Share' is permission-gated; both are appended
+// via visibleTabs, so widen Tab to include them.
+type Tab = (typeof tabs)[number] | 'Actions' | 'Share'
 const tab = ref<Tab>('Info')
 
 const item = computed(() => files.detailItem)
 // Folders gain an extra "Actions" tab (folder-actions bindings + run log).
-const visibleTabs = computed<Tab[]>(() =>
-  item.value?.isDirectory ? [...tabs, 'Actions'] : [...tabs],
-)
+// 'Share' is deliberately separate from 'Access': Access is "which of our
+// people", Share is "someone outside". Shown only when the user may actually
+// mint a link, so the tab is not an invitation to a 403.
+const canShare = computed(() => auth.hasRole('share_external'))
+const visibleTabs = computed<Tab[]>(() => {
+  const out: Tab[] = item.value?.isDirectory ? [...tabs, 'Actions'] : [...tabs]
+  if (canShare.value) out.push('Share')
+  return out
+})
 const router = useRouter()
 const canEdit = computed(() => auth.hasAccessLevel('editor'))
 const canDownload = computed(() => canDo('download', auth.accessLevel))
