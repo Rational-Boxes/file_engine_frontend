@@ -83,7 +83,10 @@
 
     <!-- ── create ─────────────────────────────────────────────────────── -->
     <div class="share-group">
-      <h3>Share with someone outside</h3>
+      <h3>
+        Share with someone outside
+        <HelpIcon topic="share-links" label="Sending files outside your organisation" />
+      </h3>
 
       <label v-if="isFolder" class="share-field">
         <span>What to share</span>
@@ -161,6 +164,7 @@
 </template>
 
 <script setup lang="ts">
+import HelpIcon from '@/components/HelpIcon.vue'
 import { computed, ref, watch } from 'vue'
 import {
   ShareKind, shareService,

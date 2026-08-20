@@ -4,13 +4,17 @@ title: Sharing files & setting permissions
 category: Permissions
 keywords: [share, sharing, permission, grant, revoke, acl, access, allow, deny, principal, user, role, everyone, inherit, template, manage]
 order: 3
-related: [acl-basics, acl-inheritance, files]
+related: [acl-basics, acl-inheritance, share-links, files]
 ---
 
 This page is the practical, "which buttons do I click" companion to
 [how permissions (ACLs) work](#acl-basics) — it walks through granting and revoking
 access from the app. Read that page first for the concepts (principals, allow vs
 deny, and how rules are evaluated).
+
+> **Sharing with someone who has no account here?** That is a different thing
+> entirely — see [sending files outside your organisation](#share-links). The
+> Access tab below only works for people who can already sign in.
 
 ## Where sharing lives
 

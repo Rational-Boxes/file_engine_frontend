@@ -35,6 +35,9 @@ import { ShareKind } from '@/services/shareService'
 function mountTab(props: Partial<Record<string, unknown>> = {}) {
   return mount(ShareTab, {
     props: { resourceUid: 'uid-1', isFolder: false, name: 'Contract.pdf', ...props },
+    // HelpIcon reaches for a Pinia store; this component's tests are about the
+    // share flow, not the help system, which has its own suite.
+    global: { stubs: { HelpIcon: true } },
   })
 }
 
