@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import apiClient from '@/services/apiClient'
+import apiClient, { API_BASE } from '@/services/apiClient'
 
 export interface FileItem {
   uid: string
@@ -182,9 +182,33 @@ export const fileService = {
     return data
   },
 
+  /**
+   * Buffers the WHOLE file into memory. Kept for callers that genuinely need
+   * the bytes in hand (previews, diffing, the PDF viewer) — but **not** for
+   * saving a file to disk: see `downloadUrl`, which lets the browser stream.
+   */
   async downloadFile(uid: string): Promise<Blob> {
     const { data } = await apiClient.get(`/v1/files/${uid}/content`, { responseType: 'blob' })
     return data as Blob
+  },
+
+  /**
+   * A URL the browser can navigate to, so the download streams straight to
+   * disk instead of through this tab's heap.
+   *
+   * The indirection exists because a navigation cannot carry an Authorization
+   * header. The bridge mints a ticket that is scoped to this one file, expires
+   * in seconds, and is refused outright if presented as a bearer token — so the
+   * URL landing in history or a proxy log is not a session.
+   *
+   * Not the session token in a query string: that is long-lived and would be a
+   * genuine credential in every log between here and the client.
+   */
+  async downloadUrl(uid: string): Promise<string> {
+    const { data } = await apiClient.post<{ ticket: string }>(
+      `/v1/files/${uid}/download-ticket`)
+    const q = new URLSearchParams({ ticket: data.ticket })
+    return `${API_BASE}/v1/files/${uid}/content?${q.toString()}`
   },
 
   // --- versions ---

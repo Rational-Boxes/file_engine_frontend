@@ -830,15 +830,17 @@ async function downloadPdf() {
 // Download the original source file (with its real filename).
 async function downloadOriginal() {
   try {
-    const blob = await fileService.downloadFile(props.uid)
-    const url = URL.createObjectURL(blob)
+    // A navigation, not a Blob: saving to disk must not route the whole file
+    // through this tab's heap. The ticket is what lets a navigation carry a
+    // credential — see fileService.downloadUrl.
+    const url = await fileService.downloadUrl(props.uid)
     const a = document.createElement('a')
     a.href = url
     a.download = props.name || props.uid
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    // Nothing to revoke: this is a real URL, not an object URL.
   } catch (e) {
     error.value = errorMessage(e, 'Failed to download')
   }
@@ -918,15 +920,16 @@ async function downloadMarkupView() {
   if (!m) return
   markupDownloading.value = true
   try {
-    const blob = await fileService.downloadFile(m.renditionUid)
-    const url = URL.createObjectURL(blob)
+    // Same reason as downloadOriginal: a marked-up PDF is still a file being
+    // saved to disk, and a large one should not be buffered to get there.
+    const url = await fileService.downloadUrl(m.renditionUid)
     const a = document.createElement('a')
     a.href = url
     a.download = m.name || 'marked-up.pdf'
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    // Nothing to revoke: this is a real URL, not an object URL.
   } catch (e) {
     error.value = errorMessage(e, 'Failed to download')
   } finally {
