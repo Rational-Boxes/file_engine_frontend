@@ -28,47 +28,57 @@
     <p v-if="d.error" class="dash-err">{{ d.error }}</p>
 
     <ReviewsInbox class="dash-reviews" />
-    <!-- Beside ReviewsInbox, same idiom: the standing answer to "what have I
-         got open right now". Renders nothing at all when the user shares
-         nothing, which is most users. -->
-    <SharingInbox class="dash-sharing" />
 
     <div class="dash-cols">
-      <!-- Attention feed: things requesting the user's attention (§10a). -->
-      <section class="feed">
-        <!-- The single badge stays the TOTAL: the divisions change how the
-             feed reads, not the "one place to look" property. -->
-        <h2>Needs your attention <span v-if="d.unreadCount" class="badge">{{ d.unreadCount }}</span></h2>
-        <p v-if="!d.attention.length" class="empty">You're all caught up.</p>
-        <!--
-          Grouped by originating system. A flat list of "someone mentioned you",
-          "a review is waiting" and "a stranger dropped a file in your folder"
-          reads as noise: those want different reactions, on different
-          timescales. Empty divisions are omitted entirely.
-        -->
-        <template v-for="g in divisions" :key="g.source">
-          <h3 class="division">
-            {{ sourceLabel(g.source) }}
-            <span v-if="g.unread" class="badge small">{{ g.unread }}</span>
-          </h3>
-          <ul class="items">
-            <li
-              v-for="n in g.items"
-              :key="n.id"
-              class="item"
-              :class="{ unseen: !n.readAt }"
-            >
-              <router-link class="item-main" :to="attentionLink(n)" @click="d.markSeen(n.id)">
-                <span class="kind" :data-kind="n.kind">{{ kindLabel(n.kind) }}</span>
-                <!-- Share rows carry their own text precisely so they can be
-                     rendered without resolving the resource. -->
-                <span class="who">{{ n.detailText || n.actor }}</span>
-                <time :title="n.createdAt">{{ ago(n.createdAt) }}</time>
-              </router-link>
-            </li>
-          </ul>
-        </template>
-      </section>
+      <!-- Left column: what needs you, then what you have open. Both are
+           "about me" panels, and reading down one column keeps them together;
+           document activity on the right is ambient by comparison.
+
+           Wrapped explicitly rather than left to grid auto-placement — three
+           bare children in a two-column grid happen to land correctly today,
+           and would silently reflow the moment a fourth panel is added. -->
+      <div class="dash-col">
+        <!-- Attention feed: things requesting the user's attention (§10a). -->
+        <section class="feed">
+          <!-- The single badge stays the TOTAL: the divisions change how the
+               feed reads, not the "one place to look" property. -->
+          <h2>Needs your attention <span v-if="d.unreadCount" class="badge">{{ d.unreadCount }}</span></h2>
+          <p v-if="!d.attention.length" class="empty">You're all caught up.</p>
+          <!--
+            Grouped by originating system. A flat list of "someone mentioned you",
+            "a review is waiting" and "a stranger dropped a file in your folder"
+            reads as noise: those want different reactions, on different
+            timescales. Empty divisions are omitted entirely.
+          -->
+          <template v-for="g in divisions" :key="g.source">
+            <h3 class="division">
+              {{ sourceLabel(g.source) }}
+              <span v-if="g.unread" class="badge small">{{ g.unread }}</span>
+            </h3>
+            <ul class="items">
+              <li
+                v-for="n in g.items"
+                :key="n.id"
+                class="item"
+                :class="{ unseen: !n.readAt }"
+              >
+                <router-link class="item-main" :to="attentionLink(n)" @click="d.markSeen(n.id)">
+                  <span class="kind" :data-kind="n.kind">{{ kindLabel(n.kind) }}</span>
+                  <!-- Share rows carry their own text precisely so they can be
+                       rendered without resolving the resource. -->
+                  <span class="who">{{ n.detailText || n.actor }}</span>
+                  <time :title="n.createdAt">{{ ago(n.createdAt) }}</time>
+                </router-link>
+              </li>
+            </ul>
+          </template>
+        </section>
+
+        <!-- Directly under "Needs your attention": the standing answer to "what
+             have I got open right now". Renders nothing at all when the user
+             shares nothing, which is most users. -->
+        <SharingInbox class="dash-sharing" />
+      </div>
 
       <!-- Document activity: new/updated docs the user may see (calm awareness). -->
       <section class="feed">
@@ -198,6 +208,15 @@ onBeforeUnmount(() => d.stopPolling())
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   margin-top: 12px;
+  /* Each column owns its own height: without this the two columns stretch to
+     match, and the shorter one's panels are pushed apart by the taller one. */
+  align-items: start;
+}
+.dash-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
 }
 @media (max-width: 800px) {
   .dash-cols {
