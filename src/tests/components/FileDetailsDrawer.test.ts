@@ -64,6 +64,7 @@ vi.mock('@/components/FileVersions.vue', () => ({
 
 import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
 import { useFileStore } from '@/stores/files'
+import { useAuthStore } from '@/stores/auth'
 import { useModel3dStore } from '@/stores/model3d'
 
 function openWith(item: { uid: string; name: string; hasRenditions: boolean }) {
@@ -202,5 +203,42 @@ describe('FileDetailsDrawer — ?tab= deep links', () => {
     const w = open()
     await flushPromises()
     expect(w.find('.tabs button.active').text()).toBe('Info')
+  })
+})
+
+
+describe('FileDetailsDrawer — who sees the Share tab', () => {
+  // The tab is a POLICY gate (who may share outside), not a security one. What
+  // stops an admin's link carrying admin reach is the role stripping applied at
+  // redemption in share_service — a separate mechanism at the other end.
+  const open = () => openWith({ uid: 'f1', name: 'plans.pdf', hasRenditions: false })
+
+  function setRoles(roles: string[], level: string) {
+    const auth = useAuthStore()
+    auth.roles = roles
+    auth.accessLevel = level as never
+  }
+
+  it('shows it to someone in the share_external group', async () => {
+    setRoles(['users', 'share_external'], 'editor')
+    const w = open()
+    await flushPromises()
+    expect(w.findAll('.tabs button').map((b) => b.text())).toContain('Share')
+  })
+
+  it('shows it to an administrator who is NOT in the group', async () => {
+    // The reported symptom: an admin saw no Share tab at all and reasonably
+    // concluded the feature was broken.
+    setRoles(['users', 'administrators'], 'admin')
+    const w = open()
+    await flushPromises()
+    expect(w.findAll('.tabs button').map((b) => b.text())).toContain('Share')
+  })
+
+  it('hides it from an ordinary user with neither', async () => {
+    setRoles(['users', 'engineering'], 'editor')
+    const w = open()
+    await flushPromises()
+    expect(w.findAll('.tabs button').map((b) => b.text())).not.toContain('Share')
   })
 })

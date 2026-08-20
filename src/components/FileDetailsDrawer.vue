@@ -265,7 +265,18 @@ const item = computed(() => files.detailItem)
 // 'Share' is deliberately separate from 'Access': Access is "which of our
 // people", Share is "someone outside". Shown only when the user may actually
 // mint a link, so the tab is not an invitation to a 403.
-const canShare = computed(() => auth.hasRole('share_external'))
+// Administrators get every feature. Having to add yourself to an LDAP group
+// before a tab appears is an invisible gate, and its symptom is someone
+// reasonably concluding the build is broken.
+//
+// Safe to widen because the tab is a POLICY gate, not a security one: what
+// stops an admin's link carrying admin reach is the role stripping applied at
+// REDEMPTION, in share_service, at the other end of the flow. An admin's link
+// redeems with their ordinary roles exactly like anyone else's — and a link to
+// something they can only open VIA the admin override is refused at creation,
+// with a message that says so.
+const canShare = computed(() =>
+  auth.hasRole('share_external') || auth.hasAccessLevel('admin'))
 const visibleTabs = computed<Tab[]>(() => {
   const out: Tab[] = item.value?.isDirectory ? [...tabs, 'Actions'] : [...tabs]
   if (canShare.value) out.push('Share')
