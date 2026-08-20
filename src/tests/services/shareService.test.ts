@@ -91,3 +91,38 @@ describe('shareService', () => {
     expect(l.not_working_message).toMatch(/no longer have access/)
   })
 })
+
+
+describe('shareService — drop provenance', () => {
+  it('makes no request for an empty page', async () => {
+    // The common case is a folder with no drops in it at all; that must cost
+    // nothing, since this runs on every listing change.
+    expect(await shareService.provenance([])).toEqual({})
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('asks once for the whole page, not once per row', async () => {
+    post.mockResolvedValue({ data: { provenance: {} } })
+    await shareService.provenance(['a', 'b', 'c'])
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(post).toHaveBeenCalledWith('/v1/files/provenance',
+                                      { file_uids: ['a', 'b', 'c'] })
+  })
+
+  it('returns the verified address keyed by file uid', async () => {
+    // Keyed on the uid, which is what makes the marker survive a move — a
+    // path-keyed marker would lose exactly the file someone tidied away.
+    post.mockResolvedValue({
+      data: { provenance: { f1: { email: 'bob@contractor.example',
+                                  at: '2026-08-20T00:00:00Z', shared_by: 'alice' } } },
+    })
+    const got = await shareService.provenance(['f1', 'f2'])
+    expect(got.f1.email).toBe('bob@contractor.example')
+    expect(got.f2).toBeUndefined()
+  })
+
+  it('tolerates a response with no provenance key', async () => {
+    post.mockResolvedValue({ data: {} })
+    expect(await shareService.provenance(['f1'])).toEqual({})
+  })
+})

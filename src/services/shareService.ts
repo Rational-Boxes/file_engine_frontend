@@ -136,6 +136,14 @@ export interface AdminShareLink extends ShareLink {
   resource_depth: number | null
 }
 
+export interface DropProvenance {
+  /** The VERIFIED address — the trustworthy half. */
+  email: string
+  at: string
+  /** Whose link let them in. */
+  shared_by: string
+}
+
 export interface InboxShareLink extends ShareLink {
   recipient_count: number
 }
@@ -224,6 +232,22 @@ export const shareService = {
    */
   async removeRecipient(linkUid: string, email: string): Promise<void> {
     await shareClient.delete(`/v1/links/${linkUid}/recipients/${encodeURIComponent(email)}`)
+  },
+
+  /**
+   * Which of these files arrived from outside, and from whom — one query for a
+   * whole file-list page.
+   *
+   * Read from the redemption ledger, which mirrors the audit chain. NOT from
+   * the file's `share.*` core metadata: the core reserves no namespace there,
+   * so anyone with WRITE can rewrite those keys, which disqualifies them as
+   * evidence. Keyed on the file uid, so the marker survives a move or rename.
+   */
+  async provenance(fileUids: string[]): Promise<Record<string, DropProvenance>> {
+    if (!fileUids.length) return {}
+    const { data } = await shareClient.post('/v1/files/provenance',
+                                            { file_uids: fileUids })
+    return data.provenance ?? {}
   },
 
   /**
