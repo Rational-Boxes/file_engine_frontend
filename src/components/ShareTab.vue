@@ -28,6 +28,9 @@
           <span class="share-badge" :data-st="l.status">{{ statusLabel(l.status) }}</span>
           <span class="share-uses">{{ usesLabel(l) }}</span>
           <span class="share-exp">{{ expiryLabel(l) }}</span>
+          <button class="share-btn" @click="toggle(l.link_uid)">
+            {{ expanded === l.link_uid ? 'Hide' : 'Who / activity' }}
+          </button>
           <button class="share-btn" @click="revoke(l)">Revoke</button>
           <!--
             The reason a link stopped working is the single most expensive
@@ -37,6 +40,11 @@
           <p v-if="l.status === 'not_working'" class="share-warn">
             {{ l.not_working_message || 'This link is no longer working.' }}
           </p>
+          <ShareLinkDetail
+            v-if="expanded === l.link_uid"
+            :link-uid="l.link_uid"
+            class="share-detail"
+          />
         </li>
       </ul>
     </div>
@@ -159,6 +167,7 @@ import {
   type CreatedShareLink, type ShareLink, type ShareKindValue, type ShareStatus,
 } from '@/services/shareService'
 import { errorMessage } from '@/services/apiClient'
+import ShareLinkDetail from '@/components/ShareLinkDetail.vue'
 
 const props = defineProps<{ resourceUid: string; isFolder: boolean; name: string }>()
 defineEmits<{ (e: 'go-access'): void }>()
@@ -170,6 +179,7 @@ const created = ref<CreatedShareLink | null>(null)
 const error = ref('')
 const busy = ref(false)
 const recipientInput = ref('')
+const expanded = ref<string | null>(null)
 
 const form = ref({
   kind: (props.isFolder ? ShareKind.FOLDER : ShareKind.FILE) as ShareKindValue,
@@ -282,6 +292,10 @@ async function create() {
   }
 }
 
+function toggle(uid: string) {
+  expanded.value = expanded.value === uid ? null : uid
+}
+
 async function revoke(l: ShareLink) {
   try {
     await shareService.revoke(l.link_uid)
@@ -313,6 +327,7 @@ watch(() => props.resourceUid, () => {
 .share-badge[data-st='revoked'], .share-badge[data-st='expired'] { background: #eee; color: #666; }
 .share-badge[data-st='not_working'], .share-badge[data-st='blocked'] { background: #fde2e1; }
 .share-uses, .share-exp { font-size: .8rem; color: #666; }
+.share-detail { flex-basis: 100%; }
 .share-warn { flex-basis: 100%; margin: .25rem 0 0; font-size: .8rem; color: #a33; }
 .share-field { display: flex; flex-direction: column; gap: .2rem; margin-bottom: .6rem; }
 .share-field > span { font-size: .8rem; font-weight: 600; }

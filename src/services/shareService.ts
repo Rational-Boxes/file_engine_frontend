@@ -88,6 +88,22 @@ export interface ShareRecipient {
   status: 'on_the_list' | 'opened' | 'verified' | 'used' | 'removed'
 }
 
+/** One use of a link: who, when, from where, how much. */
+export interface ShareRedemption {
+  redemption_uid: string
+  opened_at: string
+  completed_at: string | null
+  verified_email: string
+  source_addr: string | null
+  user_agent: string | null
+  bytes_moved: number
+  files_moved: number
+  /** For a drop, the file the drop created — "what did they send us", one click. */
+  result_uid: string | null
+  archive_bytes: number | null
+  members_served: number
+}
+
 export interface CreateShareLinkRequest {
   kind: ShareKindValue
   recipients: string[]
@@ -152,6 +168,17 @@ export const shareService = {
       params: { include_removed: includeRemoved },
     })
     return data.recipients ?? []
+  },
+
+  /**
+   * The usage ledger. Served from share_service's own rows, so an ordinary
+   * creator needs no AUDIT_READ scope to see who used their own link.
+   */
+  async redemptions(linkUid: string, limit = 200): Promise<ShareRedemption[]> {
+    const { data } = await shareClient.get(`/v1/links/${linkUid}/redemptions`, {
+      params: { limit },
+    })
+    return data.redemptions ?? []
   },
 
   async addRecipient(linkUid: string, email: string): Promise<void> {
