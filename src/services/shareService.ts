@@ -122,6 +122,28 @@ export interface CreateShareLinkRequest {
   note?: string
 }
 
+/**
+ * A row in the tenant-wide console. Extends `ShareLink` with the three things
+ * only an oversight view needs: whose link it is, how many outside addresses
+ * can use it, and where the resource sat when it was shared.
+ */
+export interface AdminShareLink extends ShareLink {
+  creator: string
+  recipient_count: number
+  last_activity: string | null
+  /** Captured at share time — stale if the resource has since moved. */
+  resource_path: string | null
+  resource_depth: number | null
+}
+
+export interface AdminShareFilters {
+  live?: boolean
+  creator?: string
+  recipient?: string
+  subtree?: string
+  status?: string
+}
+
 export const shareService = {
   /**
    * Mint a link. The response carries the only copy of the URL.
@@ -192,6 +214,36 @@ export const shareService = {
    */
   async removeRecipient(linkUid: string, email: string): Promise<void> {
     await shareClient.delete(`/v1/links/${linkUid}/recipients/${encodeURIComponent(email)}`)
+  },
+
+  /**
+   * The tenant-wide view (`tenant_admin` only). 403 for anyone else — the
+   * service refuses rather than returning an empty list, because "nothing is
+   * shared here" is the most misleading possible answer to this question.
+   *
+   * Rows arrive ordered by risk (shallowest resource, then recipient count,
+   * then remaining budget); the server owns that ordering so the console and
+   * any other consumer cannot disagree about what counts as risky.
+   */
+  async listTenant(filters: AdminShareFilters = {}):
+      Promise<{ links: AdminShareLink[]; truncated: boolean }> {
+    const { data } = await shareClient.get('/v1/links', {
+      params: { all: true, live: filters.live ?? true, ...filters },
+    })
+    // `truncated` is returned rather than inferred from a row count: the caller
+    // does not know the server's cap, and an oversight view that quietly stops
+    // short is worse than one that shows less and says so.
+    return { links: data.links ?? [], truncated: !!data.truncated }
+  },
+
+  /**
+   * End every live link one person left open — the departed-employee action.
+   * Returns how many were actually revoked, which is the number worth showing:
+   * a second run legitimately reports 0.
+   */
+  async revokeAllFor(creator: string): Promise<number> {
+    const { data } = await shareClient.post('/v1/admin/revoke-all', { creator })
+    return data.revoked ?? 0
   },
 }
 

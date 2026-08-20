@@ -21,6 +21,7 @@ const LoginView = () => import('@/views/LoginView.vue')
 const OAuthCallbackView = () => import('@/views/OAuthCallbackView.vue')
 const SsoLandingView = () => import('@/views/SsoLandingView.vue')
 const ShareLandingView = () => import('@/views/ShareLandingView.vue')
+const AdminSharesView = () => import('@/views/AdminSharesView.vue')
 const DashboardView = () => import('@/views/DashboardView.vue')
 const FileBrowserView = () => import('@/views/FileBrowserView.vue')
 const SearchView = () => import('@/views/SearchView.vue')
@@ -64,6 +65,16 @@ const routes = [
     path: '/admin/tenant',
     name: 'TenantAdmin',
     component: TenantAdminView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    // The tenant-wide share oversight console. requiresAdmin gates the ROUTE;
+    // share_service gates the data independently and 403s a non-admin, so a
+    // hand-typed URL gets an error rather than an empty table that would read
+    // as "nothing is shared here".
+    path: '/admin/shares',
+    name: 'AdminShares',
+    component: AdminSharesView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
