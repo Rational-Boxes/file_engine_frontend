@@ -41,6 +41,7 @@ export const SERVICE_PATHS = {
   audit: '/audit',
   bcf: '/bcf',
   difference: '/diff',
+  share: '/share',
 } as const
 
 /**

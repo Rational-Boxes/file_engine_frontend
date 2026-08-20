@@ -20,6 +20,8 @@ import { safeRedirect } from '@/utils/redirect'
 const LoginView = () => import('@/views/LoginView.vue')
 const OAuthCallbackView = () => import('@/views/OAuthCallbackView.vue')
 const SsoLandingView = () => import('@/views/SsoLandingView.vue')
+const ShareLandingView = () => import('@/views/ShareLandingView.vue')
+const AdminSharesView = () => import('@/views/AdminSharesView.vue')
 const DashboardView = () => import('@/views/DashboardView.vue')
 const FileBrowserView = () => import('@/views/FileBrowserView.vue')
 const SearchView = () => import('@/views/SearchView.vue')
@@ -39,6 +41,11 @@ const routes = [
   { path: '/oauth/callback', name: 'OAuthCallback', component: OAuthCallbackView, meta: { requiresAuth: false } },
   // Deep-link SSO landing (§5.5): redeems a one-time hand-off code from another system.
   { path: '/sso', name: 'SsoLanding', component: SsoLandingView, meta: { requiresAuth: false } },
+  // The recipient's side of an outside share link. requiresAuth:false is not a
+  // convenience here — this page must work for someone with no account, and it
+  // must not pick up a signed-in identity if one happens to be present.
+  { path: '/s/:token', name: 'ShareLanding', component: ShareLandingView,
+    meta: { requiresAuth: false } },
   { path: '/dashboard', name: 'Dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/files', name: 'FileBrowser', component: FileBrowserView, meta: { requiresAuth: true } },
   { path: '/search', name: 'Search', component: SearchView, meta: { requiresAuth: true } },
@@ -58,6 +65,16 @@ const routes = [
     path: '/admin/tenant',
     name: 'TenantAdmin',
     component: TenantAdminView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    // The tenant-wide share oversight console. requiresAdmin gates the ROUTE;
+    // share_service gates the data independently and 403s a non-admin, so a
+    // hand-typed URL gets an error rather than an empty table that would read
+    // as "nothing is shared here".
+    path: '/admin/shares',
+    name: 'AdminShares',
+    component: AdminSharesView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {

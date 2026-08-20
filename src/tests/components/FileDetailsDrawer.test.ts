@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
@@ -44,7 +44,13 @@ vi.mock('@/services/renditions', () => ({
   loadRenditionSet: fns.loadRenditionSet,
   modelRendition: fns.modelRendition,
 }))
-vi.mock('vue-router', () => ({ useRouter: () => ({ resolve: () => ({ href: '/x' }) }) }))
+const routeStub: { query: Record<string, string> } = { query: {} }
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ resolve: () => ({ href: '/x' }) }),
+  // The drawer reads ?tab= to honour a deep link into a specific pane.
+  useRoute: () => routeStub,
+}))
 
 vi.mock('@/components/AclEditor.vue', () => ({
   default: { name: 'AclEditor', props: ['uid', 'canManage'], template: '<div/>' },
@@ -58,6 +64,7 @@ vi.mock('@/components/FileVersions.vue', () => ({
 
 import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
 import { useFileStore } from '@/stores/files'
+import { useAuthStore } from '@/stores/auth'
 import { useModel3dStore } from '@/stores/model3d'
 
 function openWith(item: { uid: string; name: string; hasRenditions: boolean }) {
@@ -156,5 +163,82 @@ describe('FileDetailsDrawer — 3D model section', () => {
     w.findComponent({ name: 'AclEditor' }).vm.$emit('changed')
     await flushPromises()
     expect(accessTab().classes()).toContain('active')
+  })
+})
+
+
+describe('FileDetailsDrawer — ?tab= deep links', () => {
+  // Every row in the Dashboard's Sharing panel and every share attention item
+  // links to a resource's SHARE tab. The drawer's tab is local state, so
+  // without honouring the query they all land on Info and the deep link
+  // silently under-delivers.
+  const open = () => openWith({ uid: 'f1', name: 'plans.pdf', hasRenditions: false })
+
+  afterEach(() => { routeStub.query = {} })
+
+  it('opens on Info when no tab is asked for', async () => {
+    const w = open()
+    await flushPromises()
+    expect(w.find('.tabs button.active').text()).toBe('Info')
+  })
+
+  it('selects the tab named in the query, case-insensitively', async () => {
+    routeStub.query = { tab: 'versions' }
+    const w = open()
+    await flushPromises()
+    expect(w.find('.tabs button.active').text()).toBe('Versions')
+  })
+
+  it('falls back to the default for a tab that is not available', async () => {
+    // 'Share' is permission-gated; a link to it from a user without the role
+    // must not select a pane that is not there.
+    routeStub.query = { tab: 'Share' }
+    const w = open()
+    await flushPromises()
+    expect(w.find('.tabs button.active').text()).toBe('Info')
+  })
+
+  it('ignores a tab name that does not exist at all', async () => {
+    routeStub.query = { tab: 'nonsense' }
+    const w = open()
+    await flushPromises()
+    expect(w.find('.tabs button.active').text()).toBe('Info')
+  })
+})
+
+
+describe('FileDetailsDrawer — who sees the Share tab', () => {
+  // The tab is a POLICY gate (who may share outside), not a security one. What
+  // stops an admin's link carrying admin reach is the role stripping applied at
+  // redemption in share_service — a separate mechanism at the other end.
+  const open = () => openWith({ uid: 'f1', name: 'plans.pdf', hasRenditions: false })
+
+  function setRoles(roles: string[], level: string) {
+    const auth = useAuthStore()
+    auth.roles = roles
+    auth.accessLevel = level as never
+  }
+
+  it('shows it to someone in the share_external group', async () => {
+    setRoles(['users', 'share_external'], 'editor')
+    const w = open()
+    await flushPromises()
+    expect(w.findAll('.tabs button').map((b) => b.text())).toContain('Share')
+  })
+
+  it('shows it to an administrator who is NOT in the group', async () => {
+    // The reported symptom: an admin saw no Share tab at all and reasonably
+    // concluded the feature was broken.
+    setRoles(['users', 'administrators'], 'admin')
+    const w = open()
+    await flushPromises()
+    expect(w.findAll('.tabs button').map((b) => b.text())).toContain('Share')
+  })
+
+  it('hides it from an ordinary user with neither', async () => {
+    setRoles(['users', 'engineering'], 'editor')
+    const w = open()
+    await flushPromises()
+    expect(w.findAll('.tabs button').map((b) => b.text())).not.toContain('Share')
   })
 })

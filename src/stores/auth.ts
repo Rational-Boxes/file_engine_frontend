@@ -71,6 +71,17 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: (state) => !!state.token,
     hasAccessLevel: (state) => (level: AccessLevel) =>
       LEVELS[state.accessLevel] >= (LEVELS[level] ?? 1),
+
+    /**
+     * Does the user hold a named LDAP role in the active tenant?
+     *
+     * `hasAccessLevel` answers the coarse viewer/editor/admin ladder; this
+     * answers membership of a specific group, which is how capabilities that
+     * are not a rung on that ladder are gated — `share_external` being the
+     * first. Case-insensitive: LDAP `cn` values are not normalised.
+     */
+    hasRole: (state) => (role: string) =>
+      state.roles.some((r) => r.toLowerCase() === role.toLowerCase()),
   },
 
   actions: {

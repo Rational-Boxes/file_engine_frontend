@@ -88,6 +88,14 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/folder-actions/, ''),
       },
+      '/share': {
+        target: 'http://localhost:8101', // share_service (outside share links)
+        changeOrigin: true,
+        // NB: no rewrite — the service's routers are mounted under /share/v1
+        // themselves, so stripping the prefix here would 404 everything. The
+        // public half (/share/v1/public) rides the same proxy: it is
+        // unauthenticated at the service, not at the proxy.
+      },
     },
   },
   test: {

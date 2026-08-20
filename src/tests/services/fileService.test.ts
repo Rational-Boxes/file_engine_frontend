@@ -25,6 +25,9 @@ const { get, post, put, del } = vi.hoisted(() => ({
 vi.mock('@/services/apiClient', () => ({
   default: { get, post, put, delete: del },
   ROOT_UID: '00000000-0000-0000-0000-000000000000',
+  // downloadUrl builds an absolute URL for the browser to navigate to, so it
+  // needs the real base rather than the axios instance's internal one.
+  API_BASE: '/api',
   errorMessage: (e: unknown) => String(e),
 }))
 
@@ -216,5 +219,23 @@ describe('fileService (REST)', () => {
     expect(del).toHaveBeenCalledWith('/v1/nodes/f1/permissions', {
       data: { principal: 'dave', permission: 'r' },
     })
+  })
+})
+
+
+describe('fileService.downloadUrl', () => {
+  it('mints a ticket and returns a navigable URL', async () => {
+    post.mockResolvedValue({ data: { ticket: 'tkt-123', expires_in: 30 } })
+    const url = await fileService.downloadUrl('f1')
+    expect(post).toHaveBeenCalledWith('/v1/files/f1/download-ticket')
+    expect(url).toContain('/v1/files/f1/content?')
+    expect(url).toContain('ticket=tkt-123')
+  })
+
+  it('encodes the ticket so a URL-unsafe character cannot break the query', async () => {
+    post.mockResolvedValue({ data: { ticket: 'a+b/c=d&e' } })
+    const url = await fileService.downloadUrl('f1')
+    expect(url).not.toContain('&e=')
+    expect(new URL(url, 'http://x').searchParams.get('ticket')).toBe('a+b/c=d&e')
   })
 })

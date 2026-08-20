@@ -36,6 +36,7 @@ vi.mock('@/services/fileService', () => ({
     move: vi.fn(),
     copy: vi.fn(),
     downloadFile: vi.fn(),
+    downloadUrl: vi.fn(),
     stat: vi.fn(),
     checkPermission: vi.fn(),
   },
@@ -279,5 +280,53 @@ describe('files store (UID-native)', () => {
     expect(fileService.undeleteFile).toHaveBeenCalledWith('f1')
     // reload ran after the restore (initial openRoot + this one)
     expect((fileService.listDirectory as any).mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+
+describe('downloadItem — streaming, not buffering', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.mocked(fileService.downloadUrl).mockReset()
+    vi.mocked(fileService.downloadFile).mockReset()
+  })
+
+  const item = { uid: 'f1', name: 'big.bin', isDirectory: false } as never
+
+  it('navigates to a ticketed URL instead of fetching the bytes', async () => {
+    // The point of the whole change: fetching into memory first made a
+    // multi-GB file a multi-GB spike in the tab before a byte reached disk.
+    vi.mocked(fileService.downloadUrl).mockResolvedValue('/api/v1/files/f1/content?ticket=t')
+    const clicks: string[] = []
+    const realCreate = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = realCreate(tag) as HTMLAnchorElement
+      if (tag === 'a') el.click = () => { clicks.push(el.getAttribute('href') || '') }
+      return el
+    })
+
+    await useFileStore().downloadItem(item)
+
+    expect(fileService.downloadUrl).toHaveBeenCalledWith('f1')
+    expect(fileService.downloadFile).not.toHaveBeenCalled()
+    expect(clicks).toEqual(['/api/v1/files/f1/content?ticket=t'])
+    vi.mocked(document.createElement).mockRestore()
+  })
+
+  it('creates no object URL, because nothing was held in memory', async () => {
+    vi.mocked(fileService.downloadUrl).mockResolvedValue('/api/x?ticket=t')
+    const createObjectURL = vi.fn()
+    // jsdom has no URL.createObjectURL; asserting it stays unused is the
+    // clearest statement that no Blob was ever materialised.
+    ;(window.URL as unknown as { createObjectURL: unknown }).createObjectURL = createObjectURL
+    await useFileStore().downloadItem(item)
+    expect(createObjectURL).not.toHaveBeenCalled()
+  })
+
+  it('surfaces a failure to mint a ticket', async () => {
+    vi.mocked(fileService.downloadUrl).mockRejectedValue(new Error('nope'))
+    const store = useFileStore()
+    await store.downloadItem(item)
+    expect(store.error).toBeTruthy()
   })
 })

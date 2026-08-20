@@ -166,6 +166,17 @@
                 :title="flagTitle(item.uid)"
                 @click.stop
               >{{ flagText(item.uid) }}</router-link>
+              <!--
+                Arrived from outside. Shows the VERIFIED address, never the
+                sender-typed name, and reads from the redemption ledger rather
+                than the file's share.* metadata — those keys are editable by
+                anyone with WRITE and so are not evidence.
+              -->
+              <span
+                v-if="dropFrom(item.uid)"
+                class="drop-badge"
+                :title="dropTitle(item.uid)"
+              >⇩ {{ dropFrom(item.uid)!.email }}</span>
             </td>
             <td class="size">{{ item.isDirectory ? '—' : formatSize(item.size) }}</td>
             <td class="datetime">{{ formatDateTime(item.createdAt) }}</td>
@@ -249,6 +260,7 @@ import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'
+import { shareService, type DropProvenance } from '@/services/shareService'
 import { discussionService, type FlagCounts } from '@/services/discussionService'
 
 const auth = useAuthStore()
@@ -293,6 +305,34 @@ async function loadAttentionFlags() {
     attentionFlags.value = {}
   }
 }
+// Drop provenance: which rows came from outside. Fetched with the same
+// per-page batch shape as the attention flags above, and equally best-effort —
+// if share_service is off or unreachable the browser is unaffected and the
+// markers simply do not appear.
+const dropProvenance = ref<Record<string, DropProvenance>>({})
+async function loadDropProvenance() {
+  const uids = files.items.filter((i) => !i.isDirectory && !i.deleted).map((i) => i.uid)
+  if (!uids.length) {
+    dropProvenance.value = {}
+    return
+  }
+  try {
+    dropProvenance.value = await shareService.provenance(uids)
+  } catch {
+    dropProvenance.value = {}
+  }
+}
+function dropFrom(uid: string): DropProvenance | undefined {
+  return dropProvenance.value[uid]
+}
+function dropTitle(uid: string): string {
+  const p = dropProvenance.value[uid]
+  if (!p) return ''
+  const when = formatDateTime(Date.parse(p.at) / 1000)
+  return `Sent from outside by ${p.email} on ${when}, `
+    + `via a link shared by ${p.shared_by}`
+}
+
 function flagFor(uid: string): FlagCounts | undefined {
   return attentionFlags.value[uid]
 }
@@ -311,7 +351,7 @@ function flagTitle(uid: string): string {
 // Reload whenever the listing changes (navigation, refresh, show/hide deleted).
 watch(
   () => files.items.map((i) => i.uid).join(','),
-  () => loadAttentionFlags(),
+  () => { loadAttentionFlags(); loadDropProvenance() },
   { immediate: true },
 )
 
@@ -1035,6 +1075,24 @@ onDeactivated(() => {
   color: var(--muted);
 }
 /* Attention flag (§10e): @mention / pending-review count for the caller. */
+/* Arrived from outside. Deliberately quiet — this is a fact about the file,
+   not a warning about it. */
+.drop-badge {
+  margin-left: 8px;
+  padding: 0 7px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 .attn-badge {
   margin-left: 8px;
   padding: 0 7px;

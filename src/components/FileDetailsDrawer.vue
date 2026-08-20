@@ -134,6 +134,17 @@
       <p v-else class="muted">Folders are not versioned.</p>
     </section>
 
+    <!-- Share (outside links) -->
+    <section v-show="tab === 'Share'" class="pane">
+      <ShareTab
+        v-if="item"
+        :resource-uid="item.uid"
+        :is-folder="!!item.isDirectory"
+        :name="item.name"
+        @go-access="tab = 'Access'"
+      />
+    </section>
+
     <!-- Access -->
     <section v-show="tab === 'Access'" class="pane">
       <dl><dt>Owner</dt><dd>{{ info?.owner || '—' }}</dd></dl>
@@ -165,7 +176,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { fileService, type NodeInfo } from '@/services/fileService'
 import { useFileStore } from '@/stores/files'
 import { useAuthStore } from '@/stores/auth'
@@ -178,6 +189,7 @@ import FolderActionsPanel from '@/components/FolderActionsPanel.vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
 import FileVersions from '@/components/FileVersions.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
+import ShareTab from '@/components/ShareTab.vue'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'
@@ -243,16 +255,60 @@ async function generateModel() {
 }
 
 const tabs = ['Info', 'Metadata', 'Versions', 'Access'] as const
-// 'Actions' is folder-only, appended via visibleTabs — widen Tab to include it.
-type Tab = (typeof tabs)[number] | 'Actions'
+// 'Actions' is folder-only and 'Share' is permission-gated; both are appended
+// via visibleTabs, so widen Tab to include them.
+type Tab = (typeof tabs)[number] | 'Actions' | 'Share'
 const tab = ref<Tab>('Info')
 
 const item = computed(() => files.detailItem)
 // Folders gain an extra "Actions" tab (folder-actions bindings + run log).
-const visibleTabs = computed<Tab[]>(() =>
-  item.value?.isDirectory ? [...tabs, 'Actions'] : [...tabs],
-)
+// 'Share' is deliberately separate from 'Access': Access is "which of our
+// people", Share is "someone outside". Shown only when the user may actually
+// mint a link, so the tab is not an invitation to a 403.
+// Administrators get every feature. Having to add yourself to an LDAP group
+// before a tab appears is an invisible gate, and its symptom is someone
+// reasonably concluding the build is broken.
+//
+// Safe to widen because the tab is a POLICY gate, not a security one: what
+// stops an admin's link carrying admin reach is the role stripping applied at
+// REDEMPTION, in share_service, at the other end of the flow. An admin's link
+// redeems with their ordinary roles exactly like anyone else's — and a link to
+// something they can only open VIA the admin override is refused at creation,
+// with a message that says so.
+const canShare = computed(() =>
+  auth.hasRole('share_external') || auth.hasAccessLevel('admin'))
+const visibleTabs = computed<Tab[]>(() => {
+  const out: Tab[] = item.value?.isDirectory ? [...tabs, 'Actions'] : [...tabs]
+  if (canShare.value) out.push('Share')
+  return out
+})
 const router = useRouter()
+const route = useRoute()
+
+/**
+ * Which tab a freshly-opened drawer should show — `?tab=` if the URL asks for
+ * one, otherwise Info.
+ *
+ * Every row in the Dashboard's Sharing panel, and every share attention item,
+ * deep-links to a resource's SHARE tab. The drawer's tab is local state, so
+ * without this they all land on Info and the deep link silently under-delivers.
+ *
+ * Both the query watcher below and the file-select reset go through this, so
+ * they cannot disagree — otherwise whichever watcher is DECLARED LAST wins,
+ * which is not a thing anyone should have to know when editing this file.
+ *
+ * Matched case-insensitively against the tabs actually visible: `?tab=Share`
+ * for a user without the role falls back rather than selecting a missing pane.
+ */
+function requestedTab(): Tab {
+  const want = route.query.tab
+  if (typeof want !== 'string') return 'Info'
+  return visibleTabs.value.find((t) => t.toLowerCase() === want.toLowerCase()) ?? 'Info'
+}
+
+watch([() => route.query.tab, visibleTabs], () => { tab.value = requestedTab() },
+      { immediate: true })
+
 const canEdit = computed(() => auth.hasAccessLevel('editor'))
 const canDownload = computed(() => canDo('download', auth.accessLevel))
 // Editability is decided by the file NAME's extension (an office document), not the
@@ -321,7 +377,9 @@ watch(
   () => [files.drawerOpen, files.detailItem?.uid] as const,
   ([open, uid]) => {
     if (open && uid) {
-      tab.value = 'Info' // reset the tab only when a (different) file is opened
+      // Reset only when a (different) file is opened — to Info, unless the URL
+      // explicitly asked for a tab, in which case that intent wins.
+      tab.value = requestedTab()
       loadAll(uid)
     }
   },

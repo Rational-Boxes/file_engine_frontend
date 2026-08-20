@@ -38,11 +38,12 @@ vi.mock('@/services/renditions', () => ({
   },
 }))
 vi.mock('@/services/searchService', () => ({ searchService: { generatePreview } }))
-const { downloadFile, checkPermission } = vi.hoisted(() => ({
+const { downloadFile, downloadUrl, checkPermission } = vi.hoisted(() => ({
   downloadFile: vi.fn(),
+  downloadUrl: vi.fn(),
   checkPermission: vi.fn(),
 }))
-vi.mock('@/services/fileService', () => ({ fileService: { downloadFile, checkPermission } }))
+vi.mock('@/services/fileService', () => ({ fileService: { downloadFile, downloadUrl, checkPermission } }))
 const { open, close } = vi.hoisted(() => ({ open: vi.fn(), close: vi.fn() }))
 vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open, close }) }))
 // A comparison requested elsewhere reaches this surface through the difference
@@ -158,6 +159,7 @@ describe('DocumentPreview', () => {
 
   it('the modal offers a "Download original" link (and no back-to-preview)', async () => {
     downloadFile.mockResolvedValue(new Blob(['data']))
+    downloadUrl.mockResolvedValue('/api/v1/files/f1/content?ticket=t')
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:dl')
     globalThis.URL.revokeObjectURL = vi.fn()
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
@@ -168,7 +170,10 @@ describe('DocumentPreview', () => {
     const dl = w.findAll('.link').find((b) => b.text().includes('Download original'))
     expect(dl).toBeTruthy()
     await dl!.trigger('click')
-    expect(downloadFile).toHaveBeenCalledWith('f1') // fetches the original source bytes
+    // Saving to disk goes through a ticketed URL the browser navigates to —
+    // NOT downloadFile, which buffers the whole file into this tab's heap.
+    expect(downloadUrl).toHaveBeenCalledWith('f1')
+    expect(downloadFile).not.toHaveBeenCalled()
   })
 
   it('the PdfViewer toolbar download downloads the on-screen PDF rendition (no re-fetch)', async () => {
@@ -276,6 +281,7 @@ describe('DocumentPreview', () => {
 
   it('an image preview offers Download original + Open file location (consistent with PDF/video)', async () => {
     downloadFile.mockResolvedValue(new Blob(['img']))
+    downloadUrl.mockResolvedValue('/api/v1/files/f1/content?ticket=t')
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:dl')
     globalThis.URL.revokeObjectURL = vi.fn()
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
@@ -291,7 +297,8 @@ describe('DocumentPreview', () => {
     expect(dl).toBeTruthy()
     expect(loc).toBeTruthy()
     await dl!.trigger('click')
-    expect(downloadFile).toHaveBeenCalledWith('f1')
+    // Ticketed navigation, not a buffered Blob — same as the modal path above.
+    expect(downloadUrl).toHaveBeenCalledWith('f1')
     await loc!.trigger('click')
     expect(push).toHaveBeenCalledWith({ name: 'FileBrowser', query: { file: 'f1', tenant: 'default' } })
   })

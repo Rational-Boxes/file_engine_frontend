@@ -376,15 +376,22 @@ export const useFileStore = defineStore('files', {
 
     async downloadItem(item: FileItem) {
       try {
-        const blob = await fileService.downloadFile(item.uid)
-        const url = window.URL.createObjectURL(blob)
+        // A plain navigation, NOT an XHR blob. Fetching into memory first meant
+        // a multi-GB file was a multi-GB spike in the tab before a single byte
+        // reached disk; this hands the transfer to the browser, which streams
+        // it and shows its own progress.
+        //
+        // The ticket is what makes a navigation possible at all — a navigation
+        // cannot set an Authorization header. It is scoped to this one file and
+        // expires in seconds (see fileService.downloadUrl).
+        const url = await fileService.downloadUrl(item.uid)
         const a = document.createElement('a')
         a.href = url
         a.download = item.name
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
-        window.URL.revokeObjectURL(url)
+        // No object URL to revoke: nothing was ever held in memory.
       } catch (e) {
         this.error = errorMessage(e, 'Failed to download')
       }

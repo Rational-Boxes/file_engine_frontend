@@ -25,6 +25,7 @@
       <router-link to="/chat">AI Research Chat</router-link>
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/tenant">Users &amp; roles</router-link>
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/security">Security</router-link>
+      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/shares">Shared outside</router-link>
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/ops">System</router-link>
     </nav>
     <div class="user">
