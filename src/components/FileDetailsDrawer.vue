@@ -176,7 +176,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { fileService, type NodeInfo } from '@/services/fileService'
 import { useFileStore } from '@/stores/files'
 import { useAuthStore } from '@/stores/auth'
@@ -272,6 +272,32 @@ const visibleTabs = computed<Tab[]>(() => {
   return out
 })
 const router = useRouter()
+const route = useRoute()
+
+/**
+ * Which tab a freshly-opened drawer should show — `?tab=` if the URL asks for
+ * one, otherwise Info.
+ *
+ * Every row in the Dashboard's Sharing panel, and every share attention item,
+ * deep-links to a resource's SHARE tab. The drawer's tab is local state, so
+ * without this they all land on Info and the deep link silently under-delivers.
+ *
+ * Both the query watcher below and the file-select reset go through this, so
+ * they cannot disagree — otherwise whichever watcher is DECLARED LAST wins,
+ * which is not a thing anyone should have to know when editing this file.
+ *
+ * Matched case-insensitively against the tabs actually visible: `?tab=Share`
+ * for a user without the role falls back rather than selecting a missing pane.
+ */
+function requestedTab(): Tab {
+  const want = route.query.tab
+  if (typeof want !== 'string') return 'Info'
+  return visibleTabs.value.find((t) => t.toLowerCase() === want.toLowerCase()) ?? 'Info'
+}
+
+watch([() => route.query.tab, visibleTabs], () => { tab.value = requestedTab() },
+      { immediate: true })
+
 const canEdit = computed(() => auth.hasAccessLevel('editor'))
 const canDownload = computed(() => canDo('download', auth.accessLevel))
 // Editability is decided by the file NAME's extension (an office document), not the
@@ -340,7 +366,9 @@ watch(
   () => [files.drawerOpen, files.detailItem?.uid] as const,
   ([open, uid]) => {
     if (open && uid) {
-      tab.value = 'Info' // reset the tab only when a (different) file is opened
+      // Reset only when a (different) file is opened — to Info, unless the URL
+      // explicitly asked for a tab, in which case that intent wins.
+      tab.value = requestedTab()
       loadAll(uid)
     }
   },

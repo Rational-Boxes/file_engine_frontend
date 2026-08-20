@@ -163,6 +163,20 @@ export interface Notification {
   actor: string
   createdAt: string
   readAt: string | null
+  /**
+   * Which system raised this — mapped server-side at write time, never derived
+   * here by string-matching the kind. Deriving it in the SPA would put the
+   * mapping in the one place that does not know when a new kind is added.
+   */
+  source: string
+  /** Share items only: the link, for deep-linking to its Share tab. */
+  shareLinkUid: string | null
+  /**
+   * Share items only: text that lets the row render WITHOUT resolving the
+   * resource — which is the point, since "your link stopped working" usually
+   * means the user can no longer read it.
+   */
+  detailText: string | null
 }
 
 export interface Activity {
@@ -273,6 +287,11 @@ function toNotification(n: Record<string, unknown>): Notification {
     actor: n.actor as string,
     createdAt: n.created_at as string,
     readAt: (n.read_at as string) ?? null,
+    // Falls back to 'other' rather than to a guess: an unrecognised source gets
+    // its own heading, so a new kind degrades visibly instead of vanishing.
+    source: (n.source as string) || 'other',
+    shareLinkUid: (n.share_link_uid as string) ?? null,
+    detailText: (n.detail_text as string) ?? null,
   }
 }
 

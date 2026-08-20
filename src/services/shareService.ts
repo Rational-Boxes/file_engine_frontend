@@ -136,6 +136,16 @@ export interface AdminShareLink extends ShareLink {
   resource_depth: number | null
 }
 
+export interface InboxShareLink extends ShareLink {
+  recipient_count: number
+}
+
+export interface SharingInbox {
+  needsAttention: InboxShareLink[]
+  dropBoxes: InboxShareLink[]
+  active: InboxShareLink[]
+}
+
 export interface AdminShareFilters {
   live?: boolean
   creator?: string
@@ -214,6 +224,22 @@ export const shareService = {
    */
   async removeRecipient(linkUid: string, email: string): Promise<void> {
     await shareClient.delete(`/v1/links/${linkUid}/recipients/${encodeURIComponent(email)}`)
+  },
+
+  /**
+   * The Dashboard's Sharing panel: "what have I got open right now".
+   *
+   * Grouped server-side, because the grouping depends on a live pre-flight the
+   * SPA cannot run — this is also the call that detects a link having stopped
+   * working, which has no triggering event to listen for.
+   */
+  async inbox(): Promise<SharingInbox> {
+    const { data } = await shareClient.get('/v1/links/mine/inbox')
+    return {
+      needsAttention: data.needs_attention ?? [],
+      dropBoxes: data.drop_boxes ?? [],
+      active: data.active ?? [],
+    }
   },
 
   /**

@@ -28,26 +28,46 @@
     <p v-if="d.error" class="dash-err">{{ d.error }}</p>
 
     <ReviewsInbox class="dash-reviews" />
+    <!-- Beside ReviewsInbox, same idiom: the standing answer to "what have I
+         got open right now". Renders nothing at all when the user shares
+         nothing, which is most users. -->
+    <SharingInbox class="dash-sharing" />
 
     <div class="dash-cols">
       <!-- Attention feed: things requesting the user's attention (§10a). -->
       <section class="feed">
+        <!-- The single badge stays the TOTAL: the divisions change how the
+             feed reads, not the "one place to look" property. -->
         <h2>Needs your attention <span v-if="d.unreadCount" class="badge">{{ d.unreadCount }}</span></h2>
         <p v-if="!d.attention.length" class="empty">You're all caught up.</p>
-        <ul v-else class="items">
-          <li
-            v-for="n in d.attention"
-            :key="n.id"
-            class="item"
-            :class="{ unseen: !n.readAt }"
-          >
-            <router-link class="item-main" :to="attentionLink(n)" @click="d.markSeen(n.id)">
-              <span class="kind" :data-kind="n.kind">{{ kindLabel(n.kind) }}</span>
-              <span class="who">{{ n.actor }}</span>
-              <time :title="n.createdAt">{{ ago(n.createdAt) }}</time>
-            </router-link>
-          </li>
-        </ul>
+        <!--
+          Grouped by originating system. A flat list of "someone mentioned you",
+          "a review is waiting" and "a stranger dropped a file in your folder"
+          reads as noise: those want different reactions, on different
+          timescales. Empty divisions are omitted entirely.
+        -->
+        <template v-for="g in divisions" :key="g.source">
+          <h3 class="division">
+            {{ sourceLabel(g.source) }}
+            <span v-if="g.unread" class="badge small">{{ g.unread }}</span>
+          </h3>
+          <ul class="items">
+            <li
+              v-for="n in g.items"
+              :key="n.id"
+              class="item"
+              :class="{ unseen: !n.readAt }"
+            >
+              <router-link class="item-main" :to="attentionLink(n)" @click="d.markSeen(n.id)">
+                <span class="kind" :data-kind="n.kind">{{ kindLabel(n.kind) }}</span>
+                <!-- Share rows carry their own text precisely so they can be
+                     rendered without resolving the resource. -->
+                <span class="who">{{ n.detailText || n.actor }}</span>
+                <time :title="n.createdAt">{{ ago(n.createdAt) }}</time>
+              </router-link>
+            </li>
+          </ul>
+        </template>
       </section>
 
       <!-- Document activity: new/updated docs the user may see (calm awareness). -->
@@ -71,10 +91,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useDiscussionStore } from '@/stores/discussion'
 import AppNav from '@/components/AppNav.vue'
 import ReviewsInbox from '@/components/ReviewsInbox.vue'
+import SharingInbox from '@/components/SharingInbox.vue'
 import { truncateMiddle } from '@/utils/format'
 import type { Notification } from '@/services/discussionService'
 
@@ -87,13 +108,51 @@ const KIND_LABELS: Record<string, string> = {
   review_acknowledged: 'Review acknowledged',
   review_completed: 'Review completed',
   thread_resolved: 'Thread resolved',
+  review_approved: 'Review approved',
+  review_rejected: 'Review rejected',
+  share_drop_received: 'File dropped',
+  share_link_dead: '⚠ Link stopped working',
+  share_otp_send_failed: '⚠ Code could not be sent',
+  share_first_redemption: 'Link opened',
+}
+
+// Fixed order, so the feed does not reshuffle as items arrive. An unrecognised
+// source sorts last under its own raw name rather than disappearing.
+const SOURCE_ORDER = ['comments', 'reviews', 'sharing']
+const SOURCE_LABELS: Record<string, string> = {
+  comments: 'Comments', reviews: 'Reviews', sharing: 'Sharing',
+}
+function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source] ?? source
 }
 function kindLabel(kind: string): string {
   return KIND_LABELS[kind] ?? kind
 }
 
+const divisions = computed(() => {
+  const groups = new Map<string, Notification[]>()
+  for (const n of d.attention) {
+    const g = groups.get(n.source) ?? []
+    g.push(n)
+    groups.set(n.source, g)
+  }
+  const known = SOURCE_ORDER.filter((s) => groups.has(s))
+  const unknown = [...groups.keys()].filter((s) => !SOURCE_ORDER.includes(s)).sort()
+  return [...known, ...unknown].map((source) => ({
+    source,
+    items: groups.get(source)!,
+    unread: groups.get(source)!.filter((n) => !n.readAt).length,
+  }))
+})
+
 // Deep-link to the anchor document's preview with the thread open (§10f).
 function attentionLink(n: Notification) {
+  // A share item goes to the resource's Share tab, not to a preview: the
+  // existing deep-link is doubly wrong for a folder-download link, since
+  // folders have no preview route at all.
+  if (n.shareLinkUid) {
+    return { path: '/files', query: { folder: n.fileUid, tab: 'share' } }
+  }
   const query: Record<string, string> = {}
   if (n.threadId) query.thread = n.threadId
   return { path: `/preview/${n.fileUid}`, query }
@@ -159,6 +218,8 @@ onBeforeUnmount(() => d.stopPolling())
   font-size: 0.7rem;
   padding: 1px 7px;
 }
+.division { font-size: .75rem; text-transform: uppercase; color: #666; margin: .6rem 0 .2rem; }
+.badge.small { font-size: .7rem; }
 .empty {
   color: var(--muted);
   font-size: 0.9rem;
