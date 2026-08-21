@@ -17,10 +17,26 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { authService } from '@/services/authService'
+import { setLoginLabel } from '@/utils/tenantHost'
 
 const app = createApp(App)
 
 app.use(createPinia())
-app.use(router)
 
-app.mount('#app')
+// Learn the deployment's shape BEFORE the router runs.
+//
+// The router's guard sends a signed-out visitor on a tenant origin to the
+// shared sign-in host, and it needs that host's label to do so. The label is a
+// run-time fact (one image, many deployments), so it has to be fetched — and
+// fetched before the first navigation, or the very first guarded route would
+// redirect to the wrong host.
+//
+// siteConfig never throws: an unreachable bridge yields the defaults, so the
+// app always mounts and always shows a password form.
+authService.siteConfig()
+  .then((cfg) => setLoginLabel(cfg.loginSubdomain))
+  .finally(() => {
+    app.use(router)
+    app.mount('#app')
+  })

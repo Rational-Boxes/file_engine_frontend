@@ -67,7 +67,10 @@
 </template>
 
 <script setup lang="ts">
+import { errorMessage } from '@/services/apiClient'
 import ProviderIcon from '@/components/ProviderIcon.vue'
+import { isLoginOrigin, tenantOrigin } from '@/utils/tenantHost'
+import { chooseTenant, setLastTenant } from '@/utils/lastTenant'
 import { nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -127,7 +130,45 @@ const label = (p: string) => LABELS[p] ?? p.charAt(0).toUpperCase() + p.slice(1)
 
 onMounted(async () => {
   providers.value = await authService.oauthProviders()
+  // Already signed in AND standing on the shared sign-in origin: there is
+  // nothing to log into here, so go straight on to a workspace. Happens when a
+  // second tab is opened, or when a tenant bounced someone here whose session
+  // was in fact still good.
+  if (isLoginOrigin() && auth.isAuthenticated) await handOffToWorkspace()
 })
+
+/**
+ * Carry this session to a tenant's own origin.
+ *
+ * Only runs on the shared sign-in origin, which is not a tenant and has no app
+ * to show. The destination is the remembered workspace when the user still has
+ * it, else their first — the token's roles map is the authority on what they
+ * may reach, never the remembered hint.
+ */
+async function handOffToWorkspace() {
+  const available = auth.tenants   // string[] — the tenants this token carries
+  const target = chooseTenant(available)
+  if (!target) {
+    // Authenticated, but a member of nothing. Saying so is far better than an
+    // empty app or a redirect loop back to this page.
+    auth.error = 'Your account is not a member of any workspace yet. '
+      + 'Ask an administrator to add you to one.'
+    return
+  }
+  try {
+    const code = await authService.ssoHandoff(target)
+    const next = String(route.query.next || '')
+    // `next` is a PATH, and the tenant comes from our own choice — never a full
+    // URL from the query, which would make this an open redirect.
+    const url = new URL(tenantOrigin(target) + '/sso')
+    url.searchParams.set('code', code)
+    if (next) url.searchParams.set('next', next)
+    setLastTenant(target)
+    window.location.href = url.toString()
+  } catch (e) {
+    auth.error = errorMessage(e, 'Could not open your workspace')
+  }
+}
 
 const loginWithProvider = (p: string) => {
   stashRedirect(route.query.redirect) // ensure it's saved right before leaving the SPA

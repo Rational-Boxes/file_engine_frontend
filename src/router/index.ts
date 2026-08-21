@@ -15,6 +15,7 @@
 
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { activeTenantFromHost, isLoginOrigin, loginUrl } from '@/utils/tenantHost'
 import { safeRedirect } from '@/utils/redirect'
 
 const LoginView = () => import('@/views/LoginView.vue')
@@ -97,8 +98,21 @@ const router = createRouter({
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    // Remember where they were headed (e.g. a shared deep link) so login can
-    // return them there afterwards.
+    // On a TENANT origin, signing in happens at the shared login host — one
+    // origin to style, and one entry in OAUTH_RETURN_ALLOWLIST however many
+    // tenants exist. The intended destination travels as a path (never a full
+    // URL, which would make this an open redirect) and the tenant travels
+    // separately, so the return target is reconstructed rather than trusted.
+    const tenant = activeTenantFromHost()
+    if (tenant && !isLoginOrigin()) {
+      const url = loginUrl(to.fullPath, tenant)
+      if (url) {
+        window.location.href = url
+        return false   // hand over to the browser; cancel the in-app navigation
+      }
+    }
+    // No subdomain tenancy (bare localhost, an IP) — the local form is the
+    // only way in, so keep the existing behaviour.
     return { path: '/login', query: { redirect: to.fullPath } }
   }
   if (to.meta.requiresAdmin && !auth.hasAccessLevel('admin')) {

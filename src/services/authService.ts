@@ -66,6 +66,25 @@ export const authService = {
   },
 
   // Deep-link SSO (§5.5): redeem a one-time hand-off code minted by another system
+  /**
+   * Mint a one-time hand-off code for `tenant`, to carry this session from the
+   * shared sign-in origin to that tenant's own origin.
+   *
+   * The token cannot simply travel: it lives in localStorage, which is
+   * origin-scoped, so `login.example.com` and `acme.example.com` cannot share
+   * one. The code crosses instead — short-lived, single-use, and redeemed on
+   * arrival for a real session.
+   *
+   * X-Tenant selects which tenant the code is minted for. The bridge validates
+   * that against the roles map in the caller's own token, so naming a tenant
+   * the user does not belong to is refused there rather than trusted here.
+   */
+  async ssoHandoff(tenant: string): Promise<string> {
+    const { data } = await apiClient.post<{ code: string }>(
+      '/v1/auth/sso/handoff', {}, { headers: { 'X-Tenant': tenant } })
+    return data.code
+  },
+
   // for a fresh session (POST /v1/auth/sso/redeem). A bare axios call — no bearer yet.
   async ssoRedeem(code: string): Promise<void> {
     const { data } = await axios.post(`${API_BASE}/v1/auth/sso/redeem`, { code })
@@ -132,11 +151,33 @@ export const authService = {
    * is always there underneath.
    */
   async oauthProviders(): Promise<string[]> {
+    return (await this.siteConfig()).providers
+  },
+
+  /**
+   * What this deployment looks like, before anyone has signed in: which
+   * identity providers are usable, and the DNS label of the shared sign-in
+   * origin.
+   *
+   * Both are RUN-TIME facts. The packaged SPA is built once and run by many
+   * deployments, so neither can come from a build-time variable without
+   * offering every deployment the same answer.
+   *
+   * Failure yields the safe defaults — no providers (so no buttons) and the
+   * conventional "login" label. Never throws: this runs during bootstrap, and
+   * an unreachable bridge must not stop the app from mounting and showing a
+   * password form.
+   */
+  async siteConfig(): Promise<{ providers: string[]; loginSubdomain: string }> {
     try {
-      const { data } = await apiClient.get<{ providers?: string[] }>('/v1/auth/providers')
-      return data.providers ?? []
+      const { data } = await apiClient.get<{ providers?: string[]; login_subdomain?: string }>(
+        '/v1/auth/providers')
+      return {
+        providers: data.providers ?? [],
+        loginSubdomain: data.login_subdomain || 'login',
+      }
     } catch {
-      return []
+      return { providers: [], loginSubdomain: 'login' }
     }
   },
 
