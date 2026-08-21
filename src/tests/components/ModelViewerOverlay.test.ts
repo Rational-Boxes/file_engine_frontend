@@ -786,3 +786,81 @@ describe('see-through markers in the object tree', () => {
     expect(li.classList.contains('mv-xrayed')).toBe(true)
   })
 })
+
+// The title bar keeps its normal single row; a comparison gets a second row of
+// its own.
+//
+// It was one row for everything, with ✕ at the end. Entering a comparison adds a
+// chip, a "back to the model" button and a version picker to that row, which
+// pushed ✕ off the right-hand edge — no way out of the viewer but the keyboard,
+// on the one screen whose controls are widest. Wrapping would not have fixed it:
+// flex wraps in DOM order, so the trailing close button is exactly what moves.
+describe('ModelViewerOverlay — the way out survives a comparison', () => {
+  const PAIR2 = { base: 'v1', target: 'v2' }
+
+  async function open(comparison: boolean) {
+    setActivePinia(createPinia())
+    hh.loadRenditionSet.mockResolvedValue({})
+    hh.modelRendition.mockReturnValue({ uid: 'plain-xkt' })
+    const store = useModel3dStore()
+    if (comparison) {
+      store.open('f1', 'tower.ifc — comparison', { xktUid: 'd', metamodelUid: 'm', diff: PAIR2 })
+    } else {
+      store.open('f1', 'tower.ifc')
+    }
+    const w = mount(ModelViewerOverlay, { global: { stubs: { teleport: true } } })
+    await flushPromises()
+    return w
+  }
+
+  it('has no second row at all on a plain model', async () => {
+    // The normal configuration is unchanged: one row, exactly as before.
+    const w = await open(false)
+    expect(w.find('.mv-head-tools').exists()).toBe(false)
+    expect(w.find('.mv-head-main .mv-x').exists()).toBe(true)
+  })
+
+  it('gives the comparison its own row, and keeps ✕ off it', async () => {
+    const w = await open(true)
+    expect(w.find('.mv-head-tools').exists()).toBe(true)
+    expect(w.find('.mv-diffchip').exists()).toBe(true)      // really is a comparison
+    expect(w.find('.mv-head-main .mv-x').exists()).toBe(true)
+    expect(w.find('.mv-head-tools .mv-x').exists()).toBe(false)
+  })
+
+  it('puts ONLY the comparison on the second row', async () => {
+    // Everything else keeps the position it has always had — the second row is
+    // reserved for the controls that appear and grow.
+    const w = await open(true)
+    const tools = w.findAll('.mv-head-tools .mv-act').map((b) => b.text()).join(' ')
+    expect(tools).toContain('Back to the model')
+    expect(tools).not.toContain('Top')
+    expect(tools).not.toContain('Reset')
+    expect(tools).not.toContain('Download original')
+    expect(tools).not.toContain('Open file location')
+  })
+
+  it('keeps views, file actions and comment placement on the top row', async () => {
+    const w = await open(true)
+    const main = w.findAll('.mv-head-main .mv-act').map((b) => b.text()).join(' ')
+    expect(main).toContain('Top')
+    expect(main).toContain('Reset')
+    expect(main).toContain('Download original')
+    expect(main).toContain('Open file location')
+    expect(w.find('.mv-head-main .mv-disc').exists()).toBe(true)
+  })
+
+  it('starts a comparison from the top row, then moves it below', async () => {
+    const w = await open(false)
+    const start = w.findAll('.mv-head-main .mv-act').find((b) => b.text().includes('Compare versions'))
+    expect(start).toBeTruthy()
+    await start!.trigger('click')
+    expect(w.find('.mv-head-tools').exists()).toBe(true)   // the row appears for it
+  })
+
+  it('closes the viewer from the top row while comparing', async () => {
+    const w = await open(true)
+    await w.find('.mv-head-main .mv-x').trigger('click')
+    expect(useModel3dStore().isOpen).toBe(false)
+  })
+})

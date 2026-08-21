@@ -20,30 +20,82 @@
     <!-- Maximal, full-bleed overlay: the 3D canvas must own as much space as
          possible so navigation is never cramped. Not a drawer/centered modal. -->
     <div v-if="model3d.isOpen" class="mv-root theme-dark" role="dialog" aria-modal="true" aria-label="3D model viewer">
-      <header class="mv-head">
-        <button class="mv-toggle" :aria-pressed="!collapsed" title="Toggle the objects / tools panel" @click="toggleSidebar">
-          ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} panel</span>
-        </button>
-        <h1 class="mv-title" :title="title">{{ title }}</h1>
+      <!--
+        The title bar is its normal single row, PLUS a second row that exists
+        only while a comparison is on screen.
 
-        <!-- Standard views live in the title bar so they're one click away without
-             opening the Tools panel. -->
-        <div class="mv-group" role="group" aria-label="Standard views">
-          <button class="mv-act mv-icon" title="Top view" @click="view('top')">Top</button>
-          <button class="mv-act mv-icon" title="Front view" @click="view('front')">Front</button>
-          <button class="mv-act mv-icon" title="Isometric view" @click="view('iso')">Iso</button>
-          <button class="mv-act mv-icon" title="Frame the current selection" @click="fitSel">Fit sel</button>
-          <button class="mv-act mv-icon" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset</button>
+        It used to be one row for everything, with ✕ at the end. Entering a
+        comparison adds a chip, a "back to the model" button and a version
+        picker to that row, which pushed ✕ off the right-hand edge — no way out
+        of the viewer except the keyboard, on the one screen whose controls are
+        widest. Wrapping would not have fixed it: flex wraps in DOM order, so
+        the trailing close button is exactly what moves to the next line.
+
+        So the comparison controls — the only ones that appear and grow — get
+        their own row, and everything else keeps the position it has always had.
+        Nothing can displace ✕, because nothing shares a row with it that
+        changes size.
+      -->
+      <header class="mv-head">
+        <div class="mv-head-row mv-head-main">
+          <button class="mv-toggle" :aria-pressed="!collapsed" title="Toggle the objects / tools panel" @click="toggleSidebar">
+            ☰ <span class="mv-toggle-lbl">{{ collapsed ? 'Show' : 'Hide' }} panel</span>
+          </button>
+          <h1 class="mv-title" :title="title">{{ title }}</h1>
+
+          <!-- Standard views live in the title bar so they're one click away without
+               opening the Tools panel. -->
+          <div class="mv-group" role="group" aria-label="Standard views">
+            <button class="mv-act mv-icon" title="Top view" @click="view('top')">Top</button>
+            <button class="mv-act mv-icon" title="Front view" @click="view('front')">Front</button>
+            <button class="mv-act mv-icon" title="Isometric view" @click="view('iso')">Iso</button>
+            <button class="mv-act mv-icon" title="Frame the current selection" @click="fitSel">Fit sel</button>
+            <button class="mv-act mv-icon" title="Reset the camera to the default view" @click="resetCamera">⟳ Reset</button>
+          </div>
+
+          <!-- Starting a comparison stays here, where it has always been. Only
+               the comparison ITSELF moves to the row below. -->
+          <button
+            v-if="!model3d.diff && !comparePicker"
+            class="mv-act"
+            title="Compare two versions of this model"
+            @click="comparePicker = true"
+          >🔀 Compare versions</button>
+
+          <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
+          <button class="mv-act" @click="openLocation">📂 Open file location</button>
+
+          <div class="mv-disc">
+            <template v-if="!discMin">
+              <button class="mv-act mv-icon" :class="{ 'mv-on': discussionPos === 'side' }" title="Comments on the right" @click="setPos('side')">▐</button>
+              <button class="mv-act mv-icon" :class="{ 'mv-on': discussionPos === 'bottom' }" title="Comments below" @click="setPos('bottom')">▄</button>
+              <button class="mv-act mv-icon" title="Minimize comments" @click="discMin = true">💬 —</button>
+            </template>
+            <button v-else class="mv-act" title="Show comments" @click="discMin = false">
+              💬 Comments ({{ discCount }})
+            </button>
+          </div>
+
+          <HelpIcon topic="cad-bim" label="About CAD &amp; BIM model viewing" />
+          <button class="mv-x" aria-label="Close viewer" @click="model3d.close()">✕</button>
         </div>
 
         <!--
-          Which version of this model is on screen, and the way between them.
+          Row two: the comparison, and nothing else. Present only while one is
+          open (or being set up), so the plain viewer keeps the single-row title
+          bar it has always had.
+
           A comparison is not a separate place — it is the same model shown
           differently, sharing one set of comments — so getting back to the plain
           model has to be a visible step here, not something you discover by
           closing the viewer or by activating somebody else's comment.
         -->
-        <div class="mv-group mv-versions" role="group" aria-label="Model version">
+        <div
+          v-if="comparePicker || model3d.diff"
+          class="mv-head-row mv-head-tools mv-versions"
+          role="group"
+          aria-label="Model version"
+        >
           <template v-if="model3d.diff">
             <span class="mv-diffchip" :title="`Comparing ${model3d.diff.base} with ${model3d.diff.target}`">
               🔀 Comparison
@@ -52,15 +104,8 @@
               ← Back to the model
             </button>
           </template>
-          <button
-            v-else-if="!comparePicker"
-            class="mv-act"
-            title="Compare two versions of this model"
-            @click="comparePicker = true"
-          >🔀 Compare versions</button>
 
           <VersionPairPicker
-            v-if="comparePicker || model3d.diff"
             :uid="model3d.uid"
             :base="model3d.diff?.base"
             :target="model3d.diff?.target"
@@ -69,24 +114,6 @@
             @compare="showComparison"
           />
         </div>
-
-        <HelpIcon topic="cad-bim" label="About CAD &amp; BIM model viewing" />
-        <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
-        <button class="mv-act" @click="openLocation">📂 Open file location</button>
-
-        <!-- Discussion controls live in the viewer's title bar (dark chrome). -->
-        <div class="mv-disc">
-          <template v-if="!discMin">
-            <button class="mv-act mv-icon" :class="{ 'mv-on': discussionPos === 'side' }" title="Comments on the right" @click="setPos('side')">▐</button>
-            <button class="mv-act mv-icon" :class="{ 'mv-on': discussionPos === 'bottom' }" title="Comments below" @click="setPos('bottom')">▄</button>
-            <button class="mv-act mv-icon" title="Minimize comments" @click="discMin = true">💬 —</button>
-          </template>
-          <button v-else class="mv-act" title="Show comments" @click="discMin = false">
-            💬 Comments ({{ discCount }})
-          </button>
-        </div>
-
-        <button class="mv-x" aria-label="Close viewer" @click="model3d.close()">✕</button>
       </header>
 
       <div class="mv-body" :class="{ 'mv-resizing': sideResizing }">
@@ -1080,12 +1107,25 @@ onBeforeUnmount(() => {
 }
 .mv-head {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 0.35rem;
   padding: 0.4rem 0.75rem;
   background: #0f1113;
   border-bottom: 1px solid #2a2d31;
   flex: 0 0 auto;
+}
+.mv-head-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;   /* lets the title actually ellipsize instead of forcing overflow */
+}
+/* The tools row wraps within itself. Whatever it grows to hold — a comparison
+   chip, a version picker — it can only push its own contents onto another line,
+   never the close button, which lives on the row above. */
+.mv-head-tools {
+  flex-wrap: wrap;
+  row-gap: 0.35rem;
 }
 .mv-title {
   flex: 1 1 auto;
@@ -1109,10 +1149,13 @@ onBeforeUnmount(() => {
 }
 
 /* Version navigation: the comparison chip, the way back, and the pair picker. */
+/* Row two. Display and alignment come from .mv-head-row — do not set
+   `inline-flex` here, which would win by source order and collapse the row. */
 .mv-versions {
-  display: inline-flex;
   gap: 0.4rem;
-  align-items: center;
+  /* This row is the one that grows, so let it fold within itself on a narrow
+     window rather than overflow. It has no neighbours to push. */
+  flex-wrap: wrap;
 }
 
 .mv-diffchip {
