@@ -4,7 +4,7 @@ title: Version history
 category: Working with files
 keywords: [version, history, restore, rollback, revert, previous, purge, keep, immutable, cull, undo]
 order: 2
-related: [files, editing, sharing, acl-basics]
+related: [comparing, files, editing, sharing, acl-basics]
 ---
 
 FileEngine keeps a **full history** of every file. Changes never overwrite what came

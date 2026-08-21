@@ -34,7 +34,12 @@ beforeEach(() => {
 })
 
 async function picker(props: Record<string, unknown> = {}) {
-  const w = mount(VersionPairPicker, { props: { uid: 'f1', ...props } })
+  const w = mount(VersionPairPicker, {
+    props: { uid: 'f1', ...props },
+    // HelpIcon reaches for a Pinia store; this suite is about pair selection,
+    // and the help system has its own tests.
+    global: { stubs: { HelpIcon: true } },
+  })
   await flushPromises()
   return w
 }
