@@ -331,6 +331,7 @@ function dropTitle(uid: string): string {
   const when = formatDateTime(Date.parse(p.at) / 1000)
   return `Sent from outside by ${p.email} on ${when}, `
     + `via a link shared by ${p.shared_by}`
+    + (p.stored_name ? `. Arrived as "${p.stored_name}"` : '')
 }
 
 function flagFor(uid: string): FlagCounts | undefined {

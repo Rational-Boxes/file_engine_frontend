@@ -114,10 +114,14 @@ describe('shareService — drop provenance', () => {
     // path-keyed marker would lose exactly the file someone tidied away.
     post.mockResolvedValue({
       data: { provenance: { f1: { email: 'bob@contractor.example',
-                                  at: '2026-08-20T00:00:00Z', shared_by: 'alice' } } },
+                                  at: '2026-08-20T00:00:00Z', shared_by: 'alice',
+                                  stored_name: 'report (1).pdf' } } },
     })
     const got = await shareService.provenance(['f1', 'f2'])
     expect(got.f1.email).toBe('bob@contractor.example')
+    // The name it ARRIVED as — a collision renamed it on the way in, and the
+    // sender was told that name, so it is what they will refer to.
+    expect(got.f1.stored_name).toBe('report (1).pdf')
     expect(got.f2).toBeUndefined()
   })
 
