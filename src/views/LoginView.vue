@@ -93,6 +93,22 @@ async function goAfterLogin() {
   auth.syncToken()
   await nextTick()
   const target = takeRedirect()
+
+  // On the shared sign-in origin there is nothing to route INTO: this origin is
+  // reserved and is not a tenant, so an in-app navigation just leaves the user
+  // here. Hand the new session to a workspace instead.
+  //
+  // This is where sign-in was quietly ending up. handOffToWorkspace was only
+  // ever called from onMounted — the "already signed in, second tab" case — so
+  // a FRESH sign-in fell through to the in-app replace below and never left the
+  // sign-in subdomain. It looked like the reachability fallback, because the
+  // symptom is identical: a working app on the wrong origin. It was not; the
+  // probe had not been consulted at all.
+  if (isLoginOrigin()) {
+    auth.mfaChallenge = null
+    return void await handOffToWorkspace(target === '/dashboard' ? '' : target)
+  }
+
   await router.replace(target)
   if (router.currentRoute.value.path === '/login' && auth.isAuthenticated) {
     await router.replace(target === '/login' ? '/dashboard' : target)
@@ -146,9 +162,21 @@ onMounted(async () => {
  * it, else their first — the token's roles map is the authority on what they
  * may reach, never the remembered hint.
  */
-async function handOffToWorkspace() {
+async function handOffToWorkspace(nextPath?: string) {
   const available = auth.tenants   // string[] — the tenants this token carries
-  const target = chooseTenant(available)
+  // A bounce carries WHICH workspace was being asked for (`?t=`), and honouring
+  // it is not optional: without this the router guard's `t` was written and
+  // never read, so anyone arriving here for a specific tenant was sent to their
+  // REMEMBERED one instead. That silently broke tenant switching — leaving a
+  // tenant origin for another one round-trips through here, and landing back on
+  // the tenant you just left looks like the switch did nothing at all.
+  //
+  // It is a hint from the URL, so it is checked against the token's tenant list
+  // rather than obeyed — that list is the authority on what the user may reach.
+  // An unrecognised or absent name falls through to the normal choice
+  // (remembered, else first), so a stale link degrades instead of failing.
+  const requested = String(route.query.t || '')
+  const target = available.includes(requested) ? requested : chooseTenant(available)
   if (!target) {
     // Authenticated, but a member of nothing. Saying so is far better than an
     // empty app or a redirect loop back to this page.
@@ -156,7 +184,10 @@ async function handOffToWorkspace() {
       + 'Ask an administrator to add you to one.'
     return
   }
-  const next = String(route.query.next || '')
+  // Where to land once the session is on the tenant's origin. A caller-supplied
+  // path wins (a fresh sign-in carries the stashed redirect); otherwise it is
+  // whatever the bounce brought us here with.
+  const next = nextPath || String(route.query.next || '')
   setLastTenant(target)
 
   // Forwarding to the tenant's own origin is the preferred outcome — its own

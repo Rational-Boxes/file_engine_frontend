@@ -130,3 +130,44 @@ describe('after signing in at the shared origin', () => {
     expect(window.location.href).toBe('')
   })
 })
+
+describe('a FRESH sign-in on the shared origin forwards too', () => {
+  // The regression that made this look like the reachability fallback:
+  // handOffToWorkspace was only reachable from onMounted (the "already signed
+  // in, second tab" case), so signing in with the password form fell through to
+  // an in-app router.replace and stayed on the sign-in subdomain. The app
+  // WORKED — the tenant rides as X-Tenant — which is exactly why it read as the
+  // fallback rather than as a forward that never happened.
+  async function signIn(tenants: string[]) {
+    setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.tenants = tenants
+    auth.user = { username: 'someone' } as never
+    // Succeeds and leaves a session behind, like the real action does.
+    auth.ldapLogin = (async () => { auth.token = 'a-token'; return true }) as never
+    // Signed OUT at mount, so onMounted must not hand off — this has to come
+    // from the sign-in itself.
+    const w = mount(LoginView, { global: { stubs: { RouterLink: true, TwoFactorChallenge: true } } })
+    await flushPromises()
+    expect(ssoHandoff).not.toHaveBeenCalled()
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    return { w, auth }
+  }
+
+  it('forwards to the tenant origin instead of routing in place', async () => {
+    reachable.mockResolvedValue(true)
+    await signIn(['acme'])
+    expect(ssoHandoff).toHaveBeenCalledWith('acme')
+    expect(window.location.href).toContain('https://acme.example.com/sso')
+    expect(replace).not.toHaveBeenCalled()   // it did NOT just navigate in-app
+  })
+
+  it('still falls back to this origin when the tenant subdomain is absent', async () => {
+    reachable.mockResolvedValue(false)
+    const { auth } = await signIn(['acme'])
+    expect(ssoHandoff).not.toHaveBeenCalled()
+    expect(auth.tenant).toBe('acme')          // scoped via X-Tenant, app works here
+    expect(window.location.href).toBe('')
+  })
+})

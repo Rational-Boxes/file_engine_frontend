@@ -32,6 +32,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { safeRedirect } from '@/utils/redirect'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,6 +40,19 @@ const auth = useAuthStore()
 const message = ref('Signing you in…')
 
 function targetPath(): string {
+  // `next` is a PATH, used by the shared sign-in origin and the tenant switcher
+  // to carry where the user was actually headed. It was previously ignored here
+  // — this view only understood `target` — so every hand-off silently landed on
+  // the dashboard and any deep link was lost on the way through.
+  //
+  // Run through safeRedirect, which is the open-redirect guard: only an
+  // absolute same-origin path is accepted, never a full or protocol-relative
+  // URL. That matters more here than almost anywhere, because this page is
+  // reached pre-auth and acts immediately.
+  const n = route.query.next
+  const next = Array.isArray(n) ? n[0] : n
+  if (next) return safeRedirect(String(next))
+
   const t = route.query.target
   const uid = Array.isArray(t) ? t[0] : t
   // Land on the file LIST with the file revealed + selected (FileBrowserView honors

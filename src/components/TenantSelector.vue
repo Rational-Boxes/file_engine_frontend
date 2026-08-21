@@ -26,7 +26,10 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
-import { subdomainTenancyEnabled, tenantUrl } from '@/utils/tenantHost'
+import { subdomainTenancyEnabled, tenantOrigin } from '@/utils/tenantHost'
+import { tenantOriginReachable } from '@/utils/tenantReach'
+import { setLastTenant } from '@/utils/lastTenant'
+import { authService } from '@/services/authService'
 
 const auth = useAuthStore()
 
@@ -38,17 +41,47 @@ const auth = useAuthStore()
 //   - subdomain tenancy: navigate to the tenant's own origin (authoritative);
 //   - single-domain: persist the active tenant, then hard-reload — the app
 //     re-bootstraps from the persisted token + tenant with fresh stores/caches.
-const onChange = (e: Event) => {
-  const value = (e.target as HTMLSelectElement).value
+// Carrying the SESSION is the part that used to be missing. The old code simply
+// navigated to the other origin — but the token lives in localStorage, which is
+// origin-scoped, so the destination had no session and its router guard bounced
+// straight back to the sign-in origin. Combined with the guard's `?t=` being
+// written and never read, that bounce then returned the user to the tenant they
+// had just left, and switching looked like it did nothing.
+//
+// So mint a one-time hand-off code for the target tenant and land on its /sso,
+// which redeems it into a real session there — the same mechanism the shared
+// sign-in origin uses. The reachability probe runs first: if the target's
+// subdomain is not actually serving the app, forwarding would strand the user
+// on a browser error page, so fall back to the in-app swap instead.
+const onChange = async (e: Event) => {
+  const select = e.target as HTMLSelectElement
+  const value = select.value
   if (!value || value === auth.tenant) return
+
   if (subdomainTenancyEnabled()) {
-    const url = tenantUrl(value)
-    if (url) {
-      window.location.assign(url)
-      return
+    const origin = tenantOrigin(value)
+    if (origin && await tenantOriginReachable(origin)) {
+      try {
+        const code = await authService.ssoHandoff(value)
+        setLastTenant(value)
+        const url = new URL(origin + '/sso')
+        url.searchParams.set('code', code)
+        window.location.assign(url.toString())
+        return
+      } catch (err) {
+        // The origin answered, so this is the hand-off failing rather than the
+        // destination being absent. Fall through to the in-app swap: a working
+        // workspace beats an error the user cannot act on.
+        console.warn('tenant hand-off failed; switching in place', err)
+      }
     }
   }
-  auth.switchTenant(value) // persist the choice so the reload boots into it
+  // Single-domain, an unreachable subdomain, or a failed hand-off. Persist the
+  // choice and hard-reload: a clean boot is what clears the KeepAlive-cached
+  // views, the stores and the name caches, none of which an in-place field swap
+  // can reliably reset.
+  setLastTenant(value)
+  auth.switchTenant(value)
   window.location.reload()
 }
 </script>
