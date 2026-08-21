@@ -71,6 +71,7 @@ import { errorMessage } from '@/services/apiClient'
 import ProviderIcon from '@/components/ProviderIcon.vue'
 import { isLoginOrigin, tenantOrigin } from '@/utils/tenantHost'
 import { chooseTenant, setLastTenant } from '@/utils/lastTenant'
+import { forgetReachability, tenantOriginReachable } from '@/utils/tenantReach'
 import { nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -155,19 +156,40 @@ async function handOffToWorkspace() {
       + 'Ask an administrator to add you to one.'
     return
   }
-  try {
-    const code = await authService.ssoHandoff(target)
-    const next = String(route.query.next || '')
-    // `next` is a PATH, and the tenant comes from our own choice — never a full
-    // URL from the query, which would make this an open redirect.
-    const url = new URL(tenantOrigin(target) + '/sso')
-    url.searchParams.set('code', code)
-    if (next) url.searchParams.set('next', next)
-    setLastTenant(target)
-    window.location.href = url.toString()
-  } catch (e) {
-    auth.error = errorMessage(e, 'Could not open your workspace')
+  const next = String(route.query.next || '')
+  setLastTenant(target)
+
+  // Forwarding to the tenant's own origin is the preferred outcome — its own
+  // cookie jar and storage, and a URL that says which workspace you are in. But
+  // a deployment can have tenants whose subdomain was never set up, and
+  // forwarding there strands the user on a browser error page, outside the app,
+  // on a host our code cannot reach to explain from. So check first.
+  if (await tenantOriginReachable(tenantOrigin(target))) {
+    try {
+      const code = await authService.ssoHandoff(target)
+      // `next` is a PATH, and the tenant comes from our own choice — never a
+      // full URL from the query, which would make this an open redirect.
+      const url = new URL(tenantOrigin(target) + '/sso')
+      url.searchParams.set('code', code)
+      if (next) url.searchParams.set('next', next)
+      window.location.href = url.toString()
+      return
+    } catch (e) {
+      // The probe said the origin was live, so a failure here is the hand-off
+      // itself, not the destination. Fall through and serve the workspace from
+      // this origin rather than stopping at an error the user cannot act on.
+      console.warn('SSO hand-off failed; serving the workspace from here', e)
+      forgetReachability(tenantOrigin(target))
+    }
   }
+
+  // Fallback: stay put and run the app as this tenant. Not a degraded mode —
+  // the tenant travels as X-Tenant, which the bridge honours regardless of
+  // host, so every request is scoped exactly as it would be on the subdomain.
+  // We are already authenticated on this origin, so no hand-off is needed at
+  // all; the session we just created is the one being used.
+  auth.switchTenant(target)
+  await router.replace(next || '/dashboard')
 }
 
 const loginWithProvider = (p: string) => {
