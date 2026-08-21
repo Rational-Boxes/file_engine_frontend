@@ -78,6 +78,32 @@
         <dt>Owner</dt><dd>{{ info.owner || '—' }}</dd>
         <dt>Created</dt><dd>{{ formatDateTime(info.created_at ?? 0) }}</dd>
         <dt>Modified</dt><dd>{{ formatDateTime(info.modified_at ?? 0) }}</dd>
+        <!--
+          Only present when the file came from OUTSIDE — the common case is an
+          ordinary internal upload, and an "internal" row on every other file
+          would be noise that trains people to stop reading this list.
+
+          The address is the VERIFIED one; a sender-typed name is never shown
+          here. Read from the redemption ledger, not the file's editable
+          share.* metadata.
+        -->
+        <template v-if="provenance">
+          <dt>From outside</dt>
+          <dd>
+            <span class="prov-who">{{ provenance.email }}</span>
+            <small class="muted">
+              on {{ formatDateTime(Date.parse(provenance.at) / 1000) }},
+              via a link shared by {{ provenance.shared_by }}
+            </small>
+            <!-- Worth saying only when it differs: a collision renamed the
+                 file on the way in, and the renamed value is what the sender
+                 was told, so it is the name they will refer to. -->
+            <small
+              v-if="provenance.stored_name && provenance.stored_name !== item?.name"
+              class="muted"
+            >Arrived as “{{ provenance.stored_name }}”</small>
+          </dd>
+        </template>
       </dl>
       <p v-else class="muted">Loading…</p>
 
@@ -177,6 +203,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { shareService, type DropProvenance } from '@/services/shareService'
 import { fileService, type NodeInfo } from '@/services/fileService'
 import { useFileStore } from '@/stores/files'
 import { useAuthStore } from '@/stores/auth'
@@ -259,6 +286,8 @@ const tabs = ['Info', 'Metadata', 'Versions', 'Access'] as const
 // via visibleTabs, so widen Tab to include them.
 type Tab = (typeof tabs)[number] | 'Actions' | 'Share'
 const tab = ref<Tab>('Info')
+
+const provenance = ref<DropProvenance | null>(null)
 
 const item = computed(() => files.detailItem)
 // Folders gain an extra "Actions" tab (folder-actions bindings + run log).
@@ -359,6 +388,14 @@ async function loadAll(uid: string) {
   generating.value = false
   genMessage.value = ''
   genError.value = false
+  provenance.value = null
+  // Best-effort and deliberately NOT in the Promise.all below: sharing may be
+  // switched off for the deployment, in which case this 404s, and a drawer that
+  // fails to open because an optional service is absent would be a poor trade
+  // for one extra row.
+  void shareService.provenance([uid])
+    .then((got) => { provenance.value = got[uid] ?? null })
+    .catch(() => { provenance.value = null })
   try {
     const [stat, meta, ...checks] = await Promise.all([
       fileService.stat(uid),
@@ -559,6 +596,13 @@ dd {
   font-family: var(--font-sans);
   font-size: 12px;
 }
+
+/* The verified sender reads as a fact, not a note — it is the trustworthy
+   half of the marker, so it does not get the muted treatment the surrounding
+   context does. */
+.prov-who { font-weight: 600; }
+.prov-who + small { display: block; }
+dd small.muted { display: block; }
 
 .muted {
   color: var(--muted);

@@ -52,6 +52,13 @@ vi.mock('vue-router', () => ({
   useRoute: () => routeStub,
 }))
 
+const { provenance } = vi.hoisted(() => ({ provenance: vi.fn() }))
+vi.mock('@/services/shareService', async () => {
+  const actual = await vi.importActual<object>('@/services/shareService')
+  const svc = { provenance }
+  return { ...actual, shareService: svc, default: svc }
+})
+
 vi.mock('@/components/AclEditor.vue', () => ({
   default: { name: 'AclEditor', props: ['uid', 'canManage'], template: '<div/>' },
 }))
@@ -240,5 +247,69 @@ describe('FileDetailsDrawer — who sees the Share tab', () => {
     const w = open()
     await flushPromises()
     expect(w.findAll('.tabs button').map((b) => b.text())).not.toContain('Share')
+  })
+})
+
+
+describe('FileDetailsDrawer — Info tab provenance', () => {
+  // The same "came from outside" fact the file list badges, on the tab someone
+  // opens when they want to know about ONE file.
+  const open = () => openWith({ uid: 'f1', name: 'plans.pdf', hasRenditions: false })
+
+  beforeEach(() => {
+    provenance.mockReset()
+    provenance.mockResolvedValue({})
+  })
+
+  it('says nothing for an ordinary internal file', async () => {
+    // The common case. An "internal" row on every file would be noise that
+    // trains people to stop reading the list.
+    const w = open()
+    await flushPromises()
+    expect(w.text()).not.toMatch(/from outside/i)
+  })
+
+  it('names the verified sender and who let them in', async () => {
+    provenance.mockResolvedValue({
+      f1: { email: 'bob@contractor.example', at: '2026-08-20T10:00:00Z',
+            shared_by: 'alice', stored_name: 'plans.pdf' },
+    })
+    const w = open()
+    await flushPromises()
+    expect(w.text()).toMatch(/from outside/i)
+    expect(w.text()).toContain('bob@contractor.example')
+    expect(w.text()).toContain('alice')
+  })
+
+  it('mentions the arrival name only when it differs', async () => {
+    // A collision renamed it on the way in, and the renamed value is what the
+    // sender was told — so it is the name they will use when they ask.
+    provenance.mockResolvedValue({
+      f1: { email: 'bob@x.example', at: '2026-08-20T10:00:00Z',
+            shared_by: 'alice', stored_name: 'plans (1).pdf' },
+    })
+    const w = open()
+    await flushPromises()
+    expect(w.text()).toContain('plans (1).pdf')
+  })
+
+  it('stays quiet when the name is unchanged', async () => {
+    provenance.mockResolvedValue({
+      f1: { email: 'bob@x.example', at: '2026-08-20T10:00:00Z',
+            shared_by: 'alice', stored_name: 'plans.pdf' },
+    })
+    const w = open()
+    await flushPromises()
+    expect(w.text()).not.toMatch(/arrived as/i)
+  })
+
+  it('opens normally when sharing is switched off for the deployment', async () => {
+    // That is a 404. A drawer that fails to open because an OPTIONAL service is
+    // absent would be a poor trade for one extra row.
+    provenance.mockRejectedValue(new Error('404'))
+    const w = open()
+    await flushPromises()
+    expect(w.find('.tabs').exists()).toBe(true)
+    expect(w.text()).not.toMatch(/from outside/i)
   })
 })
