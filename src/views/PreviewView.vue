@@ -28,7 +28,7 @@
       <p v-if="error" class="err">{{ error }}</p>
 
       <p v-if="is3d" class="muted">Opening the 3D viewer…</p>
-      <DocumentPreview v-else :uid="uid" :name="name" full-width titlebar="#pv-titlebar" />
+      <DocumentPreview v-else :uid="uid" :name="name" full-width show-location titlebar="#pv-titlebar" />
     </main>
   </div>
 </template>

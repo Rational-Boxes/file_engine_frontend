@@ -330,3 +330,37 @@ describe('downloadItem — streaming, not buffering', () => {
     expect(store.error).toBeTruthy()
   })
 })
+
+// The drawer for the folder you are IN, not for a row inside it.
+//
+// A folder's own permissions, metadata and Actions tab were reachable only from
+// its parent — awkward once you have navigated in, and impossible for anything
+// you cannot go up from.
+describe('files store — folder properties', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('opens the drawer on the current folder', async () => {
+    const store = useFileStore()
+    store.currentUid = 'd1'
+    store.breadcrumbs = [{ uid: ROOT, name: 'Home' }, { uid: 'd1', name: 'Drawings' }]
+
+    store.openCurrentFolderDetails()
+
+    expect(store.drawerOpen).toBe(true)
+    expect(store.detailItem?.uid).toBe('d1')
+    expect(store.detailItem?.name).toBe('Drawings')
+    // The drawer branches on this to choose its tabs (Actions is folders-only).
+    expect(store.detailItem?.isDirectory).toBe(true)
+  })
+
+  it('refuses at root, which is not a real node', async () => {
+    const store = useFileStore()
+    store.currentUid = ROOT
+    store.breadcrumbs = [{ uid: ROOT, name: 'Home' }]
+
+    store.openCurrentFolderDetails()
+
+    expect(store.drawerOpen).toBe(false)
+    expect(store.detailItem).toBeNull()
+  })
+})
