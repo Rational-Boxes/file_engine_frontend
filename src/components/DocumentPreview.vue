@@ -144,7 +144,7 @@
             <!-- The source file itself (for an Office doc that's the .docx/.xlsx). The
                  PDF being viewed is downloaded from the toolbar's ⬇ button instead. -->
             <button class="link" @click="downloadOriginal">⬇ Download original</button>
-            <button class="link" @click="openLocation">📂 Open file location</button>
+            <button v-if="showLocation" class="link" @click="openLocation">📂 Open file location</button>
           </template>
         </div>
       </div>
@@ -161,7 +161,7 @@
         ></video>
         <div class="dp-actions">
           <button class="link" @click="downloadOriginal">⬇ Download original</button>
-          <button class="link" @click="openLocation">📂 Open file location</button>
+          <button v-if="showLocation" class="link" @click="openLocation">📂 Open file location</button>
         </div>
       </div>
 
@@ -268,7 +268,7 @@
              consistent: get the source file, or jump to it in the browser. -->
         <div v-if="previewUrl" class="dp-actions">
           <button class="link" @click="downloadOriginal">⬇ Download original</button>
-          <button class="link" @click="openLocation">📂 Open file location</button>
+          <button v-if="showLocation" class="link" @click="openLocation">📂 Open file location</button>
         </div>
       </template>
       </template>
@@ -390,6 +390,18 @@ const props = defineProps<{
   hasRenditions?: boolean
   fullWidth?: boolean
   titlebar?: string // CSS selector of the window's title-bar slot (for the minimized chip)
+  /**
+   * Offer "Open file location". True everywhere the preview stands alone — a
+   * preview page, the maximized overlay — where jumping to the containing
+   * folder is a real move.
+   *
+   * The details drawer passes false: it opens FROM the file's row in that very
+   * folder, so the link goes where the user already is. Stated as a prop rather
+   * than inferred from `fullWidth`, which happens to correlate today and would
+   * silently pick the wrong answer the first time a standalone preview is not
+   * full width.
+   */
+  showLocation?: boolean
 }>()
 
 const preview = usePreviewStore()

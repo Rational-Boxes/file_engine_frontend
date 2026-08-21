@@ -223,7 +223,7 @@ describe('DocumentPreview', () => {
 
   it('the modal "Open file location" deep-links to the file (and closes the overlay)', async () => {
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
-    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true } })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'report.docx', fullWidth: true, showLocation: true } })
     await flushPromises()
 
     const loc = w.findAll('.link').find((b) => b.text().includes('Open file location'))
@@ -285,7 +285,7 @@ describe('DocumentPreview', () => {
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:dl')
     globalThis.URL.revokeObjectURL = vi.fn()
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
-    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'photo.png', fullWidth: true } })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'photo.png', fullWidth: true, showLocation: true } })
     await flushPromises()
 
     // On the overlay the image is already full size — the thumbnail-open affordance is
@@ -363,7 +363,7 @@ describe('DocumentPreview', () => {
 
   it('shows a mini-map navigator whenever the image is larger than the viewport, and dragging it pans the pane', async () => {
     loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
-    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'photo.png', fullWidth: true } })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'photo.png', fullWidth: true, showLocation: true } })
     await flushPromises()
 
     // Load the image with a known natural size (2:1 aspect).
@@ -506,5 +506,31 @@ describe('DocumentPreview', () => {
 
     expect(generatePreview).toHaveBeenCalledWith('f1')
     expect(w.find('img.dp-img').attributes('src')).toBe('blob:p1')
+  })
+})
+
+// "Open file location" is offered only where it is a real move.
+//
+// The details drawer opens FROM the file's row in the folder that contains it,
+// so inside the drawer the link goes where the user already is. Standalone
+// previews — the preview page, the maximized overlay — are a different matter.
+describe('DocumentPreview — where "Open file location" belongs', () => {
+  it('offers it when the preview stands alone', async () => {
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
+    const w = mount(DocumentPreview, {
+      props: { uid: 'f1', name: 'photo.png', fullWidth: true, showLocation: true },
+    })
+    await flushPromises()
+    expect(w.findAll('.link').some((b) => b.text().includes('Open file location'))).toBe(true)
+  })
+
+  it('omits it in the details drawer, which is already at that location', async () => {
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png') })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'photo.png' } })
+    await flushPromises()
+    expect(w.findAll('.link').some((b) => b.text().includes('Open file location'))).toBe(false)
+    // The other file action is unaffected — getting the source file is still
+    // worth doing from the drawer.
+    expect(w.findAll('.link').some((b) => b.text().includes('Download original'))).toBe(true)
   })
 })

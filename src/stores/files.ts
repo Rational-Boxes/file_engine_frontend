@@ -174,6 +174,41 @@ export const useFileStore = defineStore('files', {
       this.drawerOpen = true
     },
 
+    /**
+     * Open the drawer on the folder you are IN, rather than on a row inside it.
+     *
+     * Otherwise a folder's own properties — permissions, metadata, its Actions
+     * tab — are only reachable from its parent, which is awkward as soon as you
+     * have navigated into it, and impossible for anything you cannot go up from.
+     *
+     * The current folder is not among `items` (that lists its children), so the
+     * item is assembled from what the breadcrumb already knows. Only uid, name
+     * and isDirectory are read before the drawer stats the uid for itself; the
+     * rest are placeholders that are replaced by that call, not displayed.
+     *
+     * Root has no properties to show and is not a real node here, so it is
+     * refused rather than opening an empty drawer.
+     */
+    openCurrentFolderDetails() {
+      if (this.currentUid === ROOT_UID) return
+      const here = this.breadcrumbs[this.breadcrumbs.length - 1]
+      this.openDetails({
+        uid: this.currentUid,
+        name: here?.name ?? '',
+        type: 'directory',
+        isDirectory: true,
+        size: 0,
+        renditionCount: 0,
+        hasRenditions: false,
+        deleted: false,
+        createdAt: 0,
+        modifiedAt: 0,
+        owner: '',
+        createdBy: '',
+        modifiedBy: '',
+      })
+    },
+
     closeDetails() {
       this.drawerOpen = false
       this.detailItem = null

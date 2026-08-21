@@ -68,6 +68,21 @@
         <button v-if="canModify" class="btn" @click="newFolder">New folder</button>
         <button v-if="canModify" class="btn btn-primary" @click="fileInput?.click()">Upload</button>
         <input ref="fileInput" type="file" multiple hidden @change="onPick" />
+        <!--
+          The drawer for the folder you are IN. Without this a folder's own
+          permissions, metadata and Actions are only reachable by going up to
+          its parent and selecting it there.
+
+          Disabled rather than hidden at root: root is not a real node and has
+          nothing to show, and a control that vanishes as you navigate is harder
+          to find again than one that greys out.
+        -->
+        <button
+          class="btn"
+          :disabled="atRoot"
+          :title="atRoot ? 'Home has no folder properties' : 'Properties of the current folder'"
+          @click="files.openCurrentFolderDetails()"
+        >Folder Properties</button>
       </div>
     </div>
 
@@ -281,6 +296,10 @@ const dragOver = ref(false)
 // tiered ACL is authoritative), not the caller's global role — so a user with
 // write here (e.g. their own home folder) can create/upload even as role "users".
 const canModify = computed(() => files.canWrite)
+// Home is not a real node — it has no properties, no owner and no ACL of its
+// own — so the folder-properties button is disabled there rather than opening
+// an empty drawer.
+const atRoot = computed(() => files.currentUid === ROOT_UID)
 
 // Column sorting. Folders always sort before files (independent of direction),
 // then the active column decides the order within each group.
