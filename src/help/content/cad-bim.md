@@ -4,7 +4,7 @@ title: Viewing CAD & BIM models
 category: 3D & CAD/BIM
 keywords: [cad, bim, 3d, model, ifc, gltf, step, point cloud, mesh, viewer, section, slice, measure, see-through, x-ray, annotation, navigation]
 order: 1
-related: [comments, search, files]
+related: [comments, comparing, search, files]
 ---
 
 FileEngine includes an interactive **3D viewer** for engineering and building

@@ -119,6 +119,27 @@ export const authService = {
     return { recovery_codes: data.recovery_codes || [] }
   },
 
+  /**
+   * Which identity providers this DEPLOYMENT has configured.
+   *
+   * Asked of the bridge at load time rather than read from a build-time
+   * variable. The packaged SPA is built once and run by many deployments, so a
+   * baked-in list offered every one of them the same buttons — and a button for
+   * an IdP that was never configured leads only to an error.
+   *
+   * An unreachable or old bridge yields an empty list, which hides the buttons
+   * entirely. Showing nothing is the safe failure: the username/password form
+   * is always there underneath.
+   */
+  async oauthProviders(): Promise<string[]> {
+    try {
+      const { data } = await apiClient.get<{ providers?: string[] }>('/v1/auth/providers')
+      return data.providers ?? []
+    } catch {
+      return []
+    }
+  },
+
   // Begin the bridge's server-side OAuth2 flow; the bridge redirects to the IdP
   // and ultimately back to /oauth/callback with the token in the URL fragment.
   oauthRedirect(provider: string): void {

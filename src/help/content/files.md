@@ -4,7 +4,7 @@ title: Uploading & organizing files
 category: Working with files
 keywords: [files, upload, folder, browse, move, copy, rename, delete, undelete, trash, drag, drop, download, breadcrumbs, clipboard, thumbnail]
 order: 1
-related: [versions, editing, sharing, search, acl-inheritance]
+related: [versions, editing, sharing, folder-actions, search, acl-inheritance]
 ---
 
 The **Files** tab is where you browse, upload, and organize everything you have

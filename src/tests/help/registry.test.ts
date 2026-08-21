@@ -61,6 +61,31 @@ describe('help registry', () => {
     expect(renderTopic('share-links')).toContain('<')
   })
 
+  it('covers every user-facing feature that has a UI surface', () => {
+    // A feature people can see but cannot look up is a support question waiting
+    // to happen, so the list is asserted rather than left to whoever notices.
+    for (const id of ['folder-actions', 'comparing', 'share-links']) {
+      expect(getTopic(id), id).toBeDefined()
+      expect(renderTopic(id), id).toContain('<')
+    }
+  })
+
+  it('finds the new pages for the words people actually search', () => {
+    const wanted: Record<string, string> = {
+      // Folder actions — people search for what they want to HAPPEN, not the
+      // feature's name.
+      automatic: 'folder-actions',
+      webhook: 'folder-actions',
+      // Comparison — almost nobody types "difference service".
+      'what changed': 'comparing',
+      diff: 'comparing',
+      redline: 'comparing',
+    }
+    for (const [query, id] of Object.entries(wanted)) {
+      expect(searchTopics(query).map((t) => t.id), `search: ${query}`).toContain(id)
+    }
+  })
+
   it('finds the share-link page for the words people actually search', () => {
     // "How do I send this to someone outside?" — the page is useless if the
     // search that leads to it lands on the ACL page instead.

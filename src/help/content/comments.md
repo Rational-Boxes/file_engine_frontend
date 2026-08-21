@@ -4,7 +4,7 @@ title: Comments & discussions
 category: Collaboration
 keywords: [comment, discussion, thread, reply, mention, review, collaborate, real-time, live, presence, viewers, concurrent, markup, annotate, pdf, marked-up copy]
 order: 1
-related: [getting-started, pdf-markup, cad-bim]
+related: [getting-started, pdf-markup, cad-bim, folder-actions]
 ---
 
 Comments let you have a conversation attached directly to a file, so feedback lives

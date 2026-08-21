@@ -4,7 +4,7 @@ title: Previewing & marking up PDFs
 category: Working with files
 keywords: [pdf, preview, document, markup, annotate, annotation, highlight, draw, ink, text note, stamp, signature, undo, redo, comment, review, marked-up copy, download]
 order: 4
-related: [comments, versions, files]
+related: [comments, comparing, versions, files]
 ---
 
 FileEngine previews PDFs right in the browser and lets you **mark them up** —

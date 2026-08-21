@@ -17,6 +17,10 @@
 
 <template>
   <div class="fap">
+    <p class="fap-intro muted">
+      Make this folder do something when files arrive in it.
+      <HelpIcon topic="folder-actions" label="Automating a folder with actions" />
+    </p>
     <p v-if="error" class="fap-err">{{ error }}</p>
 
     <!-- Sub-view switch: Bindings (default) vs Run log -->
@@ -131,6 +135,7 @@
 </template>
 
 <script setup lang="ts">
+import HelpIcon from '@/components/HelpIcon.vue'
 import { ref, watch } from 'vue'
 import BindingEditor from '@/components/BindingEditor.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
@@ -289,6 +294,7 @@ watch(
 </script>
 
 <style scoped>
+.fap-intro { font-size: .85rem; margin: 0 0 .5rem; }
 .fap {
   display: flex;
   flex-direction: column;

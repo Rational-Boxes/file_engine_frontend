@@ -71,12 +71,14 @@
       <span v-if="busy" class="vp-spin" aria-hidden="true"></span>
       {{ busy ? 'Comparing…' : 'Compare' }}
     </button>
+    <HelpIcon topic="comparing" label="Comparing two versions of a file" />
 
     <span v-if="error" class="vp-err">{{ error }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
+import HelpIcon from '@/components/HelpIcon.vue'
 import { computed, ref, watch } from 'vue'
 import { fileService } from '@/services/fileService'
 import { errorMessage } from '@/services/apiClient'
