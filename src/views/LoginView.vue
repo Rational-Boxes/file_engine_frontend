@@ -148,7 +148,19 @@ onMounted(async () => {
  */
 async function handOffToWorkspace() {
   const available = auth.tenants   // string[] — the tenants this token carries
-  const target = chooseTenant(available)
+  // A bounce carries WHICH workspace was being asked for (`?t=`), and honouring
+  // it is not optional: without this the router guard's `t` was written and
+  // never read, so anyone arriving here for a specific tenant was sent to their
+  // REMEMBERED one instead. That silently broke tenant switching — leaving a
+  // tenant origin for another one round-trips through here, and landing back on
+  // the tenant you just left looks like the switch did nothing at all.
+  //
+  // It is a hint from the URL, so it is checked against the token's tenant list
+  // rather than obeyed — that list is the authority on what the user may reach.
+  // An unrecognised or absent name falls through to the normal choice
+  // (remembered, else first), so a stale link degrades instead of failing.
+  const requested = String(route.query.t || '')
+  const target = available.includes(requested) ? requested : chooseTenant(available)
   if (!target) {
     // Authenticated, but a member of nothing. Saying so is far better than an
     // empty app or a redirect loop back to this page.
