@@ -28,8 +28,32 @@
 // every helper degrades to "no subdomain tenant" and the app falls back to the
 // persisted/selected tenant.
 
+// The shared sign-in origin's DNS label.
+//
+// CONFIGURABLE, and learned at RUN TIME from the bridge rather than baked in at
+// build time — the packaged SPA is built once and run by many deployments, and
+// a deployment may well be unable to reserve "login" on its domain (on a shared
+// host like ngrok.io it is very likely already taken). "login" is only the
+// default until the bridge says otherwise.
+//
+// Kept in step with the bridge's own isReservedTenantLabel: if the two disagree
+// the SPA would bounce users to a host that resolves as an ordinary tenant.
+let loginLabel = 'login'
+
+/** Called once during bootstrap, before the router runs. */
+export function setLoginLabel(label: string): void {
+  if (label) loginLabel = label.toLowerCase()
+}
+
+export function getLoginLabel(): string {
+  return loginLabel
+}
+
 // Labels that are never a tenant even when they appear as the leading label.
-const RESERVED_LABELS = new Set(['www', 'app', 'api', 'csai'])
+const STATIC_RESERVED = new Set(['www', 'app', 'api', 'csai'])
+function isReservedLabel(label: string): boolean {
+  return STATIC_RESERVED.has(label) || label === loginLabel
+}
 
 // Derive the tenant from a hostname: the first hyphen-delimited segment of the
 // leading DNS label, regardless of the rest of the domain. Returns null when the
@@ -47,7 +71,7 @@ export function tenantFromHostname(hostname: string): string | null {
   const dash = fullLabel.indexOf('-')
   const label = dash > 0 ? fullLabel.slice(0, dash) : fullLabel // <tenant>-<interface> -> tenant
   if (/^\d+$/.test(label)) return null // IPv4 literal — not a tenant subdomain
-  if (RESERVED_LABELS.has(label)) return null
+  if (isReservedLabel(label)) return null
   return label
 }
 
@@ -75,4 +99,72 @@ export function tenantUrl(tenant: string): string | null {
   const rest = hostname.slice(hostname.indexOf('.')) // ".ngrok.io"
   const host = `${tenant}${rest}${port ? ':' + port : ''}`
   return `${protocol}//${host}${pathname}${search}${hash}`
+}
+
+// --- the shared sign-in origin -------------------------------------------
+//
+// Every tenant subdomain sends a signed-out visitor to `login.<domain>`, which
+// authenticates once and hands the session back to the tenant. The point is
+// that OAuth then returns to exactly ONE origin, so OAUTH_RETURN_ALLOWLIST
+// holds a single entry however many tenants exist — instead of growing with
+// each new one, and needing a bridge restart each time.
+
+/** True when this window IS the shared sign-in origin. */
+export function isLoginOrigin(): boolean {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname.toLowerCase().replace(/\.$/, '')
+  const firstDot = host.indexOf('.')
+  if (firstDot <= 0) return false
+  return host.slice(0, firstDot) === loginLabel
+}
+
+/**
+ * URL of the sign-in origin, carrying where to come back to.
+ *
+ * `next` is a PATH on the tenant's own origin, never a full URL — a full URL
+ * here would be an open-redirect parameter, and the tenant is named separately
+ * so the return target is reconstructed rather than trusted.
+ */
+export function loginUrl(next?: string, tenant?: string | null): string | null {
+  if (typeof window === 'undefined') return null
+  const { protocol, hostname, port } = window.location
+  const firstDot = hostname.indexOf('.')
+  if (firstDot <= 0) return null // bare host — no subdomain to swap
+  const rest = hostname.slice(firstDot) // ".example.com"
+  const host = `${loginLabel}${rest}${port ? ':' + port : ''}`
+  const q = new URLSearchParams()
+  if (next) q.set('next', next)
+  if (tenant) q.set('t', tenant)
+  const qs = q.toString()
+  return `${protocol}//${host}/login${qs ? '?' + qs : ''}`
+}
+
+/**
+ * The registrable-ish parent domain, for scoping the last-tenant cookie.
+ *
+ * Returns e.g. ".example.com" for "acme.example.com". Deliberately naive: the
+ * browser rejects a cookie set on a public suffix (".ngrok.io", ".co.uk"), and
+ * we cannot ship a Public Suffix List. The caller therefore ATTEMPTS the cookie
+ * and verifies it stuck, rather than predicting whether it will.
+ */
+export function parentCookieDomain(): string | null {
+  if (typeof window === 'undefined') return null
+  const host = window.location.hostname.toLowerCase().replace(/\.$/, '')
+  if (/^[\d.]+$/.test(host)) return null // IP literal
+  const firstDot = host.indexOf('.')
+  if (firstDot <= 0) return null
+  return host.slice(firstDot) // ".example.com"
+}
+
+/**
+ * Just the ORIGIN of a tenant's SPA — no path, unlike tenantUrl which carries
+ * the current one across. Used when handing a session over: the destination
+ * path comes from the hand-off, not from wherever the login page happened to be.
+ */
+export function tenantOrigin(tenant: string): string {
+  if (typeof window === 'undefined') return ''
+  const { protocol, hostname, port } = window.location
+  const firstDot = hostname.indexOf('.')
+  const rest = firstDot > 0 ? hostname.slice(firstDot) : ''
+  return `${protocol}//${tenant}${rest}${port ? ':' + port : ''}`
 }

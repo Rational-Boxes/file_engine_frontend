@@ -44,7 +44,12 @@ vi.mock('@/utils/tokenStorage', () => ({
 }))
 
 const { activeTenantFromHost } = vi.hoisted(() => ({ activeTenantFromHost: vi.fn(() => null as string | null) }))
-vi.mock('@/utils/tenantHost', () => ({ activeTenantFromHost }))
+// Partial mock: the store also reaches for parentCookieDomain via lastTenant,
+// and a bare factory would shadow the whole module and drop it.
+vi.mock('@/utils/tenantHost', async () => ({
+  ...(await vi.importActual<object>('@/utils/tenantHost')),
+  activeTenantFromHost,
+}))
 
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'

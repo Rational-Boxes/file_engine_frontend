@@ -18,6 +18,7 @@ import axios from 'axios'
 import { authService, type Identity } from '@/services/authService'
 import { tokenStorage } from '@/utils/tokenStorage'
 import { errorMessage } from '@/services/apiClient'
+import { clearLastTenant, setLastTenant } from '@/utils/lastTenant'
 import { activeTenantFromHost } from '@/utils/tenantHost'
 
 type AccessLevel = 'user' | 'editor' | 'admin'
@@ -133,6 +134,11 @@ export const useAuthStore = defineStore('auth', {
       if (fromHost) {
         tokenStorage.setActiveTenant(fromHost)
         this.tenant = fromHost
+        // Remember it for the shared login origin. Recorded HERE rather than at
+        // sign-in so that arriving by any route counts — following a link,
+        // switching workspace in-app, or typing the URL — which is the whole
+        // reason this is a parent-domain cookie and not login-origin storage.
+        setLastTenant(fromHost)
       } else {
         this.tenant = tokenStorage.getActiveTenant()
       }
@@ -382,6 +388,10 @@ export const useAuthStore = defineStore('auth', {
       if (refreshTimer) clearTimeout(refreshTimer)
       refreshTimer = undefined
       await authService.logout()
+      // Forget the remembered workspace on an EXPLICIT sign-out: on a shared
+      // machine the next person should meet a clean login, not be told which
+      // workspace the last one used.
+      clearLastTenant()
       this.token = null
       this.user = null
       this.tenant = null
