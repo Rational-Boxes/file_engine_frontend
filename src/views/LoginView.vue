@@ -27,6 +27,11 @@
         This workspace requires two-factor authentication. Please sign in again to continue.
       </p>
 
+      <!--
+        Only what this deployment actually has configured — asked of the bridge
+        at load time. Nothing renders while the answer is outstanding, so the
+        buttons appear once rather than flashing in and out.
+      -->
       <div v-if="providers.length" class="providers">
         <button
           v-for="p in providers"
@@ -34,7 +39,8 @@
           class="btn btn-provider"
           @click="loginWithProvider(p)"
         >
-          Sign in with {{ label(p) }}
+          <ProviderIcon :name="p" />
+          <span>Sign in with {{ label(p) }}</span>
         </button>
       </div>
 
@@ -61,7 +67,8 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import ProviderIcon from '@/components/ProviderIcon.vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
@@ -98,12 +105,29 @@ stashRedirect(route.query.redirect)
 const username = ref('')
 const password = ref('')
 
-const providers = (import.meta.env.VITE_OAUTH_PROVIDERS || '')
-  .split(',')
-  .map((p: string) => p.trim())
-  .filter(Boolean)
+// Populated from the bridge on mount. Empty until then, and empty forever if
+// nothing is configured — in which case the block above renders nothing at all
+// and the username/password form is the whole login screen.
+const providers = ref<string[]>([])
 
-const label = (p: string) => p.charAt(0).toUpperCase() + p.slice(1)
+// Names as their owners write them. Everything else falls back to
+// capitalisation, which is right for a self-hosted "keycloak" or "okta".
+const LABELS: Record<string, string> = {
+  google: 'Google',
+  github: 'GitHub',
+  gitlab: 'GitLab',
+  microsoft: 'Microsoft',
+  linkedin: 'LinkedIn',
+  okta: 'Okta',
+  auth0: 'Auth0',
+  keycloak: 'Keycloak',
+}
+
+const label = (p: string) => LABELS[p] ?? p.charAt(0).toUpperCase() + p.slice(1)
+
+onMounted(async () => {
+  providers.value = await authService.oauthProviders()
+})
 
 const loginWithProvider = (p: string) => {
   stashRedirect(route.query.redirect) // ensure it's saved right before leaving the SPA
@@ -167,6 +191,12 @@ h1 {
   font-weight: 500;
 }
 
+.btn-provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
 .btn-provider:hover {
   background: var(--bg);
 }
