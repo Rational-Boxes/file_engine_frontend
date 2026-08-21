@@ -142,6 +142,9 @@ export interface DropProvenance {
   at: string
   /** Whose link let them in. */
   shared_by: string
+  /** The name it ARRIVED as — differs when a collision renamed it on the way
+   *  in, or when someone has renamed it since. */
+  stored_name: string | null
 }
 
 export interface InboxShareLink extends ShareLink {
