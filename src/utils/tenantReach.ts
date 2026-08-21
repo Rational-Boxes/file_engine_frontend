@@ -28,30 +28,31 @@
  * bridge honours a non-reserved header regardless of host, so that path is
  * fully functional — it is a fallback, not a degraded mode.
  *
- * FORWARDING IS PREFERRED, and that shapes the whole design: a tenant on its own
- * origin gets its own cookie jar and storage, and the URL says which workspace
- * you are in. So this answers "unreachable" ONLY on a definite failure. Anything
- * ambiguous forwards.
+ * THE QUESTION IS "IS OUR APP THERE", NOT "DID SOMETHING ANSWER". Those are
+ * very different, and the weaker one is useless in practice: wildcard DNS is
+ * common — ngrok answers for every *.ngrok.io, parked domains answer for
+ * everything — so an unconfigured subdomain typically returns a cheerful 404
+ * error page rather than failing to resolve. A probe that accepted "something
+ * answered" would forward users onto that error page, which is the exact
+ * outcome this exists to prevent. Measured, not assumed: an unreserved
+ * *.ngrok.io host returns HTTP 404 text/html, not a network failure.
  *
- * WHAT THIS CAN AND CANNOT TELL APART — worth being precise, because it is
- * easy to assume it proves more than it does:
+ * So the probe reads `/api/v1/auth/providers` and requires the bridge's own
+ * marker in the reply. That endpoint sends `Access-Control-Allow-Origin: *`
+ * precisely so this question can be asked — it is pre-auth, takes no
+ * credentials, and carries nothing not already public to anyone who can load
+ * the sign-in page. It is the bridge's only wildcard-CORS route, and the
+ * general policy stays allow-list-only.
  *
- *   Definite yes   the origin served a readable, well-formed bridge response.
- *                  Only possible when it allows this origin by CORS.
- *   Definite no    the request failed at the network layer — DNS did not
- *                  resolve, the connection was refused, TLS failed. This is the
- *                  case that matters: an unconfigured subdomain.
- *   Ambiguous      something answered but we cannot read it (no CORS headers).
- *                  Treated as reachable, because forwarding is preferred and a
- *                  deployment is not required to configure cross-origin reads
- *                  just to satisfy this check.
+ * That makes the test definite in BOTH directions: a real deployment is
+ * readable and identifies itself; a dead host, a parked domain and somebody
+ * else's error page all fail, whether they answer or not.
  *
- * The ambiguous bucket is a real limit. A host that answers with somebody
- * else's error page — a parked domain, or an ngrok wildcard returning "tunnel
- * not found" — reads as reachable and we will forward to it. Distinguishing
- * that would need to READ the response, which needs CORS, which would make
- * every tenant read as unreachable wherever CORS is not configured. That
- * trade-off is the wrong way round given forwarding is the preferred outcome.
+ * WHEN IT IS WRONG, it is wrong in the safe direction. A tenant origin running
+ * a bridge too old to send the marker reads as unreachable, so the user stays
+ * on the sign-in origin — fully functional, just not forwarded, and it corrects
+ * itself when that origin is upgraded. The opposite error, forwarding onto a
+ * host that cannot serve the app, leaves them stranded outside it entirely.
  */
 
 const CACHE_PREFIX = 'fe_reach:'
@@ -99,13 +100,16 @@ export function forgetReachability(origin: string): void {
   }
 }
 
+/** The marker the bridge puts in its pre-auth config reply. */
+const SERVICE_MARKER = 'fileengine-bridge'
+
 /**
- * True if `origin` looks like a working FileEngine origin we can forward to.
+ * True if `origin` is a FileEngine origin we can hand a session to.
  *
- * Never throws and never blocks longer than the timeout: a probe that cannot
- * decide returns `true`, because the cost of being wrong that way is one failed
- * forward, while being wrong the other way silently denies a tenant its own
- * origin for the whole session.
+ * Never throws and never blocks longer than the timeout. When the probe cannot
+ * run at all (no `fetch`, e.g. under a non-browser runtime) it answers `true`
+ * rather than denying every tenant its own origin on the strength of a missing
+ * API.
  */
 export async function tenantOriginReachable(origin: string): Promise<boolean> {
   if (!origin) return false
@@ -116,41 +120,33 @@ export async function tenantOriginReachable(origin: string): Promise<boolean> {
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  // The bridge's only pre-auth endpoint, and the one the SPA already calls at
-  // bootstrap — so a working origin certainly serves it, and no credentials are
-  // involved in finding out.
+  // The pre-auth "what does this deployment look like" call, which the SPA
+  // already makes at bootstrap. A working origin certainly serves it, and no
+  // credentials are involved in finding out.
   const url = `${origin}/api/v1/auth/providers`
 
   try {
-    // `omit`: this is a liveness question about another origin, and sending
-    // credentials to a host we have not yet established is real would be a
-    // gratuitous disclosure.
+    // `omit`: this is a question ABOUT an origin we have not yet established is
+    // real. Sending credentials to it would be a gratuitous disclosure — and
+    // the wildcard CORS header on that route would not permit them anyway.
     const res = await fetch(url, {
       method: 'GET', mode: 'cors', credentials: 'omit',
       cache: 'no-store', signal: controller.signal,
     })
-    // Any HTTP answer at all means something is serving this name; whether it
-    // is 200 or 500 is not what is being asked.
-    writeCache(origin, res.ok || res.status > 0)
-    return true
+    if (!res.ok) throw new Error(`status ${res.status}`)
+    const body = await res.json()
+    // Identity, not mere readability. Something else's JSON is still something
+    // else's — this must be our bridge, or the forward has nowhere useful to go.
+    const ok = body?.service === SERVICE_MARKER
+    writeCache(origin, ok)
+    return ok
   } catch {
-    // A CORS refusal and a dead host both land here, and they are not the same
-    // thing — so ask again without needing to read the response. This resolves
-    // opaquely whenever ANYTHING answered, and rejects only on a genuine
-    // network-level failure, which is exactly the distinction that matters.
-    try {
-      await fetch(url, {
-        method: 'GET', mode: 'no-cors', credentials: 'omit',
-        cache: 'no-store', signal: controller.signal,
-      })
-      writeCache(origin, true)
-      return true
-    } catch {
-      // Includes the abort: a host that has not answered within the timeout is
-      // not somewhere to send a person mid-login, whatever the reason.
-      writeCache(origin, false)
-      return false
-    }
+    // Everything lands here: DNS failure, refused connection, TLS error, a CORS
+    // refusal, an HTML error page that will not parse as JSON, and the timeout.
+    // None of them is an origin to send someone to mid-sign-in, and the cost of
+    // being wrong is only that they stay here — where the app works.
+    writeCache(origin, false)
+    return false
   } finally {
     clearTimeout(timer)
   }

@@ -14,16 +14,18 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
- * The reachability probe that decides whether sign-in forwards to a tenant's
- * own origin or serves the workspace from the sign-in origin.
+ * The probe that decides whether sign-in forwards to a tenant's own origin or
+ * serves the workspace from the sign-in origin.
  *
- * The asymmetry is the point: forwarding is the preferred outcome, so only a
- * DEFINITE network failure keeps someone put. Anything ambiguous forwards.
+ * The question is "is OUR app there", not "did something answer" — wildcard DNS
+ * makes the weaker question useless, since an unconfigured subdomain typically
+ * returns a cheerful error page rather than failing to resolve.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { tenantOriginReachable, forgetReachability } from '@/utils/tenantReach'
 
 const ORIGIN = 'https://acme.example.com'
+const BRIDGE = { service: 'fileengine-bridge', providers: [], login_subdomain: 'login' }
 
 beforeEach(() => {
   window.sessionStorage.clear()
@@ -36,55 +38,67 @@ function withFetch(impl: (url: string, init: RequestInit) => Promise<unknown>) {
   return spy
 }
 
+const answers = (body: unknown, ok = true, status = 200) =>
+  withFetch(async () => ({ ok, status, json: async () => body }))
+
 describe('tenantOriginReachable', () => {
-  it('forwards when the origin answers readably', async () => {
-    withFetch(async () => ({ ok: true, status: 200 }))
+  it('forwards when a FileEngine bridge identifies itself', async () => {
+    answers(BRIDGE)
     expect(await tenantOriginReachable(ORIGIN)).toBe(true)
   })
 
   it('stays put when the host does not resolve at all', async () => {
-    // The case this exists for: a tenant whose subdomain was never configured.
-    // Both the CORS attempt and the opaque retry fail at the network layer.
+    // A tenant whose subdomain was never configured, on a domain without a
+    // wildcard: the request fails at the network layer.
     withFetch(async () => { throw new TypeError('Failed to fetch') })
     expect(await tenantOriginReachable(ORIGIN)).toBe(false)
   })
 
-  it('forwards when the origin answers but refuses CORS', async () => {
-    // A CORS refusal and a dead host both surface as a rejected fetch, and they
-    // are NOT the same thing. A deployment is not obliged to allow cross-origin
-    // reads just to satisfy this check, so the opaque retry is what decides.
-    let call = 0
-    withFetch(async (_url, init) => {
-      call++
-      if ((init as RequestInit).mode === 'cors') throw new TypeError('CORS')
-      return { type: 'opaque', status: 0 }
-    })
-    expect(await tenantOriginReachable(ORIGIN)).toBe(true)
-    expect(call).toBe(2)   // it really did fall through to the second probe
+  it('stays put when a wildcard answers with somebody else’s error page', async () => {
+    // THE case that motivated identifying the service rather than trusting a
+    // reply. Measured against a real unreserved *.ngrok.io host: HTTP 404
+    // text/html, not a network failure. "Something answered" would have
+    // forwarded the user straight onto that page.
+    answers(undefined, false, 404)
+    expect(await tenantOriginReachable(ORIGIN)).toBe(false)
+  })
+
+  it('stays put when the body is readable but is not our service', async () => {
+    // A parked domain that happens to serve JSON is still not a place to hand a
+    // session to. Readability is not identity.
+    answers({ service: 'someone-elses-api', providers: [] })
+    expect(await tenantOriginReachable(ORIGIN)).toBe(false)
+  })
+
+  it('stays put when the reply is not JSON at all', async () => {
+    withFetch(async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('<html>') } }))
+    expect(await tenantOriginReachable(ORIGIN)).toBe(false)
+  })
+
+  it('stays put when the origin refuses CORS', async () => {
+    // Indistinguishable from a dead host at this layer, and that is fine: the
+    // marker route sends a wildcard header precisely so a real origin does not
+    // land here. An origin too old to send it reads as unreachable, which is
+    // the safe direction — the user stays where the app works.
+    withFetch(async () => { throw new TypeError('CORS') })
+    expect(await tenantOriginReachable(ORIGIN)).toBe(false)
   })
 
   it('sends no credentials to an origin it has not established is real', async () => {
-    const spy = withFetch(async () => ({ ok: true, status: 200 }))
+    const spy = answers(BRIDGE)
     await tenantOriginReachable(ORIGIN)
     expect((spy.mock.calls[0][1] as RequestInit).credentials).toBe('omit')
   })
 
-  it('treats a non-2xx answer as reachable', async () => {
-    // "Is anything serving this name" — not "is it healthy". A 500 still means
-    // the subdomain exists and the app can load there.
-    withFetch(async () => ({ ok: false, status: 503 }))
-    expect(await tenantOriginReachable(ORIGIN)).toBe(true)
-  })
-
   it('caches a verdict rather than probing on every sign-in', async () => {
-    const spy = withFetch(async () => ({ ok: true, status: 200 }))
+    const spy = answers(BRIDGE)
     await tenantOriginReachable(ORIGIN)
     await tenantOriginReachable(ORIGIN)
     expect(spy).toHaveBeenCalledTimes(1)
   })
 
   it('can be told to forget a verdict', async () => {
-    const spy = withFetch(async () => ({ ok: true, status: 200 }))
+    const spy = answers(BRIDGE)
     await tenantOriginReachable(ORIGIN)
     forgetReachability(ORIGIN)
     await tenantOriginReachable(ORIGIN)
@@ -93,15 +107,16 @@ describe('tenantOriginReachable', () => {
 
   it('caches per origin, not globally', async () => {
     withFetch(async (url) => {
-      if (String(url).includes('acme')) return { ok: true, status: 200 }
+      if (String(url).includes('acme')) return { ok: true, status: 200, json: async () => BRIDGE }
       throw new TypeError('Failed to fetch')
     })
     expect(await tenantOriginReachable(ORIGIN)).toBe(true)
     expect(await tenantOriginReachable('https://someco.example.com')).toBe(false)
   })
 
-  it('forwards when fetch is unavailable rather than stranding everyone', async () => {
-    // A probe that cannot run must not deny every tenant its own origin.
+  it('forwards when the probe cannot run at all', async () => {
+    // No fetch API. Denying every tenant its own origin on the strength of a
+    // missing browser feature would be the wrong call.
     vi.stubGlobal('fetch', undefined)
     expect(await tenantOriginReachable(ORIGIN)).toBe(true)
   })
