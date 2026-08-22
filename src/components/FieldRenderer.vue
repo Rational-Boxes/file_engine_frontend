@@ -199,6 +199,7 @@ import { useFolderActionsStore } from '@/stores/folderActions'
 import { encodePrincipal } from '@/types'
 import type { Principal } from '@/types'
 import type { FieldDescriptor, FieldOption } from '@/types/folderActions'
+import { cachedFolderPath, resolveFolderPath } from '@/utils/folderPath'
 
 // Notify templates live in a shared store so they stay in sync with the System >
 // Email templates editor without a reload.
@@ -366,14 +367,41 @@ function removeRow(key: string, i: number) {
 // --- folder picker modal ---
 const folderPickKey = ref<string | null>(null)
 const folderNav = ref<{ uid: string; name: string; path: string } | null>(null)
-// Remembers picked folder labels so the readonly field shows a name, not a bare uid.
+// Labels for folder fields, so the readonly box shows a path rather than a uid.
+//
+// Two sources, and the second is the one that was missing. A folder picked in
+// THIS session is labelled from the picker. A folder that was already stored —
+// reopening an existing binding, which is the common case — has only its uid, so
+// it is resolved from the uid and cached. Without that, every saved binding
+// displayed a bare UUID and the only way to see where it pointed was to pick the
+// folder again.
 const folderLabels = reactive<Record<string, string>>({})
 
 function folderDisplay(key: string): string {
   const uid = props.modelValue[key]
   if (!uid) return ''
-  return folderLabels[key] || String(uid)
+  return folderLabels[key] || cachedFolderPath(String(uid)) || String(uid)
 }
+
+// Resolve every folder-typed field that has a value we cannot already name.
+// Runs on mount and whenever the values change, since a group row can add a
+// folder field after the fact.
+async function resolveFolderLabels() {
+  for (const f of props.fields) {
+    if (f.type !== 'folder') continue
+    const uid = props.modelValue[f.key]
+    if (!uid || folderLabels[f.key]) continue
+    const path = await resolveFolderPath(String(uid))
+    // Only claim it if the value has not changed underneath us — the user may
+    // have picked a different folder while the walk was in flight.
+    if (props.modelValue[f.key] === uid) folderLabels[f.key] = path
+  }
+}
+watch(
+  () => props.fields.filter((f) => f.type === 'folder').map((f) => props.modelValue[f.key]).join('|'),
+  () => { void resolveFolderLabels() },
+  { immediate: true },
+)
 function openFolderPick(key: string) {
   folderPickKey.value = key
   folderNav.value = null
