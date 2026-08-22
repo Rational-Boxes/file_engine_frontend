@@ -142,6 +142,7 @@ import ConfirmModal from '@/components/ConfirmModal.vue'
 import { folderActionsService } from '@/services/folderActionsService'
 import { errorMessage } from '@/services/apiClient'
 import type { ActionBinding, ActionType, ActionRun } from '@/types/folderActions'
+import { cachedFolderPath, looksLikeUid, resolveFolderPath } from '@/utils/folderPath'
 
 const props = defineProps<{ uid: string; canWrite: boolean; canManage: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
@@ -168,14 +169,42 @@ function actionLabel(typeName: string): string {
 }
 
 // One-line hint pulled from the binding config — a destination or URL if present.
+//
+// Folder destinations are stored as uids, so show the path once it has been
+// resolved. Until then the uid stands in rather than the row going blank: a
+// missing hint reads as "no destination configured", which is worse than an
+// unreadable one. The resolver caches, so this settles on first render.
 function configHint(b: ActionBinding): string {
+  void hintTick.value   // dependency: the path cache is a plain Map, not reactive
   const c = b.config || {}
   const dest = c['destination'] ?? c['destination_folder'] ?? c['folder']
-  if (typeof dest === 'string' && dest) return `→ ${dest}`
+    ?? c['on_approved'] ?? c['on_rejected']
+  if (typeof dest === 'string' && dest) {
+    return `→ ${looksLikeUid(dest) ? (cachedFolderPath(dest) || dest) : dest}`
+  }
   const url = c['url'] ?? c['endpoint'] ?? c['webhook_url']
   if (typeof url === 'string' && url) return url
   return ''
 }
+
+// Bumped when a path lands, so the hints re-render — the cache itself is a
+// plain Map and not reactive. Declared before the watch below, which runs
+// immediately and would otherwise touch it in its temporal dead zone.
+const hintTick = ref(0)
+
+// Kick off resolution for every folder uid the visible bindings point at, so
+// configHint has paths to read on the next tick.
+watch(
+  () => bindings.value.map((b) => JSON.stringify(b.config || {})).join('|'),
+  () => {
+    for (const b of bindings.value) {
+      for (const v of Object.values(b.config || {})) {
+        if (looksLikeUid(v)) void resolveFolderPath(String(v)).then(() => { hintTick.value++ })
+      }
+    }
+  },
+  { immediate: true },
+)
 
 function chipClass(status: string): string {
   if (status === 'done') return 'done'
