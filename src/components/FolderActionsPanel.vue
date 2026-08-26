@@ -83,10 +83,27 @@
     <div v-else class="fap-runs">
       <div class="fap-runs-head">
         <span class="fap-muted">Recent runs</span>
-        <button class="btn fap-refresh" :disabled="runsLoading" @click="loadRuns">
-          {{ runsLoading ? 'Refreshing…' : '↻ Refresh' }}
-        </button>
+        <div class="fap-runs-actions">
+          <!-- Replay lives HERE, in the runs view, because this is where someone
+               realises the actions did not fire: they came to look at the log and
+               found nothing. Write-gated — it moves files and sends notifications. -->
+          <button
+            v-if="canWrite"
+            class="btn fap-replay"
+            :disabled="replaying || runsLoading"
+            :title="'Re-run this folder\'s actions over the last 24 hours. Safe to ' +
+                    'repeat: files already handled at their current version are skipped.'"
+            @click="replay"
+          >
+            {{ replaying ? 'Replaying…' : '▶ Replay actions' }}
+          </button>
+          <button class="btn fap-refresh" :disabled="runsLoading" @click="loadRuns">
+            {{ runsLoading ? 'Refreshing…' : '↻ Refresh' }}
+          </button>
+        </div>
       </div>
+      <p v-if="replayResult" class="fap-replay-result">{{ replayResult }}</p>
+      <p v-if="replayError" class="fap-replay-error">{{ replayError }}</p>
       <table v-if="runs.length" class="fap-runtable">
         <thead>
           <tr>
@@ -237,6 +254,36 @@ async function loadBindings() {
     error.value = errorMessage(e, 'Failed to load folder actions')
   } finally {
     loading.value = false
+  }
+}
+
+const replaying = ref(false)
+const replayResult = ref<string | null>(null)
+const replayError = ref<string | null>(null)
+
+async function replay() {
+  if (!props.uid || replaying.value) return
+  replaying.value = true
+  replayResult.value = null
+  replayError.value = null
+  try {
+    const { counts } = await folderActionsService.replayFolder(props.uid)
+    const dispatched = counts.dispatched ?? 0
+    const candidates = counts.candidates ?? 0
+    // Report what it DID, not just that it ran. "Replayed" with no numbers reads
+    // as success even when the window held nothing, which is the same ambiguity
+    // that made the missed events hard to notice in the first place.
+    replayResult.value = candidates === 0
+      ? 'No files changed in the last 24 hours — nothing to replay.'
+      : `Replayed ${candidates} file${candidates === 1 ? '' : 's'}; ` +
+        `${dispatched} action${dispatched === 1 ? '' : 's'} dispatched.` +
+        (counts.errors ? ` ${counts.errors} failed.` : '') +
+        (counts.truncated ? ' Hit the file limit — run again to continue.' : '')
+    await loadRuns()
+  } catch (e) {
+    replayError.value = errorMessage(e, 'Replay failed')
+  } finally {
+    replaying.value = false
   }
 }
 
@@ -459,6 +506,9 @@ watch(
 }
 
 /* Run log */
+.fap-runs-actions { display: flex; gap: 8px; align-items: center; }
+.fap-replay-result { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+.fap-replay-error { font-size: 13px; color: #b00020; margin: 6px 0 0; }
 .fap-runs-head {
   display: flex;
   align-items: center;
