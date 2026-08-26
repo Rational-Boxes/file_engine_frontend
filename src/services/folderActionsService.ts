@@ -62,6 +62,22 @@ export const folderActionsService = {
     return data
   },
 
+  // --- replay ---
+  // For the case the scheduled sweep cannot serve: an action that never fired,
+  // or fired and left the work unfinished. The sweep is watermark-driven, so by
+  // the time anyone notices, its window has moved past the file.
+  //
+  // Idempotent — dispatch collapses on content, so a binding that already
+  // resolved a file at its current version is not run again. Pressing it twice
+  // does not move a file twice.
+  async replayFolder(folderUid: string, opts: { sinceSeconds?: number } = {}):
+      Promise<{ folder_uid: string; counts: Record<string, number> }> {
+    const { data } = await folderActionsClient.post(
+      `/folders/${encodeURIComponent(folderUid)}/replay`,
+      { since_seconds: opts.sinceSeconds ?? null })
+    return data
+  },
+
   // --- run log ---
   async folderRuns(folderUid: string, limit = 100): Promise<ActionRun[]> {
     const { data } = await folderActionsClient.get(
