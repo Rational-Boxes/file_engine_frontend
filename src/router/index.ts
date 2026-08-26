@@ -34,6 +34,7 @@ const OAuthConsentView = () => import('@/views/OAuthConsentView.vue')
 const ProfileView = () => import('@/views/ProfileView.vue')
 const TenantAdminView = () => import('@/views/TenantAdminView.vue')
 const SecurityView = () => import('@/views/SecurityView.vue')
+const NotFoundView = () => import('@/views/NotFoundView.vue')
 const SetPasswordView = () => import('@/views/SetPasswordView.vue')
 const ResetPasswordView = () => import('@/views/ResetPasswordView.vue')
 
@@ -85,9 +86,34 @@ const routes = [
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   { path: '/profile', name: 'Profile', component: ProfileView, meta: { requiresAuth: true } },
-  { path: '/set-password', name: 'SetPassword', component: SetPasswordView, meta: { requiresAuth: false } },
-  { path: '/reset-password', name: 'ResetPassword', component: ResetPasswordView, meta: { requiresAuth: false } },
+  // `/invite` and `/reset` are ALIASES, not the canonical paths, because that is
+  // what the deployment actually mails out: ldap_manager builds its links from
+  // INVITE_LINK_BASE / RESET_LINK_BASE, and the Ansible defaults end them in
+  // `/invite` and `/reset`. Neither had a route, so every invitation and every
+  // password reset landed on an empty <div id="app">.
+  //
+  // Aliased rather than renamed, and rather than repointing the config, so that
+  // links already sitting in people's inboxes start working too. Both views read
+  // their token from the query string, so the path they arrive on is immaterial.
+  {
+    path: '/set-password', name: 'SetPassword', component: SetPasswordView,
+    alias: '/invite', meta: { requiresAuth: false },
+  },
+  {
+    path: '/reset-password', name: 'ResetPassword', component: ResetPasswordView,
+    alias: '/reset', meta: { requiresAuth: false },
+  },
   { path: '/', redirect: '/dashboard' },
+  // LAST, and the reason the two bugs above were invisible: with no catch-all a
+  // Vue router matches nothing and renders nothing, so a wrong URL is a blank
+  // page that reports no error anywhere — not in the console, not in the network
+  // tab (the SPA shell is a healthy 200), not in the nginx log. Public, because
+  // bouncing an unknown path to the login form tells a signed-out visitor the
+  // wrong story about what went wrong.
+  {
+    path: '/:pathMatch(.*)*', name: 'NotFound', component: NotFoundView,
+    meta: { requiresAuth: false },
+  },
 ]
 
 const router = createRouter({
