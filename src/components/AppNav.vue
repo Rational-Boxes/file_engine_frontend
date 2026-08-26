@@ -23,7 +23,10 @@
       <router-link to="/files">Files</router-link>
       <router-link to="/search">Search</router-link>
       <router-link to="/chat">AI Research Chat</router-link>
-      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/tenant">Users &amp; roles</router-link>
+      <!-- "Users & roles" undersold the page even before this: it also carries the
+           two-factor and WebDAV session policies, now as tabs of their own. The
+           label matches the view's own <h1>. -->
+      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/tenant">Tenant administration</router-link>
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/security">Security</router-link>
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/shares">Shared outside</router-link>
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/ops">System</router-link>

@@ -21,8 +21,14 @@
     <template v-else>
       <p v-if="error" class="err">{{ error }}</p>
       <nav class="subtabs">
-        <button v-for="t in templates" :key="t.kind" :class="{ active: tmplKind === t.kind }" @click="selectTemplate(t.kind)">
-          {{ t.kind }}<span v-if="t.customized" class="dot" title="customized">•</span>
+        <button
+          v-for="t in templates"
+          :key="t.kind"
+          :class="{ active: tmplKind === t.kind }"
+          :title="t.kind"
+          @click="selectTemplate(t.kind)"
+        >
+          {{ kindLabel(t.kind) }}<span v-if="t.customized" class="dot" title="customized">•</span>
         </button>
       </nav>
       <template v-if="draft">
@@ -62,6 +68,27 @@ const placeholderHint = '{{display_name}} {{email}} {{tenant}} {{roles}} {{invit
 const invitePlaceholderHint = '{{invite_link}} {{expires}}'
 const error = ref('')
 const busy = ref(false)
+
+// The API's `kind` is a storage key (`new_user`, `2fa_email_code`), and it was
+// being used directly as the tab label. Each name says what the email IS, since
+// an administrator picking a template is thinking about the message a person
+// receives, not about the identifier it is filed under.
+const KIND_LABELS: Record<string, string> = {
+  new_user: 'Invitation',
+  access_granted: 'Access granted',
+  '2fa_email_code': 'Sign-in code',
+  share_otp_code: 'Share link code',
+  password_reset: 'Password reset',
+}
+
+// An unrecognised kind still has to read as something: a kind added server-side
+// would otherwise render as a blank tab in an older SPA. `share_otp_code` ->
+// "Share otp code" is not as good as the map, but it is never nothing.
+function kindLabel(kind: string): string {
+  if (KIND_LABELS[kind]) return KIND_LABELS[kind]
+  const words = kind.replace(/[_-]+/g, ' ').trim()
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : kind
+}
 
 const templates = ref<EmailTemplate[]>([])
 const tmplKind = ref('')
