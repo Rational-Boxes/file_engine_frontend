@@ -16,15 +16,23 @@
 -->
 
 <template>
-  <div v-if="ttl" class="ttl-editor">
-    <h3>WebDAV session lifetime</h3>
+  <!-- The heading, blurb and any error render whether or not the policy loaded.
+       This used to be one `v-if="ttl"` around everything, so a failed load left
+       the component rendering NOTHING — the error on the line below was inside
+       the block its own failure switched off, and so could never be seen. That
+       was survivable while this sat at the foot of the Roles tab; as a tab of
+       its own it would be a blank page that says nothing is wrong. -->
+  <div class="ttl-editor">
+    <h2>WebDAV session lifetime</h2>
     <p class="muted">
       How long a WebDAV connection stays authorized after a Web-UI sign-in (this
       tenant's security stance). Shorter re-checks sign-in sooner; longer favors
       uninterrupted work. Applies only when the WebDAV session gate is enabled.
     </p>
     <p v-if="error" class="err">{{ error }}</p>
+    <p v-else-if="!ttl" class="muted">Loading…</p>
 
+    <template v-if="ttl">
     <label class="row">
       <input type="checkbox" v-model="inherit" @change="onInherit" />
       Use the deployment default ({{ mins(ttl.default_ttl_seconds) }})
@@ -47,6 +55,7 @@
       <button class="btn" :disabled="busy" @click="save">Save</button>
       <span v-if="saved" class="ok">Saved · effective {{ mins(ttl.effective_ttl_seconds) }} ✓</span>
     </div>
+    </template>
   </div>
 </template>
 
@@ -103,7 +112,11 @@ async function save() {
 </script>
 
 <style scoped>
-.ttl-editor { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
+/* Card + heading match TwoFactorPolicyEditor's .panel/h2: the two are now
+   sibling tabs, and one boxed next to one bare reads as a mistake. */
+.ttl-editor { display: flex; flex-direction: column; gap: 0.5rem;
+  border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 16px; }
+h2 { margin: 0 0 4px; font-size: 16px; }
 .row { display: inline-flex; gap: 0.4rem; align-items: center; }
 .field { display: flex; flex-direction: column; gap: 0.2rem; max-width: 22rem; }
 .field input { background: var(--bg); color: var(--text, inherit);

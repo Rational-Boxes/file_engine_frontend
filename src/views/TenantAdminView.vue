@@ -83,13 +83,18 @@
             <li v-if="!members.length" class="muted">No members yet.</li>
           </ul>
         </div>
-
-        <!-- Per-tenant two-factor policy (PROPOSAL §4.8) -->
-        <TwoFactorPolicyEditor />
-
-        <!-- Per-tenant WebDAV session TTL (PROPOSAL §14.10) -->
-        <WebDavSessionTtlEditor />
       </section>
+
+      <!-- ============ TWO-FACTOR ============ -->
+      <!-- Per-tenant two-factor policy (PROPOSAL §4.8). Its own tab rather than a
+           trailer under Roles: it is a tenant-wide security setting and has
+           nothing to do with which users hold which role. Each editor brings its
+           own panel wrapper, so it is mounted directly. -->
+      <TwoFactorPolicyEditor v-if="tab === 'Two-factor'" />
+
+      <!-- ============ WEBDAV ============ -->
+      <!-- Per-tenant WebDAV session TTL (PROPOSAL §14.10). -->
+      <WebDavSessionTtlEditor v-if="tab === 'WebDAV'" />
     </main>
   </div>
 </template>
@@ -102,7 +107,7 @@ import WebDavSessionTtlEditor from '@/components/WebDavSessionTtlEditor.vue'
 import { ldapAdminService, type Role, type UserSummary } from '@/services/ldapAdminService'
 import { errorMessage } from '@/services/apiClient'
 
-const TABS = ['Users', 'Roles'] as const
+const TABS = ['Users', 'Roles', 'Two-factor', 'WebDAV'] as const
 const tab = ref<(typeof TABS)[number]>('Users')
 const error = ref('')
 const busy = ref(false)
