@@ -26,6 +26,13 @@ describe('decodePermissions (bitmask → permission bits)', () => {
     expect(decodePermissions(0)).toEqual([])
   })
 
+  it('decodes the ERASE bit (0x4000) even though it cannot be granted here', () => {
+    // An editor that silently dropped an unrecognised bit would let a
+    // read → modify → save round-trip destroy a grant nobody could see.
+    expect(decodePermissions(0x4000).map((p) => p.key)).toEqual(['ERASE'])
+    expect(decodePermissions(0x4000 | 0x400).map((p) => p.key)).toEqual(['r', 'ERASE'])
+  })
+
   it('decodes the CULL_VERSIONS bit (0x2000) the core added', () => {
     expect(decodePermissions(0x2000).map((p) => p.key)).toEqual(['CULL_VERSIONS'])
     // co-exists with the other version bits
@@ -39,6 +46,9 @@ describe('grantable permission vocabulary (PERMS)', () => {
     expect(keys).toContain('CULL_VERSIONS')
     expect(keys).toContain('i') // ACL_INHERIT is grantable
     expect(keys).not.toContain('x') // EXECUTE is compat-only, not grantable
+    // ERASE is restricted by SURFACE as well as by permission: it is conferred
+    // from the admin API and the CLI only, never from a document UI.
+    expect(keys).not.toContain('ERASE')
     // PERMS is exactly the grantable subset of PERM_BITS
     expect(keys).toEqual(PERM_BITS.filter((p) => p.grantable !== false).map((p) => p.key))
     // ...but EXECUTE still decodes so stored entries display it
