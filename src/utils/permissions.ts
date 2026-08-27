@@ -52,6 +52,18 @@ export const PERM_BITS: PermBit[] = [
   // Destroy-data op: permanently purges old versions. Never granted by default;
   // must be granted explicitly (core requires it for PurgeOldVersions).
   { key: 'CULL_VERSIONS', label: 'Cull versions (destroys data)', bit: 0x2000 },
+  // True delete: destroys a file's content, every version, and everything
+  // derived from it. Irreversible and compliance-driven — the strongest
+  // destroy-data bit there is.
+  //
+  // DECODE-ONLY, deliberately. It must be visible: an ACL editor that silently
+  // dropped a bit it did not recognise would let a round-trip (read → modify →
+  // save) destroy a grant nobody could see, which is the same hazard DENY rules
+  // pose. But it is not offered for granting here — the proposal restricts the
+  // SURFACE as well as the permission, so erasure is conferred only from the
+  // admin API and the CLI, where the act is deliberate by construction.
+  // See file_engine_core/design_documents/PROPOSAL_accountability_record.md §5.4.9.
+  { key: 'ERASE', label: 'Erase (irreversible)', bit: 0x4000, grantable: false },
 ]
 
 // The grantable permissions shown in the editor's "add" dropdown — derived from
