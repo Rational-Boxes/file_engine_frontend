@@ -313,3 +313,97 @@ describe('FileDetailsDrawer — Info tab provenance', () => {
     expect(w.text()).not.toMatch(/from outside/i)
   })
 })
+
+describe('FileDetailsDrawer — click-off closes', () => {
+  let appRoot: HTMLElement
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    fns.stat.mockResolvedValue({ uid: 'f1', name: 'x', type: 'file', size: 1, owner: 'u', version: 'v1' })
+    fns.getMetadata.mockResolvedValue({})
+    fns.checkPermission.mockResolvedValue(true)
+    fns.generatePreview.mockResolvedValue({ status: 'indexed', renditions: [], hasMarkdown: true })
+    fns.loadRenditionSet.mockResolvedValue({})
+    fns.modelRendition.mockReturnValue(undefined)
+    // The handler distinguishes "the page behind" from "a teleported popover" by
+    // asking whether the click landed inside #app, so the tests need a real one.
+    appRoot = document.createElement('div')
+    appRoot.id = 'app'
+    document.body.appendChild(appRoot)
+  })
+
+  afterEach(() => {
+    appRoot.remove()
+    document.body.innerHTML = ''
+  })
+
+  function openAttached() {
+    const files = useFileStore()
+    files.detailItem = {
+      uid: 'f1', name: 'a.txt', hasRenditions: false, isDirectory: false, type: 'file',
+      size: 1, renditionCount: 1, deleted: false, createdAt: 0, modifiedAt: 0,
+      owner: '', createdBy: '', modifiedBy: '',
+    }
+    files.drawerOpen = true
+    return mount(FileDetailsDrawer, { attachTo: appRoot })
+  }
+
+  const down = (el: Element) =>
+    el.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+
+  it('closes when the click lands on the page behind it', async () => {
+    const files = useFileStore()
+    openAttached()
+    await flushPromises()
+    const behind = document.createElement('div')
+    appRoot.appendChild(behind)
+
+    down(behind)
+    await flushPromises()
+
+    expect(files.drawerOpen).toBe(false)
+  })
+
+  it('stays open when the click is inside the drawer', async () => {
+    const files = useFileStore()
+    const w = openAttached()
+    await flushPromises()
+
+    down(w.find('.drawer').element)
+    await flushPromises()
+
+    expect(files.drawerOpen).toBe(true)
+  })
+
+  it('stays open when the click is in a popover teleported to <body>', async () => {
+    // The ACL editor's principal autocomplete teleports its suggestions out of
+    // the drawer. Choosing a name from it must not close the drawer underneath.
+    const files = useFileStore()
+    openAttached()
+    await flushPromises()
+    const menu = document.createElement('ul')
+    menu.className = 'pp-menu'
+    document.body.appendChild(menu)   // outside #app, like every Teleport here
+
+    down(menu)
+    await flushPromises()
+
+    expect(files.drawerOpen).toBe(true)
+  })
+
+  it('does nothing once the drawer is already closed', async () => {
+    const files = useFileStore()
+    openAttached()
+    await flushPromises()
+    files.closeDetails()
+    await flushPromises()
+
+    const behind = document.createElement('div')
+    appRoot.appendChild(behind)
+    down(behind)
+    await flushPromises()
+
+    expect(files.drawerOpen).toBe(false)
+  })
+})

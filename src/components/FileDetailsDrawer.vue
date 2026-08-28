@@ -16,7 +16,7 @@
 -->
 
 <template>
-  <aside v-if="files.drawerOpen" class="drawer">
+  <aside v-if="files.drawerOpen" ref="panel" class="drawer">
     <header class="drawer-head">
       <div class="title">
         <span class="icon">{{ item?.isDirectory ? '📁' : '📄' }}</span>
@@ -239,6 +239,36 @@ function onKey(e: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener('keydown', onKey, true))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
+
+// Clicking away from the drawer closes it, the companion to Escape above.
+const panel = ref<HTMLElement | null>(null)
+
+// pointerdown rather than click, because a row click is what OPENS the drawer:
+// pointerdown fires first, so the opening click can never be the one that closes
+// it. Clicking a different row while the drawer is open therefore closes it here
+// and reopens it on the row's own click handler — which lands on the new file,
+// exactly as if it had been swapped.
+function onPointerDown(e: PointerEvent) {
+  if (!files.drawerOpen) return
+  const target = e.target as Node | null
+  if (!target || panel.value?.contains(target)) return
+  // Popovers the drawer itself opens are teleported to <body>: the ACL editor's
+  // principal suggestions, confirm dialogs, the help modal, the preview overlays.
+  // They sit OUTSIDE the drawer in the DOM while being part of it to the user, so
+  // a plain containment test would close the drawer the moment you picked a name
+  // out of the autocomplete.
+  //
+  // Testing "did this land outside #app" catches all of them at once, and keeps
+  // catching them: every Teleport in this app targets <body>, so anything mounted
+  // there is floating chrome rather than the page behind the drawer. An allowlist
+  // of class names would need editing every time someone adds a dialog, and would
+  // fail silently — as a closed drawer — when nobody remembered.
+  const root = document.getElementById('app')
+  if (root && !root.contains(target)) return
+  files.closeDetails()
+}
+onMounted(() => document.addEventListener('pointerdown', onPointerDown, true))
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDown, true))
 
 // A 3D/BIM model by format (regardless of conversion state). Such files never
 // use the document preview — they get the 3D section instead.
