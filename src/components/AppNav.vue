@@ -53,6 +53,7 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { activeTenantFromHost, isLoginOrigin, loginUrl } from '@/utils/tenantHost'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
 import { useHelpStore } from '@/stores/help'
@@ -65,6 +66,28 @@ const help = useHelpStore()
 
 async function logout() {
   await auth.logout()
+
+  // Where signing in happens depends on the deployment, so sign-out has to make
+  // the same choice the router guard makes for a protected route. On a tenant
+  // origin backed by a bespoke login subdomain there is no sign-in page here to
+  // route to: pushing /login left the user on the tenant host, where the login
+  // view has a session-shaped path back out and lands them on the dashboard —
+  // signed out, but looking like they never left.
+  const tenant = activeTenantFromHost()
+  if (tenant && !isLoginOrigin()) {
+    // No `next` and NO tenant, unlike the guard. The guard is resuming an
+    // interrupted journey and wants you back where you were; this is an explicit
+    // sign-out, and auth.logout() has just cleared the remembered workspace on
+    // purpose so the next person on a shared machine meets a clean login.
+    // Putting ?t=acme on the URL would hand that straight back.
+    const url = loginUrl(undefined, null)
+    if (url) {
+      window.location.href = url
+      return
+    }
+  }
+  // No subdomain tenancy (bare localhost, an IP), or the host has no label to
+  // swap — the in-app form is the only way back in.
   router.push('/login')
 }
 </script>
