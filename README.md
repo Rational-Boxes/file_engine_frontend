@@ -82,7 +82,12 @@ Browser (this SPA) ───────┼─ /csai      ─▶ csai ───�
   and a co-viewer presence roster), falling back to polling when the socket is
   unavailable.
 - **Tenant administration (via LDAP Manager, `/admin/tenant`, admins only):**
-  manage tenant **users** (find, create, re-invite) and **roles** (create,
+  a full **user roster** for the workspace — everyone with access, the roles they
+  hold, and a filter across name/email/role — with each person opening in a
+  **profile modal** that edits their group membership as a whole set and offers
+  the two removal scopes (drop them from this workspace, or delete the global
+  account, which is refused while another workspace still uses it). Alongside it:
+  invite a new user, add an existing directory user, manage **roles** (create,
   delete, membership), and customize the **email templates** used for invites and
   password resets (edit, preview, send a test, revert to default).
 - **System operations (`/admin/ops`, admins only):** storage usage and sync,
