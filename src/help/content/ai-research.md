@@ -103,22 +103,19 @@ there's always a visible trace of what was used.
 
 ## Saving findings to a document
 
-You can turn a conversation into a saved report two ways:
-
-**Use the Generate report button.** In the **Tools** panel, choose **📄 Generate
-report**. A **Generate report** dialog lets you pick exactly where it goes:
+You turn a conversation into a saved report with the **Generate report** button in
+the **Tools** panel (**📄 Generate report**). **You** choose where it goes and what
+it's called — the assistant doesn't pick the location or the name, and there's no
+"ask in chat to save it" shortcut. The dialog:
 
 1. Browse to a destination folder (starting at **Home**), creating one with
    **＋ New folder** if needed.
-2. Enter a **File name** (it saves as an editable **Word `.docx`** document). A live
-   hint confirms *"Saves to &lt;folder&gt; as &lt;name&gt;."*
+2. Enter a **File name** — this is required; the **Generate report** button stays
+   disabled until you type one. It saves as an editable **Word `.docx`** document,
+   and a live hint confirms *"Saves to &lt;folder&gt; as &lt;name&gt;."*
 3. Choose **Generate report**.
 
-**Or just ask in chat** — say something like *"save this as a report"* or *"write
-these results to a file."* The assistant browses folders you can access, proposes a
-destination for you to confirm, and saves it there.
-
-Either way, the report is saved as a **first-class file** in your storage — with its
+The report is saved as a **first-class file** in your storage — with its
 own [permissions](#acl-basics), version history, comments, and an automatic preview.
 Reports are written as an **editable Word (`.docx`) document**, so they're a **draft
 you can refine**: when it's done, an **📄 Open report** button appears on the answer

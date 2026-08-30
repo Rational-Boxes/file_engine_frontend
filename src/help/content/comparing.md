@@ -35,21 +35,21 @@ drawing where the change is a single dimension in a corner.
 
 ## How a page was compared
 
-Each page is labelled with how the comparison was made, because it changes how
-much to trust the result:
+Each page carries a short **label** of how it was compared — hover it for the
+fuller explanation — because it changes how much to trust the result:
 
-- **Compared object by object** — text and shapes were matched individually.
-  This is the precise case: a moved line is reported as moved, not as one
-  deletion and one addition.
-- **Compared as an image** — the page is a scan or has no extractable content, so
-  changed *regions* are highlighted rather than individual objects. Good enough to
-  see where to look, not precise enough to say exactly what altered.
-- **Text compared, graphics as an image** — a mixture of the two, common in
-  drawings with a CAD background and typed annotations.
-- **No comparison available** — the page could not be compared at all.
+- **vector** — *compared object by object*: text and shapes were matched
+  individually. This is the precise case: a moved line is reported as moved, not as
+  one deletion and one addition.
+- **scanned** — *compared as an image*: the page is a scan or has no extractable
+  content, so changed *regions* are highlighted rather than individual objects. Good
+  enough to see where to look, not precise enough to say exactly what altered.
+- **hybrid** — *text compared, graphics as an image*: a mixture of the two, common
+  in drawings with a CAD background and typed annotations.
+- **unavailable** — no comparison could be produced for the page.
 
-That label is worth reading before drawing conclusions. On an image-compared page
-a slight rescan shift can light up a whole region that contains no real change.
+That label is worth reading before drawing conclusions. On a **scanned** page a
+slight rescan shift can light up a whole region that contains no real change.
 
 ## 3D models
 
