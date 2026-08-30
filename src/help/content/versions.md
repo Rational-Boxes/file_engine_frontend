@@ -3,7 +3,7 @@ id: versions
 title: Version history
 category: Working with files
 keywords: [version, history, restore, rollback, revert, previous, purge, keep, immutable, cull, undo]
-order: 2
+order: 3
 related: [comparing, files, editing, sharing, acl-basics]
 ---
 

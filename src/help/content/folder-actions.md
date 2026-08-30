@@ -3,7 +3,7 @@ id: folder-actions
 title: Automating a folder with actions
 category: Working with files
 keywords: [folder action, automation, automatic, rule, trigger, binding, sorter, classify, route, notify, email, review, approve, reject, move, webhook, integration, inbox, workflow, run log]
-order: 6
+order: 8
 related: [files, comments, share-links, versions]
 ---
 

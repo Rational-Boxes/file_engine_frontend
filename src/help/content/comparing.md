@@ -3,7 +3,7 @@ id: comparing
 title: Comparing two versions of a file
 category: Working with files
 keywords: [compare, comparison, difference, diff, changed, revision, version, before, after, drawing, markup, redline, what changed, side by side, 3d compare, model compare]
-order: 5
+order: 6
 related: [versions, pdf-markup, cad-bim, files]
 ---
 

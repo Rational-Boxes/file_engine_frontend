@@ -1,7 +1,7 @@
 ---
 id: search
 title: Searching your files
-category: Getting Started
+category: Working with files
 keywords: [search, find, query, metadata, cad, bim, ifc, engineering, full-text, filename]
 order: 2
 related: [getting-started, files, cad-bim, ai-research]

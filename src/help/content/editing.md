@@ -3,7 +3,7 @@ id: editing
 title: Editing documents in your browser
 category: Working with files
 keywords: [edit, editor, onlyoffice, office, word, excel, spreadsheet, powerpoint, docx, xlsx, pptx, html, wysiwyg, document, save]
-order: 3
+order: 4
 related: [files, versions, ai-research]
 ---
 
