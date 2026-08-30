@@ -51,6 +51,11 @@ function mountRoster() {
     props: { roles: ROLES, selfUid: 'boss@x.test' },
     global: {
       stubs: {
+        InviteUserModal: {
+          name: 'InviteUserModal',
+          props: ['open'],
+          template: '<div class="stub-invite" />',
+        },
         UserProfileModal: {
           name: 'UserProfileModal',
           props: ['uid'],
@@ -126,18 +131,22 @@ describe('UserRoster', () => {
     expect(w.find('.stub-modal').text()).toBe('ann@x.test')
   })
 
-  it('reloads the roster after an invite and clears the form', async () => {
-    svc.createUser.mockResolvedValue({ uid: 'new@x.test', email: 'new@x.test', display_name: 'New' })
+  it('keeps the invite form behind a button, not inline on the tab', async () => {
     const w = mountRoster()
     await flushPromises()
-    const [email, name] = w.findAll('.ur-block input[type="email"], .ur-block input:not([type])')
-    await email.setValue('new@x.test')
-    await name.setValue('New Person')
-    await w.find('.ur-primary').trigger('click')
+    expect(w.findComponent({ name: 'InviteUserModal' }).props('open')).toBe(false)
+    await w.find('.ur-head-actions .ur-primary').trigger('click')
+    expect(w.findComponent({ name: 'InviteUserModal' }).props('open')).toBe(true)
+  })
+
+  it('reports a sent invite and re-reads the roster', async () => {
+    const w = mountRoster()
     await flushPromises()
-    expect(svc.createUser).toHaveBeenCalledWith('new@x.test', 'New Person', [])
+    w.findComponent({ name: 'InviteUserModal' }).vm.$emit('invited', 'new@x.test')
+    await flushPromises()
+    expect(w.text()).toContain('Invited new@x.test')
     expect(svc.listTenantUsers).toHaveBeenCalledTimes(2)
-    expect((email.element as HTMLInputElement).value).toBe('')
+    expect(w.emitted('roles-changed')).toBeTruthy()
   })
 
   it('lets an existing directory user be added to a chosen role', async () => {
@@ -146,9 +155,9 @@ describe('UserRoster', () => {
     ])
     const w = mountRoster()
     await flushPromises()
-    const search = w.findAll('.ur-block')[1].find('input')
+    const search = w.find('.ur-block').find('input')
     await search.setValue('old')
-    await w.findAll('.ur-block')[1].find('.ur-btn').trigger('click')
+    await w.find('.ur-block').find('.ur-btn').trigger('click')
     await flushPromises()
     // No role picked yet -> nothing to add.
     expect(w.find('.ur-list .ur-link').attributes('disabled')).toBeDefined()
@@ -165,8 +174,8 @@ describe('UserRoster', () => {
     svc.reinvite.mockResolvedValue(undefined)
     const w = mountRoster()
     await flushPromises()
-    await w.findAll('.ur-block')[1].find('input').setValue('old')
-    await w.findAll('.ur-block')[1].find('.ur-btn').trigger('click')
+    await w.find('.ur-block').find('input').setValue('old')
+    await w.find('.ur-block').find('.ur-btn').trigger('click')
     await flushPromises()
     const resend = w.findAll('.ur-list .ur-link').find((b) => b.text() === 'Re-send invite')!
     await resend.trigger('click')
@@ -181,8 +190,8 @@ describe('UserRoster', () => {
     ])
     const w = mountRoster()
     await flushPromises()
-    await w.findAll('.ur-block')[1].find('input').setValue('ann')
-    await w.findAll('.ur-block')[1].find('.ur-btn').trigger('click')
+    await w.find('.ur-block').find('input').setValue('ann')
+    await w.find('.ur-block').find('.ur-btn').trigger('click')
     await flushPromises()
     expect(w.find('.ur-list').text()).toContain('in this workspace')
     expect(w.find('.ur-select').exists()).toBe(false)

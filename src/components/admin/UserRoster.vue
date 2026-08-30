@@ -40,14 +40,20 @@
           access to this workspace.
         </p>
       </div>
-      <input
-        v-model="filter"
-        class="ur-filter"
-        type="search"
-        placeholder="Filter by name, email or role"
-        aria-label="Filter the roster"
-      />
+      <div class="ur-head-actions">
+        <input
+          v-model="filter"
+          class="ur-filter"
+          type="search"
+          placeholder="Filter by name, email or role"
+          aria-label="Filter the roster"
+        />
+        <button class="ur-btn ur-primary" type="button" @click="inviting = true">
+          Invite a new user
+        </button>
+      </div>
     </header>
+    <p v-if="invited" class="ur-ok">Invited {{ invited }} &mdash; they have been emailed a set-password link ✓</p>
 
     <p v-if="loading" class="ur-muted">Loading the roster…</p>
     <table v-else-if="visible.length" class="ur-table">
@@ -84,35 +90,7 @@
       </tbody>
     </table>
     <p v-else-if="filter" class="ur-muted">No one matches “{{ filter }}”.</p>
-    <p v-else class="ur-muted">No users yet — invite someone below.</p>
-
-    <!-- ------------------------------ invite ------------------------------ -->
-    <section class="ur-block">
-      <h2>Invite a new user</h2>
-      <p class="ur-sub">
-        Creates the account and emails them a link to set their own password.
-      </p>
-      <div class="ur-fields">
-        <input v-model="newUser.email" type="email" placeholder="email@company.com" />
-        <input v-model="newUser.display_name" placeholder="Display name" />
-      </div>
-      <div class="ur-picks">
-        <label v-for="r in roles" :key="r.name" class="ur-chk">
-          <input type="checkbox" :value="r.name" v-model="newUser.roles" /> {{ r.name }}
-        </label>
-      </div>
-      <div class="ur-actions">
-        <button
-          class="ur-btn ur-primary"
-          type="button"
-          :disabled="!newUser.email || !newUser.display_name || busy"
-          @click="invite"
-        >
-          Invite &amp; email set-password link
-        </button>
-        <span v-if="invited" class="ur-ok">Invited {{ invited }} ✓</span>
-      </div>
-    </section>
+    <p v-else class="ur-muted">No users yet — invite someone with the button above.</p>
 
     <!-- ---------------------- global directory lookup ---------------------- -->
     <section class="ur-block">
@@ -165,6 +143,13 @@
       <p v-if="reinvited" class="ur-ok">Invite re-sent to {{ reinvited }} ✓</p>
     </section>
 
+    <InviteUserModal
+      :open="inviting"
+      :roles="roles"
+      @close="inviting = false"
+      @invited="onInvited"
+    />
+
     <UserProfileModal
       :uid="openUid"
       :roles="roles"
@@ -178,6 +163,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import InviteUserModal from '@/components/admin/InviteUserModal.vue'
 import UserProfileModal from '@/components/admin/UserProfileModal.vue'
 import {
   ldapAdminService,
@@ -208,7 +194,7 @@ const error = ref('')
 const filter = ref('')
 const openUid = ref<string | null>(null)
 
-const newUser = reactive({ email: '', display_name: '', roles: [] as string[] })
+const inviting = ref(false)
 const invited = ref('')
 
 const userQuery = ref('')
@@ -271,19 +257,11 @@ async function run(fn: () => Promise<void>) {
   }
 }
 
-const invite = () =>
-  run(async () => {
-    const u = await ldapAdminService.createUser(
-      newUser.email,
-      newUser.display_name,
-      newUser.roles,
-    )
-    invited.value = u.email
-    newUser.email = ''
-    newUser.display_name = ''
-    newUser.roles = []
-    await reload()
-  })
+// The modal owns the form and the request; the roster only has to catch up.
+function onInvited(email: string) {
+  invited.value = email
+  void reload()
+}
 
 const reinvite = (uid: string) =>
   run(async () => {
@@ -315,7 +293,8 @@ const addToTenant = (uid: string) =>
 .ur-head { display: flex; gap: 12px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
 .ur-head h2 { margin: 0; font-size: 15px; }
 .ur-sub { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
-.ur-filter { flex: 0 1 260px; }
+.ur-head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ur-filter { flex: 0 1 260px; min-width: 180px; }
 
 .ur-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .ur-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
@@ -337,9 +316,6 @@ const addToTenant = (uid: string) =>
 .ur-block h2 { margin: 0; font-size: 15px; }
 .ur-fields { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .ur-fields input { flex: 1; min-width: 160px; }
-.ur-picks, .ur-chk { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; align-items: center; }
-.ur-picks { margin-top: 8px; }
-.ur-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
 .ur-list { list-style: none; padding: 0; margin: 8px 0 0; }
 .ur-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 .ur-grow { flex: 1; min-width: 160px; }
