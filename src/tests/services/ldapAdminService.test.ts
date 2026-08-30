@@ -57,6 +57,28 @@ describe('ldapAdminService', () => {
     expect(post).toHaveBeenCalledWith('/v1/admin/users', { email: 'x@y.com', display_name: 'X', roles: ['editors'] })
   })
 
+  it('reads the tenant roster from its own path, not the search endpoint', async () => {
+    get.mockResolvedValue({ data: [{ uid: 'a@b.com', email: 'a@b.com', display_name: 'A', roles: ['editors'], is_admin: false, orphaned: false }] })
+    expect(await ldapAdminService.listTenantUsers()).toHaveLength(1)
+    expect(get).toHaveBeenCalledWith('/v1/admin/users/roster')
+  })
+
+  it('reads a member profile and saves the whole role set', async () => {
+    get.mockResolvedValue({ data: { uid: 'a@b.com', roles: ['editors'] } })
+    await ldapAdminService.getUserProfile('a@b.com')
+    expect(get).toHaveBeenCalledWith('/v1/admin/users/a%40b.com/profile')
+    put.mockResolvedValue({ data: { uid: 'a@b.com', roles: ['editors', 'viewers'] } })
+    await ldapAdminService.setUserRoles('a@b.com', ['editors', 'viewers'])
+    expect(put).toHaveBeenCalledWith('/v1/admin/users/a%40b.com/roles', { roles: ['editors', 'viewers'] })
+  })
+
+  it('removes a user from this tenant (no scope; deletion is a sysadmin/LDAP op)', async () => {
+    del.mockResolvedValue({ data: { uid: 'a@b.com', roles_removed: ['editors'], credentials_purged: 1 } })
+    const r = await ldapAdminService.removeUser('a@b.com')
+    expect(del).toHaveBeenCalledWith('/v1/admin/users/a%40b.com')
+    expect(r.credentials_purged).toBe(1)
+  })
+
   it('self-service: profile + change password', async () => {
     patch.mockResolvedValue({ data: {} })
     await ldapAdminService.updateProfile({ display_name: 'New' })

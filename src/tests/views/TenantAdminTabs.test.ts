@@ -16,13 +16,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const { listRoles } = vi.hoisted(() => ({ listRoles: vi.fn() }))
+const { listRoles, listTenantUsers } = vi.hoisted(() => ({
+  listRoles: vi.fn(), listTenantUsers: vi.fn(),
+}))
 
 vi.mock('@/services/ldapAdminService', async () => {
   const actual = await vi.importActual<object>('@/services/ldapAdminService')
-  return { ...actual, ldapAdminService: { listRoles } }
+  return { ...actual, ldapAdminService: { listRoles, listTenantUsers } }
 })
 
+import { createPinia, setActivePinia } from 'pinia'
 import TenantAdminView from '@/views/TenantAdminView.vue'
 
 function mountView() {
@@ -40,8 +43,13 @@ function mountView() {
 }
 
 beforeEach(() => {
+  // The view reads the signed-in uid from the auth store to mark "you" in the
+  // roster and to block self-removal.
+  setActivePinia(createPinia())
   listRoles.mockReset()
   listRoles.mockResolvedValue([])
+  listTenantUsers.mockReset()
+  listTenantUsers.mockResolvedValue([])
 })
 
 describe('TenantAdminView tabs', () => {
@@ -52,10 +60,11 @@ describe('TenantAdminView tabs', () => {
     expect(labels).toEqual(['Users', 'Roles', 'Two-factor', 'WebDAV'])
   })
 
-  it('opens on Users, with neither policy editor mounted', async () => {
+  it('opens on the real Users roster, with neither policy editor mounted', async () => {
     const w = mountView()
     await flushPromises()
-    expect(w.text()).toContain('Invite a new user')
+    expect(w.text()).toContain('Invite a user')
+    expect(listTenantUsers).toHaveBeenCalled()
     expect(w.find('.stub-2fa').exists()).toBe(false)
     expect(w.find('.stub-webdav').exists()).toBe(false)
   })

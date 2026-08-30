@@ -30,6 +30,39 @@ export interface UserSummary {
   display_name: string
   in_this_tenant?: boolean | null
 }
+// One row of the tenant roster. Unlike UserSummary (a global-directory hit), a
+// roster row is always a member of this tenant, so it carries the roles it holds
+// here. `orphaned` is a role member whose global user entry no longer exists —
+// shown so it can be cleaned up rather than silently dropped.
+export interface RosterUser {
+  uid: string
+  email: string
+  display_name: string
+  roles: string[]
+  is_admin: boolean
+  orphaned: boolean
+}
+// A member's profile as an admin sees it. `other_tenant_count` is deliberately a
+// count and not names: it tells the admin that removing the person from this
+// workspace still leaves them access elsewhere, without disclosing where.
+export interface AdminUserDetail {
+  uid: string
+  email: string
+  display_name: string
+  given_name: string
+  surname: string
+  avatar_url: string
+  tenant: string
+  roles: string[]
+  is_admin: boolean
+  other_tenant_count: number
+}
+export interface UserRemoval {
+  uid: string
+  roles_removed: string[]
+  credentials_purged: number   // tenant-bound door keys (WebDAV/MCP/…) revoked
+}
+
 export interface Profile {
   uid: string
   email: string
@@ -131,6 +164,25 @@ export const ldapAdminService = {
   },
   async reinvite(uid: string): Promise<void> {
     await ldapAdminClient.post(`/v1/admin/users/${encodeURIComponent(uid)}/reinvite`)
+  },
+  // The tenant's own membership — not the global directory, which stays
+  // search-only (SPECIFICATION §6.1).
+  async listTenantUsers(): Promise<RosterUser[]> {
+    return (await ldapAdminClient.get('/v1/admin/users/roster')).data
+  },
+  async getUserProfile(uid: string): Promise<AdminUserDetail> {
+    return (await ldapAdminClient.get(`/v1/admin/users/${encodeURIComponent(uid)}/profile`)).data
+  },
+  // The complete set of roles the user should hold here; the server diffs it
+  // against what they hold now and applies the administrators guards.
+  async setUserRoles(uid: string, roles: string[]): Promise<AdminUserDetail> {
+    return (await ldapAdminClient.put(`/v1/admin/users/${encodeURIComponent(uid)}/roles`, { roles })).data
+  },
+  // Remove the user from THIS tenant: drops their roles here and purges their
+  // tenant-bound door keys. The global account is not this call's to delete — that
+  // is a sysadmin/LDAP operation.
+  async removeUser(uid: string): Promise<UserRemoval> {
+    return (await ldapAdminClient.delete(`/v1/admin/users/${encodeURIComponent(uid)}`)).data
   },
 
   // --- tenant admin: two-factor policy (PROPOSAL §4.8) ---
