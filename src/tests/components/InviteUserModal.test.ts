@@ -80,13 +80,17 @@ describe('InviteUserModal', () => {
     expect($('.iv-roles')?.textContent).toContain('editors')
   })
 
-  it('cannot be submitted without an email and a display name', async () => {
+  it('cannot be submitted without email, display name, and a role', async () => {
     mountModal()
     await flushPromises()
     expect(($('.iv-primary') as HTMLButtonElement).disabled).toBe(true)
     await fill('new@x.test', '')
     expect(($('.iv-primary') as HTMLButtonElement).disabled).toBe(true)
     await fill('new@x.test', 'New Person')
+    // Email + name present but no role yet -> still disabled.
+    expect(($('.iv-primary') as HTMLButtonElement).disabled).toBe(true)
+    ;($$('.iv-chk input')[1] as HTMLInputElement).click()
+    await flushPromises()
     expect(($('.iv-primary') as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -103,14 +107,16 @@ describe('InviteUserModal', () => {
     expect(w.emitted('close')).toBeTruthy()
   })
 
-  it('warns that a role-less invite will not appear on the roster', async () => {
-    // The request is still allowed — the account is real, it just is not a member
-    // of anything here, and an admin should not have to work that out later.
+  it('will not invite without at least one role (membership is holding a role)', async () => {
     mountModal()
     await flushPromises()
-    expect($('.iv-note')?.textContent).toContain('will not appear on the roster')
+    await fill('new@x.test', 'New Person')
+    // Email and name filled, but no role -> still blocked.
+    expect(($('.iv-primary') as HTMLButtonElement).disabled).toBe(true)
+    expect($('.iv-note')?.textContent).toContain('at least one')
     ;($$('.iv-chk input')[1] as HTMLInputElement).click()
     await flushPromises()
+    expect(($('.iv-primary') as HTMLButtonElement).disabled).toBe(false)
     expect($('.iv-note')).toBeNull()
   })
 
@@ -118,6 +124,8 @@ describe('InviteUserModal', () => {
     const w = mountModal()
     await flushPromises()
     await fill('taken@x.test', 'Already There')
+    ;($$('.iv-chk input')[1] as HTMLInputElement).click()
+    await flushPromises()
     svc.createUser.mockRejectedValue(new Error('user already exists; assign them to a role instead'))
     await submit()
     expect($('.iv-err')?.textContent).toContain('already exists')
@@ -155,6 +163,8 @@ describe('InviteUserModal', () => {
     const w = mountModal()
     await flushPromises()
     await fill('new@x.test', 'New Person')
+    ;($$('.iv-chk input')[1] as HTMLInputElement).click()
+    await flushPromises()
     await submit()
     $$('.iv-btn').find((b) => b.textContent?.includes('Cancel'))!.click()
     await flushPromises()
@@ -164,9 +174,11 @@ describe('InviteUserModal', () => {
     expect(w.emitted('invited')).toBeTruthy()
   })
 
-  it('says so when the workspace has no roles to assign', async () => {
+  it('blocks entirely when the workspace has no roles to assign', async () => {
+    // With no roles there is no way to satisfy the >=1 rule, so inviting is not
+    // possible until a role exists.
     mountModal(true, [])
     await flushPromises()
-    expect($('.iv-roles')?.textContent).toContain('no roles yet')
+    expect($('.iv-warn')?.textContent).toContain('no roles yet')
   })
 })

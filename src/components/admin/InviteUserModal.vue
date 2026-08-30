@@ -23,6 +23,10 @@
   No password is set here and none is chosen for them; the account is created
   pending and the emailed link is what sets it, subject to the tenant's password
   policy at accept time.
+
+  At least one role is required: membership of a workspace IS holding one of its
+  roles, so a role-less invite would create an account that is a member of nothing
+  here. The server enforces this (422); the button below mirrors it.
 -->
 
 <template>
@@ -60,14 +64,12 @@
           <label v-for="r in roles" :key="r.name" class="iv-chk">
             <input type="checkbox" :value="r.name" v-model="chosenRoles" /> {{ r.name }}
           </label>
-          <p v-if="!roles.length" class="iv-muted">This workspace has no roles yet.</p>
-          <!-- The invite still works without a role, but the account it creates is
-               not a member of anything here, so it will not appear on the roster.
-               Worth saying, rather than leaving the admin to wonder where they
-               went. -->
+          <p v-if="!roles.length" class="iv-warn">
+            This workspace has no roles yet — create one on the Roles tab before
+            inviting anyone, since a member must hold at least one role.
+          </p>
           <p v-else-if="!chosenRoles.length" class="iv-note">
-            With no role they will have an account but no access to this workspace,
-            and will not appear on the roster.
+            Pick at least one — a member of this workspace holds at least one role.
           </p>
         </fieldset>
 
@@ -108,7 +110,11 @@ const error = ref('')
 const panelEl = ref<HTMLElement | null>(null)
 const emailEl = ref<HTMLInputElement | null>(null)
 
-const canSubmit = computed(() => !!email.value && !!displayName.value && !busy.value)
+// >=1 role is part of what makes a valid invite (membership is holding a role),
+// so it gates the button exactly as the server gates the request.
+const canSubmit = computed(
+  () => !!email.value && !!displayName.value && chosenRoles.value.length > 0 && !busy.value,
+)
 
 // A fresh form every time it opens: a half-typed invite left over from last time
 // is more likely to be sent by accident than to be wanted.
@@ -194,6 +200,7 @@ function onKeydown(e: KeyboardEvent) {
 .iv-roles { border: none; padding: 0; margin-top: 16px; }
 .iv-chk { display: inline-flex; align-items: center; gap: 6px; margin: 6px 12px 0 0; font-size: 13px; }
 .iv-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.iv-warn { margin: 8px 0 0; color: var(--danger); font-size: 12px; line-height: 1.45; }
 .iv-muted { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
 .iv-err { color: var(--danger); font-size: 13px; margin: 12px 0 0; }
 .iv-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
