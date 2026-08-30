@@ -16,30 +16,33 @@
 -->
 
 <!--
-  Invite a new user. A modal rather than a panel under the roster: inviting is an
-  occasional act, and the roster is what the tab is for — the form used to take up
-  a third of the page to be read once a month.
+  Invite a user into this workspace. A modal rather than a panel under the roster:
+  inviting is an occasional act, and the roster is what the tab is for.
 
-  No password is set here and none is chosen for them; the account is created
-  pending and the emailed link is what sets it, subject to the tenant's password
-  policy at accept time.
+  One flow by email, whether or not the person already has a platform account —
+  and the UI never says which. If they are new, the server creates a pending
+  account and emails a set-password link; if they already exist, it adds them and
+  emails an informational notice. That difference is deliberately invisible here,
+  because whether an email already has an account is someone else's personal
+  information (SPECIFICATION §6.2). So the copy stays neutral and the result is
+  the same either way — there is nothing to type differently and nothing to learn.
 
   At least one role is required: membership of a workspace IS holding one of its
-  roles, so a role-less invite would create an account that is a member of nothing
-  here. The server enforces this (422); the button below mirrors it.
+  roles. The server enforces this (422); the button below mirrors it.
 -->
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="iv-root" role="dialog" aria-modal="true" aria-label="Invite a new user">
+    <div v-if="open" class="iv-root" role="dialog" aria-modal="true" aria-label="Invite a user">
       <div class="iv-backdrop" @click="close"></div>
 
       <form ref="panelEl" class="iv-panel" @submit.prevent="submit" @keydown="onKeydown">
         <button class="iv-x" type="button" title="Close" @click="close">✕</button>
 
-        <h2 class="iv-title">Invite a new user</h2>
+        <h2 class="iv-title">Invite a user</h2>
         <p class="iv-sub">
-          Creates the account and emails them a link to set their own password.
+          They'll get an email inviting them to this workspace — with a link to set a
+          password if they don't already have an account.
         </p>
 
         <label class="iv-field">
@@ -78,7 +81,7 @@
         <div class="iv-actions">
           <button class="iv-btn" type="button" :disabled="busy" @click="close">Cancel</button>
           <button class="iv-btn iv-primary" type="submit" :disabled="!canSubmit">
-            {{ busy ? 'Sending…' : 'Invite & email set-password link' }}
+            {{ busy ? 'Sending…' : 'Send invitation' }}
           </button>
         </div>
       </form>

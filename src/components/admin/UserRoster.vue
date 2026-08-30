@@ -17,14 +17,14 @@
 
 <!--
   The Users tab: who is in this workspace, opened one at a time in the profile
-  modal.
+  modal, plus one button to invite someone in.
 
-  Two searches live here and they are not the same thing, so they are visually
-  separate. The roster filter narrows a list we already hold. The directory
-  lookup below it reaches the *global* user base, which is search-only by design
-  (SPECIFICATION §6) — it exists to find someone who already has an account
-  elsewhere so they can be invited into this workspace, and it is the only search
-  that can return a non-member.
+  The roster filter narrows a list we already hold. There is deliberately NO
+  directory search here: inviting is a single flow (InviteUserModal) that works
+  by email whether or not the person already has an account, and — crucially —
+  never tells the admin which case it was. Surfacing "who already has an account"
+  would leak exactly the personal information that single flow is designed to
+  keep private (SPECIFICATION §6.2).
 -->
 
 <template>
@@ -49,11 +49,11 @@
           aria-label="Filter the roster"
         />
         <button class="ur-btn ur-primary" type="button" @click="inviting = true">
-          Invite a new user
+          Invite a user
         </button>
       </div>
     </header>
-    <p v-if="invited" class="ur-ok">Invited {{ invited }} &mdash; they have been emailed a set-password link ✓</p>
+    <p v-if="invited" class="ur-ok">Invited {{ invited }} &mdash; they've been emailed an invitation to this workspace ✓</p>
 
     <p v-if="loading" class="ur-muted">Loading the roster…</p>
     <table v-else-if="visible.length" class="ur-table">
@@ -92,57 +92,6 @@
     <p v-else-if="filter" class="ur-muted">No one matches “{{ filter }}”.</p>
     <p v-else class="ur-muted">No users yet — invite someone with the button above.</p>
 
-    <!-- ---------------------- global directory lookup ---------------------- -->
-    <section class="ur-block">
-      <h2>Add someone who already has an account</h2>
-      <p class="ur-sub">
-        People are shared across workspaces. Search the directory by exact email or a
-        3-character prefix — it never lists everyone.
-      </p>
-      <div class="ur-fields">
-        <input
-          v-model="userQuery"
-          placeholder="exact email / uid or ≥3-char prefix"
-          @keyup.enter="search"
-        />
-        <button class="ur-btn" type="button" :disabled="userQuery.length < 3 || busy" @click="search">
-          Search
-        </button>
-      </div>
-      <ul class="ur-list">
-        <li v-for="u in found" :key="u.uid">
-          <span class="ur-grow">
-            {{ u.display_name || u.uid }} <span class="ur-email">{{ u.email }}</span>
-          </span>
-          <template v-if="u.in_this_tenant">
-            <span class="ur-chip">in this workspace</span>
-            <button class="ur-link" type="button" @click="open(u.uid)">Manage</button>
-          </template>
-          <template v-else>
-            <select v-model="addRole[u.uid]" class="ur-select" :aria-label="`Role for ${u.uid}`">
-              <option value="">Choose a role…</option>
-              <option v-for="r in roles" :key="r.name" :value="r.name">{{ r.name }}</option>
-            </select>
-            <button
-              class="ur-link"
-              type="button"
-              :disabled="!addRole[u.uid] || busy"
-              @click="addToTenant(u.uid)"
-            >
-              Add
-            </button>
-            <!-- For someone who has an account but never set a password. Members
-                 get the same action inside their profile. -->
-            <button class="ur-link" type="button" :disabled="busy" @click="reinvite(u.uid)">
-              Re-send invite
-            </button>
-          </template>
-        </li>
-        <li v-if="searched && !found.length" class="ur-muted">No matching users.</li>
-      </ul>
-      <p v-if="reinvited" class="ur-ok">Invite re-sent to {{ reinvited }} ✓</p>
-    </section>
-
     <InviteUserModal
       :open="inviting"
       :roles="roles"
@@ -162,14 +111,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import InviteUserModal from '@/components/admin/InviteUserModal.vue'
 import UserProfileModal from '@/components/admin/UserProfileModal.vue'
 import {
   ldapAdminService,
   type Role,
   type RosterUser,
-  type UserSummary,
 } from '@/services/ldapAdminService'
 import { errorMessage } from '@/services/apiClient'
 
@@ -189,7 +137,6 @@ const ADMINS = 'administrators'
 
 const roster = ref<RosterUser[]>([])
 const loading = ref(false)
-const busy = ref(false)
 const error = ref('')
 const filter = ref('')
 const openUid = ref<string | null>(null)
@@ -197,11 +144,6 @@ const openUid = ref<string | null>(null)
 const inviting = ref(false)
 const invited = ref('')
 
-const userQuery = ref('')
-const found = ref<UserSummary[]>([])
-const searched = ref(false)
-const reinvited = ref('')
-const addRole = reactive<Record<string, string>>({})
 
 const visible = computed(() => {
   const q = filter.value.trim().toLowerCase()
@@ -240,21 +182,7 @@ function onRemoved(uid: string) {
   // Drop the row immediately — the reload confirms it, but the list should not
   // still show someone the admin just removed.
   roster.value = roster.value.filter((u) => u.uid !== uid)
-  found.value = []
-  searched.value = false
   void reload()
-}
-
-async function run(fn: () => Promise<void>) {
-  busy.value = true
-  error.value = ''
-  try {
-    await fn()
-  } catch (e) {
-    error.value = errorMessage(e, 'Request failed')
-  } finally {
-    busy.value = false
-  }
 }
 
 // The modal owns the form and the request; the roster only has to catch up.
@@ -263,29 +191,6 @@ function onInvited(email: string) {
   void reload()
 }
 
-const reinvite = (uid: string) =>
-  run(async () => {
-    await ldapAdminService.reinvite(uid)
-    reinvited.value = uid
-  })
-
-const search = () =>
-  run(async () => {
-    found.value = await ldapAdminService.findUsers(userQuery.value)
-    searched.value = true
-  })
-
-const addToTenant = (uid: string) =>
-  run(async () => {
-    const role = addRole[uid]
-    if (!role) return
-    await ldapAdminService.addMember(role, uid)
-    delete addRole[uid]
-    // Re-run the lookup so the row flips to "in this workspace" rather than
-    // sitting there still offering to add them again.
-    found.value = await ldapAdminService.findUsers(userQuery.value)
-    await reload()
-  })
 </script>
 
 <style scoped>

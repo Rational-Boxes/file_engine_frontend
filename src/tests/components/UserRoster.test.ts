@@ -18,10 +18,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 
 const svc = vi.hoisted(() => ({
   listTenantUsers: vi.fn(),
-  findUsers: vi.fn(),
   createUser: vi.fn(),
-  addMember: vi.fn(),
-  reinvite: vi.fn(),
   getUserProfile: vi.fn(),
 }))
 
@@ -69,7 +66,6 @@ function mountRoster() {
 beforeEach(() => {
   vi.clearAllMocks()
   svc.listTenantUsers.mockResolvedValue(ROSTER)
-  svc.findUsers.mockResolvedValue([])
 })
 
 describe('UserRoster', () => {
@@ -147,54 +143,6 @@ describe('UserRoster', () => {
     expect(w.text()).toContain('Invited new@x.test')
     expect(svc.listTenantUsers).toHaveBeenCalledTimes(2)
     expect(w.emitted('roles-changed')).toBeTruthy()
-  })
-
-  it('lets an existing directory user be added to a chosen role', async () => {
-    svc.findUsers.mockResolvedValue([
-      { uid: 'old@x.test', email: 'old@x.test', display_name: 'Old Hand', in_this_tenant: false },
-    ])
-    const w = mountRoster()
-    await flushPromises()
-    const search = w.find('.ur-block').find('input')
-    await search.setValue('old')
-    await w.find('.ur-block').find('.ur-btn').trigger('click')
-    await flushPromises()
-    // No role picked yet -> nothing to add.
-    expect(w.find('.ur-list .ur-link').attributes('disabled')).toBeDefined()
-    await w.find('.ur-select').setValue('editors')
-    await w.find('.ur-list .ur-link').trigger('click')
-    await flushPromises()
-    expect(svc.addMember).toHaveBeenCalledWith('editors', 'old@x.test')
-  })
-
-  it('can re-send an invite to a directory hit who never set a password', async () => {
-    svc.findUsers.mockResolvedValue([
-      { uid: 'old@x.test', email: 'old@x.test', display_name: 'Old Hand', in_this_tenant: false },
-    ])
-    svc.reinvite.mockResolvedValue(undefined)
-    const w = mountRoster()
-    await flushPromises()
-    await w.find('.ur-block').find('input').setValue('old')
-    await w.find('.ur-block').find('.ur-btn').trigger('click')
-    await flushPromises()
-    const resend = w.findAll('.ur-list .ur-link').find((b) => b.text() === 'Re-send invite')!
-    await resend.trigger('click')
-    await flushPromises()
-    expect(svc.reinvite).toHaveBeenCalledWith('old@x.test')
-    expect(w.text()).toContain('Invite re-sent to old@x.test')
-  })
-
-  it('offers Manage, not Add, for a directory hit already in the tenant', async () => {
-    svc.findUsers.mockResolvedValue([
-      { uid: 'ann@x.test', email: 'ann@x.test', display_name: 'Ann Adams', in_this_tenant: true },
-    ])
-    const w = mountRoster()
-    await flushPromises()
-    await w.find('.ur-block').find('input').setValue('ann')
-    await w.find('.ur-block').find('.ur-btn').trigger('click')
-    await flushPromises()
-    expect(w.find('.ur-list').text()).toContain('in this workspace')
-    expect(w.find('.ur-select').exists()).toBe(false)
   })
 
   it('shows the roster error instead of an empty list when the load fails', async () => {

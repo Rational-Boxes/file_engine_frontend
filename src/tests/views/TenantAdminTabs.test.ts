@@ -63,7 +63,7 @@ describe('TenantAdminView tabs', () => {
   it('opens on the real Users roster, with neither policy editor mounted', async () => {
     const w = mountView()
     await flushPromises()
-    expect(w.text()).toContain('Invite a new user')
+    expect(w.text()).toContain('Invite a user')
     expect(listTenantUsers).toHaveBeenCalled()
     expect(w.find('.stub-2fa').exists()).toBe(false)
     expect(w.find('.stub-webdav').exists()).toBe(false)
