@@ -84,9 +84,11 @@ Browser (this SPA) ───────┼─ /csai      ─▶ csai ───�
 - **Tenant administration (via LDAP Manager, `/admin/tenant`, admins only):**
   a full **user roster** for the workspace — everyone with access, the roles they
   hold, and a filter across name/email/role — with each person opening in a
-  **profile modal** that edits their group membership as a whole set and offers
-  the two removal scopes (drop them from this workspace, or delete the global
-  account, which is refused while another workspace still uses it). Alongside it:
+  **profile modal** that edits their group membership as a whole set and can
+  **remove them from this workspace** — dropping their roles here and revoking
+  their tenant-bound WebDAV/MCP keys, while other workspaces they belong to are
+  untouched. Deleting the global account is a sysadmin/LDAP operation and is
+  deliberately not offered here. Alongside it:
   invite a new user, add an existing directory user, manage **roles** (create,
   delete, membership), and customize the **email templates** used for invites and
   password resets (edit, preview, send a test, revert to default).

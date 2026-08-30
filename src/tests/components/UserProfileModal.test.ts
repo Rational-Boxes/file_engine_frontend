@@ -40,8 +40,7 @@ function profile(over: Record<string, unknown> = {}) {
   return {
     uid: 'ann@x.test', email: 'ann@x.test', display_name: 'Ann Adams',
     given_name: 'Ann', surname: 'Adams', avatar_url: '', tenant: 'acme',
-    roles: ['editors'], is_admin: false, other_tenant_count: 0,
-    can_delete_account: true, ...over,
+    roles: ['editors'], is_admin: false, other_tenant_count: 0, ...over,
   }
 }
 
@@ -153,7 +152,7 @@ describe('UserProfileModal', () => {
 
   it('removes from the tenant only after the confirmation is accepted', async () => {
     svc.removeUser.mockResolvedValue({
-      uid: 'ann@x.test', scope: 'tenant', roles_removed: ['editors'], account_deleted: false,
+      uid: 'ann@x.test', roles_removed: ['editors'], credentials_purged: 2,
     })
     const w = mountModal()
     await flushPromises()
@@ -163,7 +162,7 @@ describe('UserProfileModal', () => {
     expect($('.cm-panel')?.textContent).toContain('Their account')
     ;($$('.cm-btn').find((b) => b.textContent?.includes('Remove')) as HTMLElement).click()
     await flushPromises()
-    expect(svc.removeUser).toHaveBeenCalledWith('ann@x.test', 'tenant')
+    expect(svc.removeUser).toHaveBeenCalledWith('ann@x.test')
     expect(w.emitted('removed')?.[0]).toEqual(['ann@x.test'])
     expect(w.emitted('close')).toBeTruthy()
   })
@@ -179,35 +178,26 @@ describe('UserProfileModal', () => {
     expect($('.up-panel')).not.toBeNull()
   })
 
-  it('deletes the account with the system scope, warning what goes with it', async () => {
-    svc.removeUser.mockResolvedValue({
-      uid: 'ann@x.test', scope: 'system', roles_removed: ['editors'], account_deleted: true,
-    })
+  it('offers no account-deletion control (that is a sysadmin/LDAP operation)', async () => {
     mountModal()
     await flushPromises()
-    $$('.up-danger')[1].click()
-    await flushPromises()
-    const msg = $('.cm-panel')?.textContent || ''
-    expect(msg).toContain('two-factor')
-    expect(msg).toContain('Files they created are not deleted')
-    ;($$('.cm-btn').find((b) => b.textContent?.includes('Delete account')) as HTMLElement).click()
-    await flushPromises()
-    expect(svc.removeUser).toHaveBeenCalledWith('ann@x.test', 'system')
+    // Exactly one danger action: remove from this workspace.
+    expect($$('.up-danger')).toHaveLength(1)
+    expect($('.up-danger-zone')?.textContent).not.toContain('Delete account')
+    expect($('.up-danger-zone')?.textContent).not.toContain('Delete the account entirely')
   })
 
-  it('blocks account deletion while another workspace uses it, and says why', async () => {
-    svc.getUserProfile.mockResolvedValue(
-      profile({ other_tenant_count: 2, can_delete_account: false }),
-    )
+  it('warns that a removed multi-tenant user keeps access elsewhere', async () => {
+    svc.getUserProfile.mockResolvedValue(profile({ other_tenant_count: 2 }))
     mountModal()
     await flushPromises()
-    expect(($$('.up-danger')[1] as HTMLButtonElement).disabled).toBe(true)
-    expect($('.up-danger-zone')?.textContent).toContain('2 other workspaces')
-    // Removing them from *this* workspace is still on offer.
+    // The removal is still offered — it only unlinks them here — but the admin is
+    // told it is not a full offboarding.
     expect(($$('.up-danger')[0] as HTMLButtonElement).disabled).toBe(false)
+    expect($('.up-danger-zone')?.textContent).toContain('2 other workspaces')
   })
 
-  it('reports a count of other workspaces, never their names', async () => {
+  it('reports a count of other workspaces in the facts, never their names', async () => {
     svc.getUserProfile.mockResolvedValue(profile({ other_tenant_count: 3 }))
     mountModal()
     await flushPromises()

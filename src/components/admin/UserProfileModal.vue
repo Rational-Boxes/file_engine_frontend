@@ -17,7 +17,8 @@
 
 <!--
   One tenant member, opened from the roster: who they are, which of this tenant's
-  roles they hold, and the two ways to take their access away.
+  roles they hold, and how to remove them from this workspace. Deleting the global
+  account is a sysadmin/LDAP operation and is deliberately not offered here.
 
   Group membership is edited as a whole set — tick the roles, save once — because
   that is how an admin thinks about it ("Ann is an editor and a reviewer"), and
@@ -57,8 +58,8 @@
             <div>
               <dt>Other workspaces</dt>
               <!-- A count, never names: which other tenants use this account is
-                   not this tenant admin's business, but the number is what makes
-                   the delete guard below explicable. -->
+                   not this tenant admin's business, but the number tells them a
+                   removal here still leaves the person access elsewhere. -->
               <dd>{{ user.other_tenant_count || 'none' }}</dd>
             </div>
           </dl>
@@ -123,42 +124,28 @@
                 <div>
                   <strong>Remove from this workspace</strong>
                   <p class="up-sub">
-                    Drops every role they hold here. They lose all access to this workspace;
-                    their account and any other workspace they belong to are untouched.
+                    Drops every role they hold here and revokes their WebDAV/MCP keys for
+                    this workspace. They lose all access to it; their account, and any other
+                    workspace they belong to, are untouched.
+                  </p>
+                  <p v-if="user.other_tenant_count" class="up-sub">
+                    They will still have access to
+                    {{ user.other_tenant_count }} other
+                    workspace{{ user.other_tenant_count === 1 ? '' : 's' }}.
                   </p>
                 </div>
                 <button
                   class="up-btn up-danger"
                   type="button"
                   :disabled="busy"
-                  @click="confirming = 'tenant'"
+                  @click="confirming = true"
                 >
                   Remove from workspace
                 </button>
               </div>
-              <div class="up-danger-row">
-                <div>
-                  <strong>Delete the account entirely</strong>
-                  <p class="up-sub">
-                    Deletes the sign-in itself, along with their two-factor enrolment and
-                    every WebDAV/MCP key. Files they created stay where they are.
-                  </p>
-                  <p v-if="user.other_tenant_count" class="up-sub up-warn">
-                    Not available: this account is also used by
-                    {{ user.other_tenant_count }} other
-                    workspace{{ user.other_tenant_count === 1 ? '' : 's' }}. Remove them from
-                    this workspace instead.
-                  </p>
-                </div>
-                <button
-                  class="up-btn up-danger"
-                  type="button"
-                  :disabled="busy || !user.can_delete_account"
-                  @click="confirming = 'system'"
-                >
-                  Delete account
-                </button>
-              </div>
+              <!-- Deleting the global account itself is a sysadmin operation done in
+                   LDAP, not something a tenant admin can do — so no control for it
+                   here. -->
             </template>
           </section>
         </template>
@@ -167,12 +154,12 @@
   </Teleport>
 
   <ConfirmModal
-    :open="confirming !== null"
+    :open="confirming"
     danger
-    :title="confirming === 'system' ? 'Delete this account?' : 'Remove from this workspace?'"
+    title="Remove from this workspace?"
     :message="confirmMessage"
-    :confirm-label="confirming === 'system' ? 'Delete account' : 'Remove'"
-    @cancel="confirming = null"
+    confirm-label="Remove"
+    @cancel="confirming = false"
     @confirm="remove"
   />
 </template>
@@ -183,7 +170,6 @@ import ConfirmModal from '@/components/ConfirmModal.vue'
 import {
   ldapAdminService,
   type AdminUserDetail,
-  type RemovalScope,
   type Role,
 } from '@/services/ldapAdminService'
 import { errorMessage } from '@/services/apiClient'
@@ -212,7 +198,7 @@ const busy = ref(false)
 const error = ref('')
 const saved = ref(false)
 const reinvited = ref(false)
-const confirming = ref<RemovalScope | null>(null)
+const confirming = ref(false)
 const panelEl = ref<HTMLElement | null>(null)
 const closeEl = ref<HTMLButtonElement | null>(null)
 
@@ -246,17 +232,15 @@ function isLockedRole(role: string): boolean {
 
 const confirmMessage = computed(() => {
   const who = user.value?.display_name || user.value?.uid || 'this user'
-  return confirming.value === 'system'
-    ? `${who}'s account will be deleted, along with their two-factor enrolment and all `
-      + 'WebDAV/MCP keys. Files they created are not deleted. This cannot be undone.'
-    : `${who} will lose every role in this workspace and all access to it. Their account `
-      + 'stays, so you can add them back later.'
+  return `${who} will lose every role in this workspace and all access to it, and their `
+    + 'WebDAV/MCP keys for it will be revoked. Their account stays, so you can add them '
+    + 'back later.'
 })
 
 watch(
   () => props.uid,
   async (uid) => {
-    confirming.value = null
+    confirming.value = false
     error.value = ''
     saved.value = false
     reinvited.value = false
@@ -325,13 +309,12 @@ const reinvite = () =>
   })
 
 const remove = () => {
-  const scope = confirming.value
-  confirming.value = null
-  if (!scope) return
+  if (!confirming.value) return
+  confirming.value = false
   return run(async () => {
     if (!user.value) return
     const uid = user.value.uid
-    await ldapAdminService.removeUser(uid, scope)
+    await ldapAdminService.removeUser(uid)
     emit('removed', uid)
     close()
   })
@@ -340,7 +323,7 @@ const remove = () => {
 function onKeydown(e: KeyboardEvent) {
   // While a confirmation is up it owns Escape — otherwise one keypress would
   // dismiss both the prompt and the profile behind it.
-  if (e.key === 'Escape' && confirming.value === null) {
+  if (e.key === 'Escape' && !confirming.value) {
     e.preventDefault()
     close()
     return

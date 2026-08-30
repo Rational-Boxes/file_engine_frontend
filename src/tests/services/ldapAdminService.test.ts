@@ -72,12 +72,11 @@ describe('ldapAdminService', () => {
     expect(put).toHaveBeenCalledWith('/v1/admin/users/a%40b.com/roles', { roles: ['editors', 'viewers'] })
   })
 
-  it('removes at the tenant scope unless the system scope is asked for', async () => {
-    del.mockResolvedValue({ data: { uid: 'a@b.com', scope: 'tenant', roles_removed: [], account_deleted: false } })
-    await ldapAdminService.removeUser('a@b.com')
-    expect(del).toHaveBeenCalledWith('/v1/admin/users/a%40b.com', { params: { scope: 'tenant' } })
-    await ldapAdminService.removeUser('a@b.com', 'system')
-    expect(del).toHaveBeenCalledWith('/v1/admin/users/a%40b.com', { params: { scope: 'system' } })
+  it('removes a user from this tenant (no scope; deletion is a sysadmin/LDAP op)', async () => {
+    del.mockResolvedValue({ data: { uid: 'a@b.com', roles_removed: ['editors'], credentials_purged: 1 } })
+    const r = await ldapAdminService.removeUser('a@b.com')
+    expect(del).toHaveBeenCalledWith('/v1/admin/users/a%40b.com')
+    expect(r.credentials_purged).toBe(1)
   })
 
   it('self-service: profile + change password', async () => {

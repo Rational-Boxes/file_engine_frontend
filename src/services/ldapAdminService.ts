@@ -43,8 +43,8 @@ export interface RosterUser {
   orphaned: boolean
 }
 // A member's profile as an admin sees it. `other_tenant_count` is deliberately a
-// count and not names: it explains why an account may not be deletable without
-// disclosing which other tenants use it.
+// count and not names: it tells the admin that removing the person from this
+// workspace still leaves them access elsewhere, without disclosing where.
 export interface AdminUserDetail {
   uid: string
   email: string
@@ -56,14 +56,11 @@ export interface AdminUserDetail {
   roles: string[]
   is_admin: boolean
   other_tenant_count: number
-  can_delete_account: boolean
 }
-export type RemovalScope = 'tenant' | 'system'
 export interface UserRemoval {
   uid: string
-  scope: RemovalScope
   roles_removed: string[]
-  account_deleted: boolean
+  credentials_purged: number   // tenant-bound door keys (WebDAV/MCP/…) revoked
 }
 
 export interface Profile {
@@ -181,12 +178,11 @@ export const ldapAdminService = {
   async setUserRoles(uid: string, roles: string[]): Promise<AdminUserDetail> {
     return (await ldapAdminClient.put(`/v1/admin/users/${encodeURIComponent(uid)}/roles`, { roles })).data
   },
-  // 'tenant' revokes access here and leaves the global account alone; 'system'
-  // also deletes the account, and is refused if another tenant still uses it.
-  async removeUser(uid: string, scope: RemovalScope = 'tenant'): Promise<UserRemoval> {
-    return (
-      await ldapAdminClient.delete(`/v1/admin/users/${encodeURIComponent(uid)}`, { params: { scope } })
-    ).data
+  // Remove the user from THIS tenant: drops their roles here and purges their
+  // tenant-bound door keys. The global account is not this call's to delete — that
+  // is a sysadmin/LDAP operation.
+  async removeUser(uid: string): Promise<UserRemoval> {
+    return (await ldapAdminClient.delete(`/v1/admin/users/${encodeURIComponent(uid)}`)).data
   },
 
   // --- tenant admin: two-factor policy (PROPOSAL §4.8) ---
