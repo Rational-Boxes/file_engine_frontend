@@ -30,6 +30,9 @@ vi.mock('@/services/renditions', () => ({
   renditionObjectUrl,
   renditionText,
   revokeRenditionUrl,
+  // Faithful reimpl: a playable clip arrives as the `preview` rendition.
+  isVideoRef: (r?: { ext: string }) =>
+    !!r && ['mp4', 'webm', 'ogg', 'mov'].includes(r.ext.toLowerCase()),
   // Faithful reimpl: the preview still is a PNG preview, else a video poster.
   previewImage: (set: { preview?: { ext: string }; poster?: unknown; thumbnail?: { ext: string } }) => {
     const isImg = (r?: { ext: string }) => !!r && ['png', 'webp', 'jpg', 'jpeg', 'gif'].includes(r.ext)

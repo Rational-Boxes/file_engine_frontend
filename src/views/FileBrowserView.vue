@@ -156,7 +156,7 @@
             :key="item.uid"
             :data-uid="item.uid"
             :class="{ sel: files.selected.has(item.uid), cut: isCut(item), deleted: item.deleted, active: files.drawerOpen && files.detailItem?.uid === item.uid }"
-            @dblclick="open(item)"
+            @dblclick="onRowDoubleClick(item)"
           >
             <td class="cb-col" @click.stop>
               <input
@@ -165,7 +165,7 @@
                 @change="files.toggleSelect(item.uid)"
               />
             </td>
-            <td class="name" @click="open(item)">
+            <td class="name" @click="onRowClick(item)">
               <FileThumbnail :item="item" /><span :title="item.name">{{ truncateMiddle(item.name, 60) }}</span>
               <span v-if="item.deleted" class="deleted-badge" title="Soft-deleted">deleted</span>
               <button
@@ -274,7 +274,8 @@ import HelpIcon from '@/components/HelpIcon.vue'
 import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
-import { is3DModel } from '@/utils/modelFormat'
+import { previewVerdictFromRow, canPreviewWithRenditions, canView3DModel } from '@/utils/previewable'
+import { loadRenditionSet } from '@/services/renditions'
 import { shareService, type DropProvenance } from '@/services/shareService'
 import { discussionService, type FlagCounts } from '@/services/discussionService'
 
@@ -286,8 +287,7 @@ const comments = useCommentsStore()
 
 // A file is viewable in 3D when it's a known model format AND has been converted
 // (its `model` XKT rendition lives among its hidden children).
-const canView3D = (item: FileItem) =>
-  !item.isDirectory && item.hasRenditions && is3DModel(item.name)
+const canView3D = (item: FileItem) => canView3DModel(item)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const dragOver = ref(false)
@@ -563,6 +563,72 @@ const open = (item: FileItem) => {
   else files.openDetails(item)
 }
 
+// Double click opens the preview; where there is nothing to preview it opens the
+// comment window instead, so the gesture always lands somewhere useful rather
+// than on an empty frame. Directories keep navigating, which is what a double
+// click on a folder has always done.
+//
+// Which preview a file gets depends on WHICH rendition it has — a `pdf`, the
+// XKT `model`, a playable `preview` clip — and the listing row carries only a
+// count, not the names. So the set is fetched, but only when the row cannot
+// settle it: a .pdf or an inline image previews on its own, and a file with no
+// renditions at all has nothing to look up. That leaves one request, on a
+// gesture, for the cases that genuinely need it — rather than one per row on
+// every listing.
+const openPreview = async (item: FileItem) => {
+  if (item.deleted) return
+  if (item.isDirectory) return files.openDirectory(item)
+
+  const toPreview = () => router.push(`/preview/${item.uid}`)
+  const verdict = previewVerdictFromRow(item)
+  if (verdict === 'yes') return toPreview()
+  if (verdict === 'no') return comments.open(item.uid, item.name)
+
+  try {
+    const set = await loadRenditionSet(item.uid)
+    if (canPreviewWithRenditions(item.name, set)) return toPreview()
+    return comments.open(item.uid, item.name)
+  } catch {
+    // The lookup is an optimisation, not a gate. If it fails, send the user to
+    // the preview: that page loads the same renditions itself and has its own
+    // error and "generate preview" handling, whereas the comment window would
+    // silently deny a preview that may well exist.
+    return toPreview()
+  }
+}
+
+// Both gestures live on the same row, so the single-click action has to wait
+// long enough to know a second click is not coming. Without the delay every
+// double click also fires the single-click handler first, leaving the details
+// drawer open behind the preview — and still open when the user navigates back.
+//
+// 250ms is inside the platform double-click threshold on every mainstream
+// desktop, and it is the whole cost: it delays opening a drawer, not anything
+// destructive.
+const DOUBLE_CLICK_GRACE_MS = 250
+let clickTimer: ReturnType<typeof setTimeout> | null = null
+
+const cancelPendingClick = () => {
+  if (clickTimer === null) return
+  clearTimeout(clickTimer)
+  clickTimer = null
+}
+
+const onRowClick = (item: FileItem) => {
+  cancelPendingClick()
+  clickTimer = setTimeout(() => {
+    clickTimer = null
+    open(item)
+  }, DOUBLE_CLICK_GRACE_MS)
+}
+
+const onRowDoubleClick = (item: FileItem) => {
+  // Drop the pending single click: this is the second half of a double click,
+  // not a separate intent.
+  cancelPendingClick()
+  openPreview(item)
+}
+
 const onAction = (action: string, item: FileItem) => {
   switch (action) {
     case 'open': return files.openDirectory(item)
@@ -761,6 +827,10 @@ onDeactivated(() => {
   dragOver.value = false
   dragDepth.value = 0
   stopPoll()
+  // A click waiting out its double-click grace period would otherwise fire after
+  // the view is gone and open a drawer over whatever the user navigated to —
+  // which is exactly what a double click into the preview does.
+  cancelPendingClick()
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('dragenter', onWinDragEnter)
   window.removeEventListener('dragover', onWinDragOver)
