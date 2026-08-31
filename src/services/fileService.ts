@@ -25,6 +25,12 @@ export interface FileItem {
   // appear in normal listings; hasRenditions lets the UI offer to fetch them.
   renditionCount: number
   hasRenditions: boolean
+  // The side-car children themselves, present only when the listing was asked
+  // for them (listDirectory({ children: true })). `undefined` means NOT ASKED —
+  // which is not the same as "has none", and the difference matters: a caller
+  // that treats undefined as empty would decide a file has nothing to show when
+  // it simply never enquired.
+  children?: SideCarChild[]
   // Soft-deleted. Only ever true in a with-deleted listing (showDeleted); the
   // UI marks these and offers Undelete.
   deleted: boolean
@@ -35,6 +41,17 @@ export interface FileItem {
   owner: string
   createdBy: string
   modifiedBy: string
+}
+
+/** A hidden child of a file, as the listing reports it. What it MEANS — a still
+ *  image, a converted PDF, the xeokit geometry — is read from its name by
+ *  utils/previewable and services/renditions; the bridge does not interpret it
+ *  and neither does this layer. */
+export interface SideCarChild {
+  uid: string
+  name: string
+  size: number
+  modifiedAt: number
 }
 
 export interface NodeInfo {
@@ -64,6 +81,7 @@ interface DirEntry {
   owner?: string
   created_by?: string
   modified_by?: string
+  children?: Array<{ uid: string; name: string; size?: number; modified_at?: number }>
 }
 
 function toItem(e: DirEntry): FileItem {
@@ -83,6 +101,14 @@ function toItem(e: DirEntry): FileItem {
     owner: e.owner ?? '',
     createdBy: e.created_by ?? '',
     modifiedBy: e.modified_by ?? '',
+    // Left undefined when the bridge did not send them, so "not asked" stays
+    // distinguishable from "has none".
+    children: e.children?.map((c) => ({
+      uid: c.uid,
+      name: c.name,
+      size: c.size ?? 0,
+      modifiedAt: c.modified_at ?? 0,
+    })),
   }
 }
 
@@ -100,9 +126,25 @@ export const fileService = {
   // List a directory. With `deleted: true` the bridge returns soft-deleted
   // entries too (each carrying `deleted`), for the "show deleted" view — requires
   // the LIST_DELETED permission on the directory.
-  async listDirectory(uid: string, opts?: { deleted?: boolean }): Promise<FileItem[]> {
+  // `children: true` asks the bridge to include each entry's side-car children,
+  // so the caller can tell what a file can show without a request per file. It
+  // costs the bridge a lookup per entry that has any, so it is opt-in: ask for it
+  // where the answer is used (the file browser), not in pickers that only need
+  // names.
+  //
+  // The bridge bounds that work and reports `children_complete: false` when it
+  // stopped early. Entries beyond the bound come back with no `children` key,
+  // which reads as "not asked" — exactly right, since the caller must then fall
+  // back to enquiring per file for those.
+  async listDirectory(
+    uid: string,
+    opts?: { deleted?: boolean; children?: boolean },
+  ): Promise<FileItem[]> {
+    const params: Record<string, string> = {}
+    if (opts?.deleted) params.deleted = 'true'
+    if (opts?.children) params.children = '1'
     const { data } = await apiClient.get<{ entries: DirEntry[] }>(`/v1/dirs/${uid}`, {
-      params: opts?.deleted ? { deleted: 'true' } : undefined,
+      params: Object.keys(params).length ? params : undefined,
     })
     return (data.entries || []).map(toItem)
   },

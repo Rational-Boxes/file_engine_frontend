@@ -131,7 +131,13 @@ export const useFileStore = defineStore('files', {
         this.canWrite = wr
         // Entering a dir we can't list-deleted in silently drops back to the live view.
         if (this.showDeleted && !ld) this.showDeleted = false
-        this.items = await fileService.listDirectory(this.currentUid, { deleted: this.showDeleted })
+        // `children: true`: the browser decides from a row whether a file has
+        // anything to preview, and asking here is one bridge round trip instead
+        // of one per file from the client.
+        this.items = await fileService.listDirectory(this.currentUid, {
+          deleted: this.showDeleted,
+          children: true,
+        })
       } catch (e) {
         this.error = errorMessage(e, 'Failed to load directory')
         this.items = []
@@ -151,7 +157,13 @@ export const useFileStore = defineStore('files', {
       if (this.loading) return // a full load() is already in flight
       let items: FileItem[]
       try {
-        items = await fileService.listDirectory(this.currentUid, { deleted: this.showDeleted })
+        // Same shape as load(), so a poll cannot quietly replace rows that carry
+        // their children with rows that do not — which would make previewable
+        // files look unpreviewable a few seconds after the page settled.
+        items = await fileService.listDirectory(this.currentUid, {
+          deleted: this.showDeleted,
+          children: true,
+        })
       } catch {
         return // transient — leave the current listing intact
       }

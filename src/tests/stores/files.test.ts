@@ -59,7 +59,7 @@ describe('files store (UID-native)', () => {
   it('openRoot loads the root and resets breadcrumbs', async () => {
     const store = useFileStore()
     await store.openRoot()
-    expect(fileService.listDirectory).toHaveBeenCalledWith(ROOT, { deleted: false })
+    expect(fileService.listDirectory).toHaveBeenCalledWith(ROOT, { deleted: false, children: true })
     expect(store.currentUid).toBe(ROOT)
     expect(store.breadcrumbs).toEqual([{ uid: ROOT, name: 'Home' }])
     expect(store.items).toHaveLength(2)
@@ -113,7 +113,7 @@ describe('files store (UID-native)', () => {
 
     expect(store.currentUid).toBe('d1')
     expect(store.breadcrumbs.map((c) => c.name)).toEqual(['Home', 'docs'])
-    expect(fileService.listDirectory).toHaveBeenCalledWith('d1', { deleted: false })
+    expect(fileService.listDirectory).toHaveBeenCalledWith('d1', { deleted: false, children: true })
     expect(store.drawerOpen).toBe(true)
     expect(store.detailItem?.uid).toBe('f1')
   })
@@ -257,7 +257,7 @@ describe('files store (UID-native)', () => {
     await store.openRoot()
     await store.toggleShowDeleted()
     expect(store.showDeleted).toBe(true)
-    expect(fileService.listDirectory).toHaveBeenLastCalledWith(ROOT, { deleted: true })
+    expect(fileService.listDirectory).toHaveBeenLastCalledWith(ROOT, { deleted: true, children: true })
     expect(store.items.find((i) => i.uid === 'g1')?.deleted).toBe(true)
   })
 
@@ -270,7 +270,7 @@ describe('files store (UID-native)', () => {
     ;(fileService.checkPermission as any).mockResolvedValue(false) // next dir: no perm
     await store.openDirectory(dir)
     expect(store.showDeleted).toBe(false)
-    expect(fileService.listDirectory).toHaveBeenLastCalledWith('d1', { deleted: false })
+    expect(fileService.listDirectory).toHaveBeenLastCalledWith('d1', { deleted: false, children: true })
   })
 
   it('undeleteItem restores the file then reloads', async () => {
