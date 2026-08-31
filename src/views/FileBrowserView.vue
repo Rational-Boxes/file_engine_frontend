@@ -274,6 +274,7 @@ import HelpIcon from '@/components/HelpIcon.vue'
 import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
+import { usePreviewStore } from '@/stores/preview'
 import { previewVerdictFromRow, canPreviewWithRenditions, canView3DModel } from '@/utils/previewable'
 import { loadRenditionSet, toRenditionSet } from '@/services/renditions'
 import { shareService, type DropProvenance } from '@/services/shareService'
@@ -284,6 +285,7 @@ const files = useFileStore()
 const upload = useUploadStore()
 const model3d = useModel3dStore()
 const comments = useCommentsStore()
+const preview = usePreviewStore()
 
 // A file is viewable in 3D when it's a known model format AND has been converted
 // (its `model` XKT rendition lives among its hidden children).
@@ -579,7 +581,18 @@ const openPreview = async (item: FileItem) => {
   if (item.deleted) return
   if (item.isDirectory) return files.openDirectory(item)
 
-  const toPreview = () => router.push(`/preview/${item.uid}`)
+  // Opens the preview OVERLAY, not the /preview route.
+  //
+  // Routing there works but leaves the browser one navigation deeper, so closing
+  // the preview drops the user on a page they have to press Back on to get
+  // their listing again — for a gesture whose whole job is a quick look. The
+  // overlays are mounted in App.vue and close straight back onto the row that
+  // opened them, which is also how search hits and chat citations already open.
+  //
+  // 3D models go to their own viewer: DocumentPreview has nothing to render for
+  // geometry, and PreviewView routed them to model3d for the same reason.
+  const toPreview = () =>
+    canView3D(item) ? model3d.open(item.uid, item.name) : preview.open(item.uid, item.name)
   const verdict = previewVerdictFromRow(item)
   if (verdict === 'yes') return toPreview()
   if (verdict === 'no') return comments.open(item.uid, item.name)

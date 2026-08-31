@@ -61,6 +61,8 @@ const h = vi.hoisted(() => ({
   openDetails: vi.fn(),
   openDirectory: vi.fn(),
   commentsOpen: vi.fn(),
+  previewOpen: vi.fn(),
+  model3dOpen: vi.fn(),
   push: vi.fn(),
   loadRenditionSet: vi.fn(),
 }))
@@ -111,7 +113,8 @@ vi.mock('@/stores/files', () => ({
   }),
 }))
 vi.mock('@/stores/comments', () => ({ useCommentsStore: () => ({ open: h.commentsOpen }) }))
-vi.mock('@/stores/model3d', () => ({ useModel3dStore: () => ({ open: vi.fn() }) }))
+vi.mock('@/stores/model3d', () => ({ useModel3dStore: () => ({ open: h.model3dOpen }) }))
+vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open: h.previewOpen }) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ accessLevel: 'admin' }) }))
 vi.mock('@/stores/upload', () => ({
   useUploadStore: () => ({ items: [], active: false, uploadFiles: vi.fn(), clear: vi.fn() }),
@@ -180,7 +183,10 @@ describe('file row gestures', () => {
     await row.trigger('dblclick')
     await flushPromises()
 
-    expect(h.push).toHaveBeenCalledWith('/preview/doc1')
+    expect(h.previewOpen).toHaveBeenCalledWith('doc1', 'deck.pptx')
+    // The OVERLAY, not the route: closing it must return to this listing, not
+    // leave a navigation for the user to press Back on.
+    expect(h.push).not.toHaveBeenCalled()
 
     // The pending single click must have been cancelled — this is the whole
     // point of the grace period.
@@ -192,7 +198,8 @@ describe('file row gestures', () => {
     const w = mountView()
     await rowFor(w, 'pdf1').trigger('dblclick')
     await flushPromises()
-    expect(h.push).toHaveBeenCalledWith('/preview/pdf1')
+    expect(h.previewOpen).toHaveBeenCalledWith('pdf1', 'contract.pdf')
+    expect(h.push).not.toHaveBeenCalled()
     expect(h.commentsOpen).not.toHaveBeenCalled()
     // The row settled it, so no request was made.
     expect(h.loadRenditionSet).not.toHaveBeenCalled()
@@ -216,7 +223,7 @@ describe('file row gestures', () => {
     const w = mountView()
     await rowFor(w, 'mk1').trigger('dblclick')
     await flushPromises()
-    expect(h.push).toHaveBeenCalledWith('/preview/mk1')
+    expect(h.previewOpen).toHaveBeenCalledWith('mk1', 'notes.txt')
     expect(h.commentsOpen).not.toHaveBeenCalled()
   })
 
@@ -225,14 +232,18 @@ describe('file row gestures', () => {
     await rowFor(w, 'raw1').trigger('dblclick')
     await flushPromises()
     expect(h.commentsOpen).toHaveBeenCalledWith('raw1', 'part.step')
-    expect(h.push).not.toHaveBeenCalled()
+    expect(h.previewOpen).not.toHaveBeenCalled()
   })
 
   it('decides from the row when the listing supplied the children, with no request', async () => {
     const w = mountView()
     await rowFor(w, 'ifc1').trigger('dblclick')
     await flushPromises()
-    expect(h.push).toHaveBeenCalledWith('/preview/ifc1')
+    // A 3D model opens the MODEL viewer, not the document overlay — the
+    // document preview has nothing to render for geometry.
+    expect(h.model3dOpen).toHaveBeenCalledWith('ifc1', 'house.ifc')
+    expect(h.previewOpen).not.toHaveBeenCalled()
+    expect(h.push).not.toHaveBeenCalled()
     // The whole point of ?children=1: the answer was already on the row.
     expect(h.loadRenditionSet).not.toHaveBeenCalled()
   })
@@ -242,7 +253,7 @@ describe('file row gestures', () => {
     await rowFor(w, 'txt1').trigger('dblclick')
     await flushPromises()
     expect(h.commentsOpen).toHaveBeenCalledWith('txt1', 'readme.txt')
-    expect(h.push).not.toHaveBeenCalled()
+    expect(h.previewOpen).not.toHaveBeenCalled()
     expect(h.loadRenditionSet).not.toHaveBeenCalled()
   })
 
@@ -255,7 +266,21 @@ describe('file row gestures', () => {
     await rowFor(w, 'doc1').trigger('dblclick')   // hasRenditions, but no children key
     await flushPromises()
     expect(h.loadRenditionSet).toHaveBeenCalledWith('doc1')
-    expect(h.push).toHaveBeenCalledWith('/preview/doc1')
+    expect(h.previewOpen).toHaveBeenCalledWith('doc1', 'deck.pptx')
+  })
+
+  it('never changes the route, so closing the preview leaves no extra Back to press', async () => {
+    // The regression this guards: routing to /preview/:uid works, but it puts
+    // the browser one navigation deeper, so closing the preview strands the user
+    // on a page they must press Back on to get their listing again — for a
+    // gesture whose whole job is a quick look.
+    h.loadRenditionSet.mockResolvedValue({ pdf: { uid: 'r', name: 'v-pdf.pdf', fmt: 'pdf', ext: 'pdf', version: 'v' } })
+    const w = mountView()
+    for (const uid of ['pdf1', 'doc1', 'ifc1', 'raw1', 'txt1', 'mk1']) {
+      await rowFor(w, uid).trigger('dblclick')
+      await flushPromises()
+    }
+    expect(h.push).not.toHaveBeenCalled()
   })
 
   it('still navigates into a folder on a double click', async () => {
@@ -264,7 +289,7 @@ describe('file row gestures', () => {
     await flushPromises()
     expect(h.openDirectory).toHaveBeenCalledTimes(1)
     expect(h.openDirectory.mock.calls[0][0].uid).toBe('dir1')
-    expect(h.push).not.toHaveBeenCalled()
+    expect(h.previewOpen).not.toHaveBeenCalled()
     expect(h.commentsOpen).not.toHaveBeenCalled()
   })
 })
