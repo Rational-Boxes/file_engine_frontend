@@ -32,6 +32,18 @@ const items = [
   // Has renditions, but none of them is a display surface — the case a bare
   // "hasRenditions" test would get wrong.
   { uid: 'mk1', name: 'notes.txt', isDirectory: false, hasRenditions: true },
+  // Rows carrying their side-car children, as ?children=1 supplies them.
+  {
+    uid: 'ifc1', name: 'house.ifc', isDirectory: false, hasRenditions: true,
+    children: [
+      { uid: 'c1', name: '20260101_000000.000-model.xkt', size: 9, modifiedAt: 0 },
+      { uid: 'c2', name: '20260101_000000.000-metamodel.json', size: 9, modifiedAt: 0 },
+    ],
+  },
+  {
+    uid: 'txt1', name: 'readme.txt', isDirectory: false, hasRenditions: true,
+    children: [{ uid: 'c3', name: '20260101_000000.000-markup.json', size: 9, modifiedAt: 0 }],
+  },
   { uid: 'dir1', name: 'Reports', isDirectory: true, hasRenditions: false },
 ].map((i) => ({
   renditionCount: i.hasRenditions ? 1 : 0,
@@ -214,6 +226,36 @@ describe('file row gestures', () => {
     await flushPromises()
     expect(h.commentsOpen).toHaveBeenCalledWith('raw1', 'part.step')
     expect(h.push).not.toHaveBeenCalled()
+  })
+
+  it('decides from the row when the listing supplied the children, with no request', async () => {
+    const w = mountView()
+    await rowFor(w, 'ifc1').trigger('dblclick')
+    await flushPromises()
+    expect(h.push).toHaveBeenCalledWith('/preview/ifc1')
+    // The whole point of ?children=1: the answer was already on the row.
+    expect(h.loadRenditionSet).not.toHaveBeenCalled()
+  })
+
+  it('falls back to comments from the row data alone', async () => {
+    const w = mountView()
+    await rowFor(w, 'txt1').trigger('dblclick')
+    await flushPromises()
+    expect(h.commentsOpen).toHaveBeenCalledWith('txt1', 'readme.txt')
+    expect(h.push).not.toHaveBeenCalled()
+    expect(h.loadRenditionSet).not.toHaveBeenCalled()
+  })
+
+  it('still enquires when the row has no children key — "not asked" is not "has none"', async () => {
+    // The bridge bounds how many entries it interrogates per listing, so beyond
+    // that bound rows arrive without the key. Treating that as "no side-cars"
+    // would deny a preview to files that have one.
+    h.loadRenditionSet.mockResolvedValue({ pdf: { uid: 'r', name: 'v-pdf.pdf', fmt: 'pdf', ext: 'pdf', version: 'v' } })
+    const w = mountView()
+    await rowFor(w, 'doc1').trigger('dblclick')   // hasRenditions, but no children key
+    await flushPromises()
+    expect(h.loadRenditionSet).toHaveBeenCalledWith('doc1')
+    expect(h.push).toHaveBeenCalledWith('/preview/doc1')
   })
 
   it('still navigates into a folder on a double click', async () => {

@@ -275,7 +275,7 @@ import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { previewVerdictFromRow, canPreviewWithRenditions, canView3DModel } from '@/utils/previewable'
-import { loadRenditionSet } from '@/services/renditions'
+import { loadRenditionSet, toRenditionSet } from '@/services/renditions'
 import { shareService, type DropProvenance } from '@/services/shareService'
 import { discussionService, type FlagCounts } from '@/services/discussionService'
 
@@ -583,6 +583,15 @@ const openPreview = async (item: FileItem) => {
   const verdict = previewVerdictFromRow(item)
   if (verdict === 'yes') return toPreview()
   if (verdict === 'no') return comments.open(item.uid, item.name)
+
+  // The listing asked for side-car children, so the answer is usually already
+  // here and the gesture costs nothing. `undefined` means the bridge did not
+  // send them — it bounds that work per listing — which is NOT the same as
+  // "has none", so that case falls through to enquiring rather than deciding.
+  if (item.children) {
+    if (canPreviewWithRenditions(item.name, toRenditionSet(item.children))) return toPreview()
+    return comments.open(item.uid, item.name)
+  }
 
   try {
     const set = await loadRenditionSet(item.uid)
