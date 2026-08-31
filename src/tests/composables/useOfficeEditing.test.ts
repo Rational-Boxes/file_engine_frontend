@@ -14,22 +14,31 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ref, nextTick } from 'vue'
+import { ref } from 'vue'
+import { flushPromises } from '@vue/test-utils'
 
-const { checkPermission } = vi.hoisted(() => ({ checkPermission: vi.fn() }))
+const { checkPermission, loadCapabilities } = vi.hoisted(() => ({
+  checkPermission: vi.fn(),
+  loadCapabilities: vi.fn(),
+}))
 vi.mock('@/services/fileService', () => ({ fileService: { checkPermission } }))
+vi.mock('@/services/capabilitiesService', () => ({
+  capabilitiesService: { load: loadCapabilities, reset: vi.fn() },
+}))
 
 import { useOfficeEditing } from '@/composables/useOfficeEditing'
 
+// The watcher awaits the deployment capability and then the per-file permission,
+// so a couple of microtask ticks is not enough — flushPromises drains the chain.
 const settle = async () => {
-  await nextTick()
-  await Promise.resolve()
-  await nextTick()
+  await flushPromises()
+  await flushPromises()
 }
 
 describe('useOfficeEditing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    loadCapabilities.mockResolvedValue({ editing: { available: true, reason: '', extensions: [] } })
   })
 
   it('offers editing for an office document the user can write', async () => {
@@ -63,6 +72,18 @@ describe('useOfficeEditing', () => {
     const { canEdit } = useOfficeEditing(ref('f1'), ref('report.docx'))
     await settle()
     expect(canEdit.value).toBe(false)
+  })
+
+  it('offers nothing on a deployment without in-browser editing', async () => {
+    loadCapabilities.mockResolvedValue({
+      editing: { available: false, reason: 'CSAI_ONLYOFFICE_ENABLED is off', extensions: [] },
+    })
+    checkPermission.mockResolvedValue(true)
+    const { canEdit } = useOfficeEditing(ref('f1'), ref('report.docx'))
+    await settle()
+    expect(canEdit.value).toBe(false)
+    // And it does not ask about permission for a feature the deployment lacks.
+    expect(checkPermission).not.toHaveBeenCalled()
   })
 
   it('re-answers when the file changes, and withdraws the offer', async () => {

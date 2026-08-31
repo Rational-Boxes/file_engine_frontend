@@ -33,6 +33,12 @@
 import { ref, watch, type Ref } from 'vue'
 import { isEditableOffice } from '@/utils/office'
 import { fileService } from '@/services/fileService'
+import { capabilitiesService } from '@/services/capabilitiesService'
+
+// Whether the DEPLOYMENT has in-browser editing at all — cached for the session
+// by the capabilities service, since it describes the server rather than the
+// file.
+const editingAvailable = () => capabilitiesService.load().then((c) => c.editing.available)
 
 export function useOfficeEditing(uid: Ref<string>, name: Ref<string>) {
   const canEdit = ref(false)
@@ -49,6 +55,9 @@ export function useOfficeEditing(uid: Ref<string>, name: Ref<string>) {
       if (!u || !isEditableOffice(n)) return
       checking.value = true
       try {
+        // Deployment first, and it is cached — a deployment without ONLYOFFICE
+        // should not be asked about permissions for a feature it does not have.
+        if (!(await editingAvailable())) return
         canEdit.value = await fileService.checkPermission(u, { permission: 'w' })
       } catch {
         // FAIL CLOSED. An unanswerable permission question is not permission —
