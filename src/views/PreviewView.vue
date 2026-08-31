@@ -41,7 +41,7 @@ import DocumentPreview from '@/components/DocumentPreview.vue'
 import { fileService } from '@/services/fileService'
 import { useModel3dStore } from '@/stores/model3d'
 import { is3DModel } from '@/utils/modelFormat'
-import { isEditableOffice } from '@/utils/office'
+import { useOfficeEditing } from '@/composables/useOfficeEditing'
 
 const route = useRoute()
 const router = useRouter()
@@ -51,9 +51,10 @@ const uid = computed(() => String(route.params.uid || ''))
 const name = ref('')
 const error = ref('')
 const is3d = computed(() => is3DModel(name.value))
-// Offer in-browser editing for office documents. If editing is disabled on the
-// deployment the editor page surfaces that; the button just routes there.
-const canEdit = computed(() => isEditableOffice(name.value))
+const { canEdit } = useOfficeEditing(uid, name)
+// Offer in-browser editing only where it will actually work: an office document
+// the user has WRITE on. The editor config endpoint 403s otherwise, so a button
+// gated on the extension alone routed straight to an access error.
 
 watch(uid, load, { immediate: true })
 

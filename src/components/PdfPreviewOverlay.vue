@@ -22,6 +22,20 @@
         <header class="ov-head">
           <h1 class="ov-title" :title="title">{{ title }}</h1>
           <div id="ov-titlebar" class="ov-slot"></div>
+          <!--
+            In-browser editing, which the review overlay was missing entirely:
+            the same document opened from the preview PAGE offered it and opened
+            from here did not, so whether you could edit appeared to depend on
+            how you got in. Shown only when the file is an office document the
+            user has WRITE on — the editor refuses otherwise.
+          -->
+          <button
+            v-if="canEdit"
+            class="ov-btn ov-edit"
+            aria-label="Edit in browser"
+            title="Edit in browser"
+            @click="openEditor"
+          >✎ Edit</button>
           <button
             class="ov-btn"
             :aria-label="maximized ? 'Restore preview' : 'Maximize preview'"
@@ -43,10 +57,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import DocumentPreview from '@/components/DocumentPreview.vue'
+import { useRouter } from 'vue-router'
 import { usePreviewStore } from '@/stores/preview'
+import { useOfficeEditing } from '@/composables/useOfficeEditing'
 import { fileService } from '@/services/fileService'
 
 const preview = usePreviewStore()
+const router = useRouter()
 
 const name = ref('')
 const error = ref('')
@@ -56,9 +73,26 @@ const docRef = ref<{ confirmDiscard: () => boolean } | null>(null)
 
 const title = computed(() => name.value || preview.name || preview.uid)
 
+const { canEdit } = useOfficeEditing(
+  computed(() => preview.uid),
+  computed(() => name.value || preview.name),
+)
+
 // Close the overlay, but first let the preview confirm discarding unsaved markup.
 function requestClose() {
   if (docRef.value?.confirmDiscard?.() ?? true) preview.close()
+}
+
+// The editor is a full page, so this is a real navigation — unlike the preview
+// itself, which is deliberately an overlay. Close first: an overlay left open
+// behind the editor is still there when the user comes back, on top of a
+// document they have finished with.
+function openEditor() {
+  const uid = preview.uid
+  if (!uid) return
+  if (!(docRef.value?.confirmDiscard?.() ?? true)) return
+  preview.close()
+  router.push(`/edit/${uid}`)
 }
 
 // Resolve the title whenever the previewed file changes.
@@ -149,6 +183,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   display: flex;
   align-items: center;
   flex: 0 0 auto;
+}
+
+.ov-edit {
+  width: auto;
+  padding: 0 10px;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .ov-btn {
