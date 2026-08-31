@@ -344,6 +344,7 @@ import {
   renditionText,
   revokeRenditionUrl,
   previewImage,
+  isVideoRef,
   createMarkupRendition,
   type RenditionSet,
 } from '@/services/renditions'
@@ -406,7 +407,8 @@ const props = defineProps<{
 
 const preview = usePreviewStore()
 
-const VIDEO_EXTS = ['mp4', 'webm', 'ogg', 'mov']
+// VIDEO_EXTS now lives beside the rendition helpers, so the rule that decides a
+// row has a video preview and the player that renders it share one list.
 const VIDEO_MIME: Record<string, string> = {
   mp4: 'video/mp4',
   webm: 'video/webm',
@@ -504,10 +506,7 @@ const error = ref('')
 const isNativePdf = computed(() => (props.name || '').toLowerCase().endsWith('.pdf'))
 const canOpenPdf = computed(() => !!set.value.pdf || isNativePdf.value)
 // Videos expose a web-optimized `preview` MP4 clip (the `poster` is the still).
-const videoRef = computed(() => {
-  const p = set.value.preview
-  return p && VIDEO_EXTS.includes(p.ext.toLowerCase()) ? p : undefined
-})
+const videoRef = computed(() => (isVideoRef(set.value.preview) ? set.value.preview : undefined))
 
 // What clicking the still opens: an inline PDF, an inline video, or nothing.
 const mediaKind = computed<'pdf' | 'video' | null>(() =>

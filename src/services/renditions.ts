@@ -82,9 +82,18 @@ export function toRenditionSet(children: Array<Pick<FileItem, 'uid' | 'name'>>):
   return set
 }
 
-const IMAGE_EXTS: readonly string[] = ['png', 'webp', 'jpg', 'jpeg', 'gif']
-const isImageRef = (r?: RenditionRef): r is RenditionRef =>
+export const IMAGE_EXTS: readonly string[] = ['png', 'webp', 'jpg', 'jpeg', 'gif']
+// What the inline <video> player will accept. Exported so the rule deciding
+// whether a row HAS a video preview and the component that plays it cannot
+// drift apart.
+export const VIDEO_EXTS: readonly string[] = ['mp4', 'webm', 'ogg', 'mov']
+
+export const isImageRef = (r?: RenditionRef): r is RenditionRef =>
   !!r && IMAGE_EXTS.includes(r.ext.toLowerCase())
+// A video's playable clip arrives as the `preview` rendition (the `poster` is
+// the still frame), so "has a video" is a question about preview's extension.
+export const isVideoRef = (r?: RenditionRef): r is RenditionRef =>
+  !!r && VIDEO_EXTS.includes(r.ext.toLowerCase())
 
 // The icon-sized still image for a file tile: the `thumbnail`, or the video
 // `poster` frame when there is no thumbnail.
