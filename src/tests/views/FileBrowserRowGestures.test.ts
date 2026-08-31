@@ -21,7 +21,7 @@
 // preview, which is what happens the moment the single-click handler stops
 // waiting out the grace period.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import type { FileItem } from '@/stores/files'
 
@@ -129,8 +129,6 @@ vi.mock('vue-router', () => ({
 
 import FileBrowserView from '@/views/FileBrowserView.vue'
 
-const GRACE = 250
-
 const mountView = () =>
   mount(FileBrowserView, {
     global: {
@@ -153,27 +151,19 @@ const rowFor = (w: ReturnType<typeof mountView>, uid: string) =>
 describe('file row gestures', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useFakeTimers()
-  })
-  afterEach(() => {
-    vi.useRealTimers()
   })
 
-  it('opens the details drawer on a single click, once the grace period passes', async () => {
+  it('opens the details drawer immediately on a single click', async () => {
     const w = mountView()
     await rowFor(w, 'doc1').find('td.name').trigger('click')
-
-    // Nothing yet: the handler is still waiting to see whether a second click
-    // is coming.
-    expect(h.openDetails).not.toHaveBeenCalled()
-
-    vi.advanceTimersByTime(GRACE)
+    // No delay: nothing needs to wait to see whether a second click follows,
+    // because a double click wants the drawer too.
     expect(h.openDetails).toHaveBeenCalledTimes(1)
     expect(h.openDetails.mock.calls[0][0].uid).toBe('doc1')
-    expect(h.push).not.toHaveBeenCalled()
+    expect(h.previewOpen).not.toHaveBeenCalled()
   })
 
-  it('opens the preview on a double click, and does NOT open the drawer too', async () => {
+  it('opens the drawer AND the preview on a double click', async () => {
     h.loadRenditionSet.mockResolvedValue({ pdf: { uid: 'r1', name: 'v-pdf.pdf', fmt: 'pdf', ext: 'pdf', version: 'v' } })
     const w = mountView()
     const row = rowFor(w, 'doc1')
@@ -188,10 +178,21 @@ describe('file row gestures', () => {
     // leave a navigation for the user to press Back on.
     expect(h.push).not.toHaveBeenCalled()
 
-    // The pending single click must have been cancelled — this is the whole
-    // point of the grace period.
-    vi.advanceTimersByTime(GRACE * 4)
-    expect(h.openDetails).not.toHaveBeenCalled()
+    // Both, not either: the drawer carries the file's detail while the overlay
+    // shows the document.
+    expect(h.openDetails).toHaveBeenCalled()
+    expect(h.openDetails.mock.calls[0][0].uid).toBe('doc1')
+  })
+
+  it('opens the drawer even when the double click lands off the name cell', async () => {
+    // The click handler sits on the name cell, so a double click on the size
+    // column never fires it — the drawer has to be opened by the dblclick
+    // handler itself rather than assumed from the click that preceded it.
+    const w = mountView()
+    await rowFor(w, 'pdf1').find('td.size').trigger('dblclick')
+    await flushPromises()
+    expect(h.openDetails).toHaveBeenCalledTimes(1)
+    expect(h.previewOpen).toHaveBeenCalledWith('pdf1', 'contract.pdf')
   })
 
   it('previews a native PDF with no renditions, without a lookup', async () => {

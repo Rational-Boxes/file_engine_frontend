@@ -577,9 +577,10 @@ const open = (item: FileItem) => {
 // renditions at all has nothing to look up. That leaves one request, on a
 // gesture, for the cases that genuinely need it — rather than one per row on
 // every listing.
+// Files only — onRowDoubleClick handles directories before calling this, so the
+// folder case lives in one place rather than being duplicated here.
 const openPreview = async (item: FileItem) => {
-  if (item.deleted) return
-  if (item.isDirectory) return files.openDirectory(item)
+  if (item.deleted || item.isDirectory) return
 
   // Opens the preview OVERLAY, not the /preview route.
   //
@@ -619,36 +620,29 @@ const openPreview = async (item: FileItem) => {
   }
 }
 
-// Both gestures live on the same row, so the single-click action has to wait
-// long enough to know a second click is not coming. Without the delay every
-// double click also fires the single-click handler first, leaving the details
-// drawer open behind the preview — and still open when the user navigates back.
+// Single click opens the drawer. Double click opens the drawer AND the preview
+// overlay — the two are complementary, not alternatives: the drawer carries the
+// file's detail while the overlay shows the document itself.
 //
-// 250ms is inside the platform double-click threshold on every mainstream
-// desktop, and it is the whole cost: it delays opening a drawer, not anything
-// destructive.
-const DOUBLE_CLICK_GRACE_MS = 250
-let clickTimer: ReturnType<typeof setTimeout> | null = null
-
-const cancelPendingClick = () => {
-  if (clickTimer === null) return
-  clearTimeout(clickTimer)
-  clickTimer = null
-}
-
-const onRowClick = (item: FileItem) => {
-  cancelPendingClick()
-  clickTimer = setTimeout(() => {
-    clickTimer = null
-    open(item)
-  }, DOUBLE_CLICK_GRACE_MS)
-}
+// That is why there is no click/double-click disambiguation here, and why there
+// should not be. An earlier version delayed the single click by 250ms so a
+// double click could cancel it and avoid "also" opening the drawer. With both
+// wanted, the browser's own sequence — click, click, dblclick — already produces
+// exactly the right result, and the delay bought nothing while making every
+// single click feel slow.
+const onRowClick = (item: FileItem) => open(item)
 
 const onRowDoubleClick = (item: FileItem) => {
-  // Drop the pending single click: this is the second half of a double click,
-  // not a separate intent.
-  cancelPendingClick()
-  openPreview(item)
+  // A folder navigates, and only once. open() and openPreview() BOTH used to
+  // handle directories, so doing them in sequence entered the folder twice.
+  if (item.isDirectory) return open(item)
+
+  // Opens the drawer explicitly rather than relying on the click that preceded
+  // it: the click handler sits on the NAME cell, so a double click anywhere else
+  // on the row never fires it. openDetails on the row that is already open is a
+  // no-op, so the name cell is not a special case.
+  open(item)
+  void openPreview(item)
 }
 
 const onAction = (action: string, item: FileItem) => {
@@ -849,10 +843,6 @@ onDeactivated(() => {
   dragOver.value = false
   dragDepth.value = 0
   stopPoll()
-  // A click waiting out its double-click grace period would otherwise fire after
-  // the view is gone and open a drawer over whatever the user navigated to —
-  // which is exactly what a double click into the preview does.
-  cancelPendingClick()
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('dragenter', onWinDragEnter)
   window.removeEventListener('dragover', onWinDragOver)

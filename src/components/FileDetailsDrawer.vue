@@ -220,7 +220,7 @@ import ShareTab from '@/components/ShareTab.vue'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'
-import { isEditableOffice } from '@/utils/office'
+import { useOfficeEditing } from '@/composables/useOfficeEditing'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
 import { searchService } from '@/services/searchService'
 
@@ -372,7 +372,12 @@ const canEdit = computed(() => auth.hasAccessLevel('editor'))
 const canDownload = computed(() => canDo('download', auth.accessLevel))
 // Editability is decided by the file NAME's extension (an office document), not the
 // UID; the backend still enforces WRITE when the editor opens.
-const isOfficeEditable = computed(() => !!item.value && isEditableOffice(item.value.name))
+// Extension AND write permission — the editor refuses without WRITE, so gating
+// on the name alone offered a button that answered with an access error.
+const { canEdit: isOfficeEditable } = useOfficeEditing(
+  computed(() => item.value?.uid ?? ''),
+  computed(() => item.value?.name ?? ''),
+)
 function openEditor() {
   if (item.value) router.push(`/edit/${item.value.uid}`)
 }
