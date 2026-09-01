@@ -60,6 +60,10 @@ interface FilesState {
   showDeleted: boolean
   canListDeleted: boolean
   canUndelete: boolean
+  // ERASE on the current dir — gates the second step of deletion, "erase
+  // permanently". Never granted by default, so this is normally false and the
+  // affordance simply is not there.
+  canErase: boolean
   // WRITE permission on the current dir — gates New folder / Upload / paste, so a
   // user who has write here (e.g. their own home folder) can modify it regardless
   // of their global role level.
@@ -87,6 +91,7 @@ export const useFileStore = defineStore('files', {
     showDeleted: false,
     canListDeleted: false,
     canUndelete: false,
+    canErase: false,
     canWrite: false,
   }),
 
@@ -121,14 +126,19 @@ export const useFileStore = defineStore('files', {
       try {
         // Per-dir permissions for the deleted-items UI (best-effort; a denied or
         // failing check just hides the affordances). Parallel with each other.
-        const [ld, ud, wr] = await Promise.all([
+        const [ld, ud, wr, er] = await Promise.all([
           fileService.checkPermission(this.currentUid, { permission: 'LIST_DELETED' }).catch(() => false),
           fileService.checkPermission(this.currentUid, { permission: 'UNDELETE' }).catch(() => false),
           fileService.checkPermission(this.currentUid, { permission: 'w' }).catch(() => false),
+          // Fails CLOSED on an error, like the others: the affordance for an
+          // irreversible operation is the last one that should appear because a
+          // permission check happened to fail.
+          fileService.checkPermission(this.currentUid, { permission: 'ERASE' }).catch(() => false),
         ])
         this.canListDeleted = ld
         this.canUndelete = ud
         this.canWrite = wr
+        this.canErase = er
         // Entering a dir we can't list-deleted in silently drops back to the live view.
         if (this.showDeleted && !ld) this.showDeleted = false
         // `children: true`: the browser decides from a row whether a file has
@@ -336,6 +346,29 @@ export const useFileStore = defineStore('files', {
     },
 
     // Restore a soft-deleted file, then reload the listing.
+    /**
+     * Erase an item — the second step of deletion, and irreversible.
+     *
+     * Returns the erasure record rather than a boolean. The core's copy is gone
+     * when this resolves, but other services have yet to confirm destroying what
+     * they derived from it, so the caller must report "started" rather than
+     * "erased" unless the state is already complete.
+     */
+    async eraseItem(item: FileItem, reason = '') {
+      try {
+        const erasure = await fileService.eraseFile(item.uid, { reason })
+        // Drop it from the listing either way: whatever the participants have
+        // left to do, this file's content is gone and it must not keep
+        // appearing as something that could be restored.
+        this.items = this.items.filter((i) => i.uid !== item.uid)
+        this.selected.delete(item.uid)
+        return erasure
+      } catch (e) {
+        this.error = errorMessage(e, 'Failed to erase')
+        return null
+      }
+    },
+
     async undeleteItem(item: FileItem) {
       try {
         await fileService.undeleteFile(item.uid)

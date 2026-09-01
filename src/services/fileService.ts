@@ -122,6 +122,35 @@ export interface VersionEntry {
   revised_by: string
 }
 
+/** An erasure, as returned when one is started. */
+export interface Erasure {
+  erasure_id: string
+  /**
+   * 'initiated' means the core's copy is destroyed and other services have yet
+   * to confirm. Only 'complete' means the obligation has actually been met.
+   */
+  state: 'initiated' | 'complete' | 'failed'
+  /** Services that have not yet confirmed destroying their derived copy. */
+  awaiting: string[]
+}
+
+export interface ErasureAck {
+  participant: string
+  acked_at: number
+  complied: boolean
+  detail: string
+}
+
+/** The attestation record — what an auditor is shown. */
+export interface ErasureStatus extends Erasure {
+  uid: string
+  actor: string
+  reason: string
+  initiated_at: number
+  completed_at: number
+  acks: ErasureAck[]
+}
+
 export const fileService = {
   // List a directory. With `deleted: true` the bridge returns soft-deleted
   // entries too (each carrying `deleted`), for the "show deleted" view — requires
@@ -201,6 +230,37 @@ export const fileService = {
   // Restore a soft-deleted file (requires the UNDELETE permission).
   async undeleteFile(uid: string): Promise<void> {
     await apiClient.post(`/v1/files/${uid}/undelete`)
+  },
+
+  /**
+   * Erase a file — "true delete". Irreversible, and NOT what removeFile does.
+   *
+   * removeFile is a soft delete that undeleteFile reverses. This destroys the
+   * content, every version, and everything derived from it across the platform,
+   * keeping only the record that the file existed. Requires the ERASE
+   * permission, which is never granted by default.
+   *
+   * Returns the erasure record rather than void, and the distinction matters:
+   * the core's own copy is gone when this resolves, but derived data lives in
+   * other services and each must confirm destroying its copy before the erasure
+   * is complete. `state` is normally 'initiated' with `awaiting` naming who is
+   * outstanding. Telling the user "erased" at this point would be a claim the
+   * platform cannot yet stand behind.
+   */
+  async eraseFile(uid: string, opts?: { reason?: string; retainName?: boolean }): Promise<Erasure> {
+    const { data } = await apiClient.post(`/v1/files/${uid}/erase`, {
+      reason: opts?.reason ?? '',
+      // The filename is itself personal data — "Contract_J_Smith.pdf" names
+      // someone — so the default is to redact it.
+      retain_name: opts?.retainName ?? false,
+    })
+    return data as Erasure
+  },
+
+  /** Progress of an erasure: who has confirmed destroying their copy, and who has not. */
+  async erasureStatus(erasureId: string): Promise<ErasureStatus> {
+    const { data } = await apiClient.get(`/v1/erasures/${erasureId}`)
+    return data as ErasureStatus
   },
 
   async rename(uid: string, newName: string): Promise<void> {

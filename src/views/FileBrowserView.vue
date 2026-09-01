@@ -210,12 +210,18 @@
     <FileDetailsDrawer />
     <UploadTray />
 
+    <p v-if="eraseNotice" class="erase-notice" role="status">
+      {{ eraseNotice }}
+      <button class="link" @click="eraseNotice = ''">Dismiss</button>
+    </p>
+
     <ConfirmModal
       :open="confirmState.open"
       :title="confirmState.title"
       :message="confirmState.message"
       :confirm-label="confirmState.confirmLabel"
       :danger="confirmState.danger"
+      :require-text="confirmState.requireText"
       @confirm="onConfirm"
       @cancel="confirmState.open = false"
     />
@@ -531,7 +537,14 @@ const menuFor = (item: FileItem): KebabItem[] => {
   // A soft-deleted item only offers Undelete (when permitted); normal file
   // operations — and the info drawer — don't apply until it's restored.
   if (item.deleted) {
-    return files.canUndelete ? [{ action: 'undelete', label: 'Undelete' }] : []
+    // Deletion is two steps, and this is the second. Erase is offered ONLY on an
+    // already-soft-deleted item: reaching an irreversible destruction should
+    // require having first taken the reversible one and then come back to it,
+    // rather than sitting one menu click away from a live file.
+    const m: KebabItem[] = []
+    if (files.canUndelete) m.push({ action: 'undelete', label: 'Undelete' })
+    if (files.canErase) m.push({ action: 'erase', label: '⚠ Erase permanently' })
+    return m
   }
   const m: KebabItem[] = []
   // Read ops (open/download/copy) apply to any visible item — the listing already
@@ -663,6 +676,7 @@ const onAction = (action: string, item: FileItem) => {
     case 'cut': return files.setClipboard('cut', [item])
     case 'delete': return remove(item)
     case 'undelete': return undelete(item)
+    case 'erase': return erasePermanently(item)
   }
 }
 
@@ -678,17 +692,24 @@ const rename = async (item: FileItem) => {
 
 // Destructive/confirmable actions use one in-app modal (never window.confirm).
 // Each opener fills in the copy + the action to run on confirm.
+// What to tell the user after an erasure starts. Held here rather than being a
+// toast that vanishes: "3 services still to confirm" is a statement about an
+// obligation in progress, and it should stay readable until dismissed.
+const eraseNotice = ref('')
+
 const confirmState = reactive<{
   open: boolean
   title: string
   message: string
   confirmLabel: string
   danger: boolean
+  requireText: string
   action: (() => Promise<void>) | null
 }>({
   open: false,
   title: '',
   message: '',
+  requireText: '',
   confirmLabel: 'Confirm',
   danger: false,
   action: null,
@@ -699,9 +720,13 @@ function askConfirm(cfg: {
   message: string
   confirmLabel: string
   danger?: boolean
+  requireText?: string
   action: () => Promise<void>
 }) {
-  Object.assign(confirmState, { danger: false, ...cfg, open: true })
+  // requireText reset explicitly: it is absent from most callers' config, so
+  // without this a previous typed-confirmation dialog would leave its value
+  // behind and the NEXT ordinary confirm would refuse to enable.
+  Object.assign(confirmState, { danger: false, requireText: '', ...cfg, open: true })
 }
 
 async function onConfirm() {
@@ -722,6 +747,33 @@ const remove = (item: FileItem) =>
     confirmLabel: 'Delete',
     danger: true,
     action: () => files.deleteItem(item),
+  })
+
+const erasePermanently = (item: FileItem) =>
+  askConfirm({
+    title: `Erase “${item.name}” permanently?`,
+    // States what actually happens, in the order it matters: irreversible
+    // first, scope second. "Cannot be undone" is the part people skim past, so
+    // it leads, and the typed confirmation below makes skimming insufficient.
+    message:
+      'This cannot be undone. The file, every version of it, and everything ' +
+      'derived from it — previews, extracted text, search results and comments ' +
+      '— are destroyed across the whole system. A record that the file existed ' +
+      'is kept; its contents are not.',
+    confirmLabel: 'Erase permanently',
+    danger: true,
+    requireText: item.name,
+    action: async () => {
+      const erasure = await files.eraseItem(item)
+      if (!erasure) return
+      // Deliberately NOT "erased". The core's copy is gone, but other services
+      // have yet to confirm destroying what they derived from it, and saying
+      // "erased" here would be a claim the platform cannot yet stand behind.
+      eraseNotice.value =
+        erasure.state === 'complete'
+          ? `“${item.name}” has been erased.`
+          : `Erasing “${item.name}”. ${erasure.awaiting.length} service(s) still to confirm.`
+    },
   })
 
 const undelete = (item: FileItem) =>
@@ -1264,5 +1316,18 @@ onDeactivated(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.erase-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--danger);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 14px;
 }
 </style>
