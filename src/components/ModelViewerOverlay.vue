@@ -65,7 +65,11 @@
           <button class="mv-act" @click="downloadOriginal">⬇ Download original</button>
           <button class="mv-act" @click="openLocation">📂 Open file location</button>
 
-          <div class="mv-disc">
+          <!-- The comment chrome and the panel both belong to the discussion
+               service. Gating only the dock BEHAVIOUR left these buttons and the
+               panel rendering on a deployment that has no discussion service,
+               where they could do nothing but fail. -->
+          <div v-if="features.discussion" class="mv-disc">
             <template v-if="!discMin">
               <button class="mv-act mv-icon" :class="{ 'mv-on': discussionPos === 'side' }" title="Comments on the right" @click="setPos('side')">▐</button>
               <button class="mv-act mv-icon" :class="{ 'mv-on': discussionPos === 'bottom' }" title="Comments below" @click="setPos('bottom')">▄</button>
@@ -299,7 +303,7 @@
             @pointerdown="startDrag"
           ></div>
 
-          <section v-show="!discMin" class="mv-discussion" :style="discStyle">
+          <section v-if="features.discussion" v-show="!discMin" class="mv-discussion" :style="discStyle">
             <ThreadPanel
               v-if="model3d.uid"
               ref="threadPanelRef"
