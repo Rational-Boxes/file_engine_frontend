@@ -226,7 +226,29 @@ describe('ChatSession', () => {
       report_target_folder_uid: 'fold1',
       report_target_filename: 'q3',
       report_target_path: '/Reports',
+      // The app URL travels with a report turn so the saved document's file
+      // references are complete deep-links, not relative paths.
+      app_url: window.location.origin,
     })
+  })
+
+  it('sends no app_url on an ordinary (non-report) turn', () => {
+    const ws = new FakeWS()
+    const session = new ChatSession({}, () => ws as unknown as WebSocket)
+    ws.open()
+    session.send('just chatting')
+    expect(JSON.parse(ws.sent[0])).toEqual({ message: 'just chatting' })
+  })
+
+  it('lets the caller override the app URL sent with a report turn', () => {
+    const ws = new FakeWS()
+    const session = new ChatSession({}, () => ws as unknown as WebSocket)
+    ws.open()
+    session.send('report please', {
+      reportTarget: { folderUid: 'f1', folderPath: '/R', filename: 'q4' },
+      appUrl: 'https://files.example.com/app',
+    })
+    expect(JSON.parse(ws.sent[0]).app_url).toBe('https://files.example.com/app')
   })
 
   it('dispatches the conversation event and sends conversation_id', () => {
