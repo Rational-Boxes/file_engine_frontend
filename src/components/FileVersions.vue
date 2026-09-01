@@ -68,7 +68,11 @@
          between a pair, so one selection has nothing to compare against and three
          has no single answer. The checkboxes enforce the ceiling; this states the
          requirement in words rather than leaving a disabled button unexplained. -->
-    <div v-if="versions.length > 1" class="v-compare">
+    <!-- Comparison needs difference_service. Where it is not deployed the button
+         could only open a viewer that reports it cannot reach anything, so the
+         bar goes with the service — the per-version checkboxes stay, since they
+         are also how a version is selected for other purposes. -->
+    <div v-if="versions.length > 1 && features.difference" class="v-compare">
       <button
         class="v-btn"
         :disabled="!canCompare || busy"
@@ -106,6 +110,7 @@ import { fileService } from '@/services/fileService'
 import { errorMessage } from '@/services/apiClient'
 import { useDifferenceStore } from '@/stores/difference'
 import { usePreviewStore } from '@/stores/preview'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { formatVersionTimestamp, versionFilename } from '@/utils/format'
 
 const props = defineProps<{ uid: string; name?: string; current?: string; canManage?: boolean }>()
@@ -113,6 +118,7 @@ const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const difference = useDifferenceStore()
 const preview = usePreviewStore()
+const { features } = useCapabilities()
 
 const versions = ref<string[]>([])
 // version timestamp -> uploader. Empty for versions the core has no record for.

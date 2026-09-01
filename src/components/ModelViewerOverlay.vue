@@ -353,6 +353,7 @@ import HelpIcon from '@/components/HelpIcon.vue'
 import { useModel3dStore, type NavMode, type MeasureTool, type MeasureUnits } from '@/stores/model3d'
 import { useAuthStore } from '@/stores/auth'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { loadRenditionSet, modelRendition, metamodelRendition } from '@/services/renditions'
 import { fileService } from '@/services/fileService'
 import type {
@@ -365,6 +366,7 @@ import { differenceService, type DiffChildRef } from '@/services/differenceServi
 import { errorMessage } from '@/services/apiClient'
 
 const model3d = useModel3dStore()
+const { features } = useCapabilities()
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
@@ -384,7 +386,7 @@ const {
   discStyle,
   setPos,
   startDrag,
-} = useDiscussionDock(hasDiscussion, computed(() => !discMin.value))
+} = useDiscussionDock(hasDiscussion, computed(() => !discMin.value && features.discussion))
 
 // Download the source file (same affordance as the document preview).
 async function downloadOriginal() {

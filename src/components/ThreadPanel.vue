@@ -153,7 +153,7 @@
           <!-- Comparison thread: reopen the exact rendering set the author was
                looking at — the peer of 🎯 View and of "view marked-up copy". -->
           <button
-            v-if="t.anchor?.kind === 'diff-view'"
+            v-if="t.anchor?.kind === 'diff-view' && features.difference"
             type="button"
             class="tp-viewbtn"
             title="Reopen this comparison"
@@ -162,7 +162,7 @@
           <!-- Download the anchored comment as a BCF file (.bcfzip) for use outside
                the API — e.g. opening the issue in a desktop BCF Manager. -->
           <button
-            v-if="t.anchor?.kind === 'model-viewpoint'"
+            v-if="t.anchor?.kind === 'model-viewpoint' && features.bcf"
             type="button"
             class="tp-viewbtn"
             title="Download this comment as a BCF file (.bcfzip)"
@@ -280,6 +280,7 @@ import {
   type CommentMarkup,
 } from '@/services/discussionService'
 import bcfService from '@/services/bcfService'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { LiveSession, type LiveCommentEvent } from '@/services/discussionLive'
 
 defineOptions({ inheritAttrs: false })
@@ -341,6 +342,7 @@ const emit = defineEmits<{
 }>()
 
 type Layout = 'collapsed' | 'right' | 'bottom'
+const { features } = useCapabilities()
 const LAYOUT_KEY = 'fe.discuss.panelLayout'
 const maxChars = 10000
 
