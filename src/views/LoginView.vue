@@ -234,6 +234,14 @@ const LABELS: Record<string, string> = {
 const label = (p: string) => LABELS[p] ?? p.charAt(0).toUpperCase() + p.slice(1)
 
 onMounted(async () => {
+  // An explicit sign-out arriving from a tenant origin. This origin has its own
+  // token, in its own storage, from when the user signed in here — a different
+  // session, still valid, and the hand-off below would ride it straight back to
+  // a workspace. End it before deciding anything: auth.logout() revokes it at
+  // the bridge as well as clearing it locally, so the session does not simply
+  // sit there for whoever uses the machine next.
+  if (route.query.signedout === '1' && auth.isAuthenticated) await auth.logout()
+
   providers.value = await authService.oauthProviders()
   // Already signed in AND standing on the shared sign-in origin: there is
   // nothing to log into here, so go straight on to a workspace. Happens when a

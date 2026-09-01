@@ -98,7 +98,11 @@ async function logout() {
     // sign-out, and auth.logout() has just cleared the remembered workspace on
     // purpose so the next person on a shared machine meets a clean login.
     // Putting ?t=acme on the URL would hand that straight back.
-    const url = loginUrl(undefined, null)
+    // signedout=1: this origin's token is gone, but the SIGN-IN origin still
+    // holds the session it minted when the user signed in there. Arriving
+    // without saying so, it hands them back to a workspace and the sign-out
+    // reads as a no-op.
+    const url = loginUrl(undefined, null, true)
     if (url) {
       window.location.href = url
       return
