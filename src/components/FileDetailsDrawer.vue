@@ -221,6 +221,7 @@ import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'
 import { useOfficeEditing } from '@/composables/useOfficeEditing'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
 import { searchService } from '@/services/searchService'
 
@@ -315,6 +316,9 @@ const tabs = ['Info', 'Metadata', 'Versions', 'Access'] as const
 // 'Actions' is folder-only and 'Share' is permission-gated; both are appended
 // via visibleTabs, so widen Tab to include them.
 type Tab = (typeof tabs)[number] | 'Actions' | 'Share'
+// Declared before visibleTabs, which reads it: a computed evaluating during
+// setup would otherwise hit the temporal dead zone.
+const { features } = useCapabilities()
 const tab = ref<Tab>('Info')
 
 const provenance = ref<DropProvenance | null>(null)
@@ -337,8 +341,12 @@ const item = computed(() => files.detailItem)
 const canShare = computed(() =>
   auth.hasRole('share_external') || auth.hasAccessLevel('admin'))
 const visibleTabs = computed<Tab[]>(() => {
-  const out: Tab[] = item.value?.isDirectory ? [...tabs, 'Actions'] : [...tabs]
-  if (canShare.value) out.push('Share')
+  const out: Tab[] = [...tabs]
+  // A tab whose service is not deployed leads to a pane that can only report an
+  // error. Folder actions and sharing are both optional, so the tab goes with
+  // the service rather than sitting there to disappoint.
+  if (item.value?.isDirectory && features.folderActions) out.push('Actions')
+  if (canShare.value && features.sharing) out.push('Share')
   return out
 })
 const router = useRouter()

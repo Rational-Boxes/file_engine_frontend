@@ -15,8 +15,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { get } = vi.hoisted(() => ({ get: vi.fn() }))
+const { get, axiosGet } = vi.hoisted(() => ({ get: vi.fn(), axiosGet: vi.fn() }))
 vi.mock('@/services/csaiClient', () => ({ default: { get } }))
+vi.mock('axios', () => ({ default: { get: axiosGet } }))
+vi.mock('@/utils/tokenStorage', () => ({
+  tokenStorage: { getAccessToken: () => 'tok', getActiveTenant: () => 'default' },
+}))
+
+// A service that is present answers with JSON.
+const present = { status: 200, headers: { 'content-type': 'application/json' }, data: {} }
+// A deployment with no location for a service falls through to the SPA, which
+// answers index.html with HTTP 200 — the trap the probe exists to catch.
+const spaFallback = { status: 200, headers: { 'content-type': 'text/html' }, data: '<!doctype html>' }
 
 import { capabilitiesService } from '@/services/capabilitiesService'
 
@@ -28,6 +38,7 @@ describe('capabilitiesService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     capabilitiesService.reset()
+    axiosGet.mockResolvedValue(present)
   })
 
   it('reports what the deployment says', async () => {
@@ -78,5 +89,77 @@ describe('capabilitiesService', () => {
       reply({ available: true, reason: '', extensions: [] }, { web_search: { available: false } }),
     )
     expect((await capabilitiesService.load()).webSearch.available).toBe(false)
+  })
+})
+
+
+describe('capabilitiesService — detecting optional services', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    capabilitiesService.reset()
+    get.mockResolvedValue(reply({ available: true, reason: '', extensions: [] }))
+  })
+
+  it('treats a JSON answer as the service being present', async () => {
+    axiosGet.mockResolvedValue(present)
+    const c = await capabilitiesService.load()
+    expect(c.discussion.available).toBe(true)
+    expect(c.sharing.available).toBe(true)
+    expect(c.audit.available).toBe(true)
+  })
+
+  it('does NOT treat the SPA fallback as a running service', async () => {
+    // The documented failure: with no nginx location for a service the request
+    // falls through to `location /` and returns index.html with HTTP 200, which
+    // once made a missing audit service look like a front-end type error.
+    axiosGet.mockResolvedValue(spaFallback)
+    const c = await capabilitiesService.load()
+    expect(c.audit.available).toBe(false)
+    expect(c.bcf.available).toBe(false)
+  })
+
+  it('counts a service that answers 401 as present', async () => {
+    // It answered and declined, which is proof it is running.
+    axiosGet.mockResolvedValue({ status: 401, headers: {}, data: '' })
+    expect((await capabilitiesService.load()).difference.available).toBe(true)
+  })
+
+  it('counts 404 and 502 as absent', async () => {
+    axiosGet.mockResolvedValue({ status: 502, headers: {}, data: '' })
+    expect((await capabilitiesService.load()).folderActions.available).toBe(false)
+    capabilitiesService.reset()
+    axiosGet.mockResolvedValue({ status: 404, headers: {}, data: '' })
+    expect((await capabilitiesService.load()).folderActions.available).toBe(false)
+  })
+
+  it('treats a transport failure as available, not absent', async () => {
+    // A timeout is "I could not ask". Stripping features off the UI because one
+    // probe blipped is worse than leaving them and letting the real call report.
+    axiosGet.mockRejectedValue(new Error('timeout'))
+    expect((await capabilitiesService.load()).sharing.available).toBe(true)
+  })
+
+  it('does not let one absent service hide the others', async () => {
+    axiosGet.mockImplementation((url: string) =>
+      url.includes('/share') ? Promise.resolve(spaFallback) : Promise.resolve(present))
+    const c = await capabilitiesService.load()
+    expect(c.sharing.available).toBe(false)
+    expect(c.discussion.available).toBe(true)
+    expect(c.bcf.available).toBe(true)
+  })
+
+  it('probes with the same credentials the real clients send', async () => {
+    // An unauthenticated probe would be answered 401 by every service and prove
+    // nothing about any of them.
+    await capabilitiesService.load()
+    const cfg = axiosGet.mock.calls[0][1]
+    expect(cfg.headers.Authorization).toBe('Bearer tok')
+    expect(cfg.headers['X-Tenant']).toBe('default')
+  })
+
+  it('still reports csai features when every probe fails', async () => {
+    axiosGet.mockRejectedValue(new Error('down'))
+    get.mockResolvedValue(reply({ available: false, reason: 'off', extensions: [] }))
+    expect((await capabilitiesService.load()).editing.available).toBe(false)
   })
 })

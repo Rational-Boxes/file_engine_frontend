@@ -35,7 +35,10 @@
 // yet. Per-object permission checks still apply, so the worst case is the
 // behaviour we had before any of this existed.
 
+import axios from 'axios'
 import csaiClient from '@/services/csaiClient'
+import { SERVICE_PATHS, serviceBase } from '@/services/serviceBase'
+import { tokenStorage } from '@/utils/tokenStorage'
 
 export interface EditingCapability {
   available: boolean
@@ -53,19 +56,87 @@ export interface FeatureCapability {
 }
 
 export interface DeploymentCapabilities {
+  // Reported by csai, which knows its own configuration in detail.
   editing: EditingCapability
   chat: FeatureCapability
   webSearch: FeatureCapability
   search: FeatureCapability
+  // Optional services, each detected by asking it something cheap.
+  discussion: FeatureCapability
+  sharing: FeatureCapability
+  difference: FeatureCapability
+  folderActions: FeatureCapability
+  bcf: FeatureCapability
+  audit: FeatureCapability
 }
 
 // What we assume when a service cannot be asked. Everything on, so an
-// un-upgraded deployment behaves exactly as it did before.
+// un-upgraded or briefly unreachable deployment behaves exactly as it did
+// before any of this existed.
 const ASSUME_AVAILABLE: DeploymentCapabilities = {
   editing: { available: true, reason: '', extensions: [] },
   chat: { available: true },
   webSearch: { available: true },
   search: { available: true },
+  discussion: { available: true },
+  sharing: { available: true },
+  difference: { available: true },
+  folderActions: { available: true },
+  bcf: { available: true },
+  audit: { available: true },
+}
+
+// One cheap, authenticated, already-existing endpoint per optional service.
+// Chosen for being small and for existing in every release — a probe path that
+// only newer builds serve would report older ones as absent.
+const PROBES: Record<string, { base: string; path: string }> = {
+  discussion: { base: SERVICE_PATHS.discuss, path: '/whoami' },
+  sharing: { base: SERVICE_PATHS.share, path: '/v1/links' },
+  difference: { base: SERVICE_PATHS.difference, path: '/whoami' },
+  folderActions: { base: SERVICE_PATHS.folderActions, path: '/action-types' },
+  bcf: { base: SERVICE_PATHS.bcf, path: '/2.1/projects' },
+  audit: { base: SERVICE_PATHS.audit, path: '/v1/security/rules' },
+}
+
+const PROBE_TIMEOUT_MS = 4000
+
+// Is a service actually there?
+//
+// A 200 IS NOT ENOUGH, and this is the trap the whole probe exists to avoid.
+// When a deployment has no location for a service, the request falls through to
+// the SPA's own `location /` and comes back as index.html with HTTP 200 — the
+// documented failure that once made a missing audit service look like a
+// front-end type error rather than an absent service. So the body has to be
+// JSON as well.
+//
+// 401/403 mean the service answered and declined, which is proof it is running.
+// 404 and 5xx mean it is not there, or the edge cannot reach it.
+//
+// A TRANSPORT failure is treated as available, not absent: a timeout or a
+// dropped connection is "I could not ask", and stripping features off the UI
+// because one probe blipped would be worse than leaving them and letting the
+// real call report the problem.
+async function probe(base: string, path: string): Promise<boolean> {
+  // Same headers the real clients send — a probe that arrived unauthenticated
+  // would be answered 401 by every service and prove nothing about any of them.
+  const token = tokenStorage.getAccessToken()
+  const tenant = tokenStorage.getActiveTenant()
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  if (tenant) headers['X-Tenant'] = tenant
+  try {
+    const res = await axios.get(serviceBase(undefined, base) + path, {
+      timeout: PROBE_TIMEOUT_MS,
+      headers,
+      // We inspect the status ourselves; 4xx is information, not an exception.
+      validateStatus: () => true,
+    })
+    if (res.status === 401 || res.status === 403) return true
+    if (res.status < 200 || res.status >= 300) return false
+    return String(res.headers?.['content-type'] ?? '').includes('json')
+  } catch {
+    return true // unknown is not off
+  }
 }
 
 let cached: Promise<DeploymentCapabilities> | null = null
@@ -85,22 +156,33 @@ async function fetchCsaiCapabilities(): Promise<Partial<DeploymentCapabilities>>
   }
 }
 
+async function detect(): Promise<DeploymentCapabilities> {
+  const names = Object.keys(PROBES)
+  // Everything at once and nothing allowed to fail the set: one absent service
+  // must not stop the others being detected.
+  const [csai, ...probes] = await Promise.all([
+    fetchCsaiCapabilities().catch(() => ({}) as Partial<DeploymentCapabilities>),
+    ...names.map((n) => probe(PROBES[n].base, PROBES[n].path)),
+  ])
+  const detected: Record<string, FeatureCapability> = {}
+  names.forEach((n, i) => {
+    detected[n] = { available: probes[i] as boolean }
+  })
+  return { ...ASSUME_AVAILABLE, ...detected, ...csai } as DeploymentCapabilities
+}
+
 export const capabilitiesService = {
-  // Asked once per session and shared: this describes the server, so re-asking
-  // per file or per view would be a request each time to learn something that
-  // cannot have changed. The promise itself is the cache, so callers racing
-  // during startup share one request rather than issuing several.
+  // Asked once per session and shared: this describes the deployment, so
+  // re-asking per view would be a request each time to learn something that
+  // cannot have changed. The promise itself is the cache, so callers racing at
+  // startup share one round rather than issuing several.
   load(): Promise<DeploymentCapabilities> {
-    if (!cached) {
-      cached = fetchCsaiCapabilities()
-        .then((c) => ({ ...ASSUME_AVAILABLE, ...c }))
-        .catch(() => ASSUME_AVAILABLE)
-    }
+    if (!cached) cached = detect().catch(() => ASSUME_AVAILABLE)
     return cached
   },
 
-  /** Test seam, and the hook for a re-probe if a deployment ever changes under
-   *  a live session. */
+  /** Test seam, and the hook for a re-probe if a deployment changes under a
+   *  live session. */
   reset() {
     cached = null
   },
