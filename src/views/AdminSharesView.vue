@@ -35,8 +35,16 @@
         </p>
       </header>
 
+      <!-- Reachable by URL with the nav entry hidden, so it answers for itself
+           rather than showing an empty queue that reads as "nothing is shared"
+           when the truth is that nothing can be. -->
+      <p v-if="!features.sharing" class="ash-empty">
+        This deployment does not run the sharing service, so no files can be
+        shared outside it.
+      </p>
+
       <!-- ── filters ──────────────────────────────────────────────────── -->
-      <section class="ash-filters">
+      <section v-if="features.sharing" class="ash-filters">
         <label>
           <span>Creator</span>
           <input
@@ -158,7 +166,10 @@
         </tbody>
       </table>
 
-      <p v-else-if="!loading" class="muted ash-empty">
+      <!-- Only when sharing exists. Otherwise this would report "nothing is
+           shared outside this tenant", which is true and misleading: it reads
+           as a clean bill of health rather than a service that is not there. -->
+      <p v-else-if="!loading && features.sharing" class="muted ash-empty">
         {{ anyFilter ? 'Nothing matches those filters.'
                      : 'Nothing is shared outside this tenant right now.' }}
       </p>
@@ -179,9 +190,11 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { shareService, type AdminShareLink } from '@/services/shareService'
 import { errorMessage } from '@/services/apiClient'
 
+const { features } = useCapabilities()
 const rows = ref<AdminShareLink[]>([])
 const loading = ref(false)
 const error = ref('')

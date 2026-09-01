@@ -20,7 +20,18 @@
     <AppNav />
     <main class="content wide">
       <h1 class="title">Security</h1>
-      <template v-if="isAdmin">
+      <!--
+        Reachable by URL even with the nav entry hidden, so the view answers for
+        itself rather than mounting three panels that can only report they
+        cannot reach anything. The distinction the user needs is "this
+        deployment does not have it" versus "it is broken", and only this end
+        knows which.
+      -->
+      <p v-if="!features.audit" class="err">
+        This deployment does not run the audit service, so there is no security
+        history to show.
+      </p>
+      <template v-else-if="isAdmin">
         <nav class="tabs">
           <button v-for="t in TABS" :key="t" :class="{ active: tab === t }" @click="selectTab(t)">{{ t }}</button>
         </nav>
@@ -37,12 +48,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppNav from '@/components/AppNav.vue'
+import { useCapabilities } from '@/composables/useCapabilities'
 import AuditPanel from '@/components/security/AuditPanel.vue'
 import SecurityRulesPanel from '@/components/security/SecurityRulesPanel.vue'
 import EventsPanel from '@/components/security/EventsPanel.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+const { features } = useCapabilities()
 const isAdmin = computed(() => auth.hasAccessLevel('admin'))
 
 const TABS = ['Audit', 'Security', 'Events'] as const

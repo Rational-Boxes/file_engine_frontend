@@ -77,7 +77,9 @@
         <!-- Directly under "Needs your attention": the standing answer to "what
              have I got open right now". Renders nothing at all when the user
              shares nothing, which is most users. -->
-        <SharingInbox class="dash-sharing" />
+        <!-- The inbox is share_service's; without it there is nothing to
+             receive and the panel can only report a failure. -->
+        <SharingInbox v-if="features.sharing" class="dash-sharing" />
       </div>
 
       <!-- Document activity: new/updated docs the user may see (calm awareness). -->
@@ -106,10 +108,12 @@ import { useDiscussionStore } from '@/stores/discussion'
 import AppNav from '@/components/AppNav.vue'
 import ReviewsInbox from '@/components/ReviewsInbox.vue'
 import SharingInbox from '@/components/SharingInbox.vue'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { truncateMiddle } from '@/utils/format'
 import type { Notification } from '@/services/discussionService'
 
 const d = useDiscussionStore()
+const { features } = useCapabilities()
 
 const KIND_LABELS: Record<string, string> = {
   mention: '@ mention',
