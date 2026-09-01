@@ -30,12 +30,32 @@
         <h2 class="cm-title">{{ title }}</h2>
         <p class="cm-msg">{{ message }}</p>
 
+        <!--
+          Typed confirmation, for operations that cannot be undone. A misplaced
+          click on "Confirm" is a real way to destroy something irreversibly, and
+          the usual dialog offers no protection against it — the muscle memory
+          for dismissing a prompt is the same gesture. Typing the name cannot
+          happen by accident.
+        -->
+        <label v-if="requireText" class="cm-confirm-field">
+          <span>Type <strong>{{ requireText }}</strong> to confirm</span>
+          <input
+            ref="textEl"
+            v-model="typed"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            :aria-label="`Type ${requireText} to confirm`"
+          />
+        </label>
+
         <div class="cm-actions">
           <button ref="cancelEl" class="cm-btn" type="button" @click="emit('cancel')">Cancel</button>
           <button
             class="cm-btn"
             :class="{ 'cm-danger': danger }"
             type="button"
+            :disabled="!confirmEnabled"
             @click="emit('confirm')"
           >
             {{ confirmLabel || 'Confirm' }}
@@ -47,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 
 const props = defineProps<{
   open: boolean
@@ -56,6 +76,12 @@ const props = defineProps<{
   // Label + styling of the primary button (danger = destructive/red).
   confirmLabel?: string
   danger?: boolean
+  /**
+   * When set, the user must type this exact string before Confirm is enabled.
+   * For irreversible operations only — on a routine confirm it is friction with
+   * nothing to buy.
+   */
+  requireText?: string
 }>()
 
 const emit = defineEmits<{
@@ -64,6 +90,15 @@ const emit = defineEmits<{
 }>()
 
 const panelEl = ref<HTMLElement | null>(null)
+const textEl = ref<HTMLInputElement | null>(null)
+const typed = ref('')
+
+// Trimmed, but NOT case-folded. The point is deliberate transcription of this
+// specific name, and accepting a different case would weaken exactly the signal
+// being asked for. Trailing whitespace from a paste is not that.
+const confirmEnabled = computed(
+  () => !props.requireText || typed.value.trim() === props.requireText,
+)
 const cancelEl = ref<HTMLButtonElement | null>(null)
 
 // Focus Cancel when the dialog opens — the safe default (especially for a
@@ -72,6 +107,9 @@ watch(
   () => props.open,
   async (isOpen) => {
     if (!isOpen) return
+    // Cleared on every open: a leftover value from a previous dialog would let
+    // the next irreversible confirm through on a single click.
+    typed.value = ''
     await nextTick()
     cancelEl.value?.focus()
   },
@@ -162,5 +200,30 @@ function onKeydown(e: KeyboardEvent) {
 .cm-danger:hover {
   filter: brightness(1.08);
   border-color: var(--danger);
+}
+</style>
+
+<style scoped>
+.cm-confirm-field {
+  display: block;
+  margin: 4px 0 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.cm-confirm-field input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+}
+.cm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
