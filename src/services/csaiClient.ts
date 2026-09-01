@@ -74,6 +74,23 @@ export function openChatSocket(): WebSocket {
   return new WebSocket(chatSocketUrl())
 }
 
+// The URL this app is being served from — origin plus the base path the SPA is
+// deployed under (import.meta.env.BASE_URL, the same value the router uses). Sent
+// with a "generate report" chat frame so the server can bake COMPLETE deep-links
+// (`<appUrl>/files?file=…&tenant=…`) into the saved document: a report is converted
+// to .docx, printed to PDF and mailed on, where a relative `/files?…` resolves
+// against nothing.
+//
+// The server takes the FQDN from the request itself — the same host this chat was
+// served on, which is this tenant's own door — so what this adds is the base path,
+// the one part of the URL the server cannot see. A value on any other origin is
+// ignored server-side. Empty outside a browser.
+export function activeAppUrl(): string {
+  if (typeof window === 'undefined' || !window.location?.origin) return ''
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '')
+  return window.location.origin + base
+}
+
 export { errorMessage }
 export default csaiClient
 

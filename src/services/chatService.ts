@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import { chatSocketUrl } from '@/services/csaiClient'
+import { activeAppUrl, chatSocketUrl } from '@/services/csaiClient'
 import type { ChatEvent, Citation } from '@/types'
 
 // Streaming RAG chat client for convert_search_ai's `/chat` WebSocket.
@@ -31,7 +31,7 @@ import type { ChatEvent, Citation } from '@/types'
 //   {"type":"report_saved","uid":"...","name":"...","path":"..."}    report file saved
 // Client → server: {"message", "system_prompt"?, "history"?, "k"?, "web_search"?,
 //                   "conversation_id"?, "report_target_folder_uid"?,
-//                   "report_target_filename"?, "report_target_path"?}
+//                   "report_target_filename"?, "report_target_path"?, "app_url"?}
 //   or a consent reply: {"type":"tool_consent","id","decision":bool,"remember":bool}.
 
 export interface ConsentRequest {
@@ -65,6 +65,10 @@ export interface ChatSendOptions {
   // "Generate report": pins the exact destination the user chose (a bridge folder
   // UID + filename). The model never chooses where — see GENERATE_REPORT_TO_TARGET.
   reportTarget?: { folderUid: string; folderPath: string; filename: string }
+  // The app URL sent with a report turn so the saved document's file references are
+  // complete deep-links on the host this chat is served from (see activeAppUrl);
+  // defaults to this window's URL.
+  appUrl?: string
   // Optional RAG folder scope: confine retrieval to these folders + subfolders. Each
   // carries the folder path too, so it round-trips for display + restore on resume.
   // Empty/omitted ⇒ search all documents the user can read (the default).
@@ -195,6 +199,10 @@ export class ChatSession {
       payload.report_target_folder_uid = opts.reportTarget.folderUid
       payload.report_target_filename = opts.reportTarget.filename
       payload.report_target_path = opts.reportTarget.folderPath
+      // Only report turns need it: this is the turn that writes a document whose
+      // links must survive outside the browser.
+      const appUrl = opts.appUrl ?? activeAppUrl()
+      if (appUrl) payload.app_url = appUrl
     }
     // Sent whenever provided (even empty) so a cleared scope persists on the
     // conversation; the server derives the UIDs and stores it for resume.
