@@ -111,12 +111,21 @@ describe('sign-in background media', () => {
     expect(w.find('video').exists()).toBe(true)
   })
 
-  it('paints a scrim over the media so the form stays readable', async () => {
+  it('leaves the media alone unless a scrim is asked for', async () => {
+    // Every control sits inside an OPAQUE card, so nothing is read off the
+    // media and a default wash would just dim a picture chosen to be seen.
+    load.mockResolvedValue(normalise({ login: { backgroundUrl: '/branding/lobby.jpg' } }))
+    const w = await mountLogin()
+    expect(w.find('.login-bg-media').exists()).toBe(true)
+    expect(w.find('.login-bg-scrim').exists()).toBe(false)
+  })
+
+  it('paints a scrim when one is configured, for a busy image', async () => {
     load.mockResolvedValue(
-      normalise({ login: { backgroundUrl: '/branding/lobby.jpg', overlay: 'rgba(0, 0, 0, 0.7)' } }),
+      normalise({ login: { backgroundUrl: '/branding/lobby.jpg', overlay: 'rgba(0, 0, 0, 0.35)' } }),
     )
     const w = await mountLogin()
-    expect(w.find('.login-bg-scrim').attributes('style')).toContain('rgba(0, 0, 0, 0.7)')
+    expect(w.find('.login-bg-scrim').attributes('style')).toContain('rgba(0, 0, 0, 0.35)')
   })
 
   it('keeps the background decorative rather than announcing it', async () => {

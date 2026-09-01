@@ -47,7 +47,13 @@
         disablepictureinpicture
       />
       <img v-else class="login-bg-media" :src="loginStill" alt="" />
-      <div class="login-bg-scrim" :style="{ background: branding.login.overlay }" />
+      <!-- Only when a deployment asks for one: the card is opaque, so the
+           media is background rather than something text is read off. -->
+      <div
+        v-if="branding.login.overlay"
+        class="login-bg-scrim"
+        :style="{ background: branding.login.overlay }"
+      />
     </div>
     <div class="login-card">
       <TwoFactorChallenge v-if="auth.mfaChallenge" @done="onMfaDone" />
@@ -345,6 +351,13 @@ const onMfaDone = () => {
   border-radius: 12px;
   padding: 32px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* Over media the card needs to read as sitting ON something. The flat hairline
+   shadow that works against a plain background disappears against a photograph,
+   leaving the card looking pasted on. */
+.login-page:has(.login-bg) .login-card {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
 h1 {

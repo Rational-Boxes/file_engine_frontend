@@ -48,10 +48,13 @@ export interface LoginBranding {
    * video for anyone who has asked their system for reduced motion.
    */
   posterUrl: string
-  /**
-   * Scrim painted over the media, under the card. A photograph behind a form is
-   * the classic way to make a password field unreadable; this is what keeps the
-   * text legible over whatever the deployment chose.
+/**
+   * Optional scrim painted over the media, under the card. Empty by default:
+   * every control on the sign-in page sits inside an OPAQUE card, so nothing is
+   * ever reading text off the media and a wash is not needed for legibility. It
+   * exists for deployments whose image is busy enough to fight the card, and it
+   * is theirs to opt into rather than something imposed on a photograph that was
+   * chosen to be seen.
    */
   overlay: string
 }
@@ -71,9 +74,7 @@ export interface Branding {
 export const DEFAULT_LOGIN: LoginBranding = {
   backgroundUrl: '',
   posterUrl: '',
-  // Only ever painted when there is media under it, so this default costs a
-  // deployment nothing until it sets a background.
-  overlay: 'rgba(0, 0, 0, 0.45)',
+  overlay: '',
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -159,7 +160,7 @@ function login(raw: unknown): LoginBranding {
   return {
     backgroundUrl: safeMediaUrl(src.backgroundUrl),
     posterUrl: safeMediaUrl(src.posterUrl),
-    overlay: safeColour(src.overlay) || DEFAULT_LOGIN.overlay,
+    overlay: safeColour(src.overlay),
   }
 }
 
