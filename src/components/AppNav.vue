@@ -17,7 +17,11 @@
 
 <template>
   <header class="topbar">
-    <div class="brand">FileEngine</div>
+    <!-- White-labelled per deployment; falls back to the product name. -->
+    <div class="brand">
+      <img v-if="branding.iconUrl" class="brand-icon" :src="branding.iconUrl" alt="" />
+      <span>{{ branding.appName }}</span>
+    </div>
     <nav class="mainnav">
       <router-link to="/dashboard">Dashboard</router-link>
       <router-link to="/files">Files</router-link>
@@ -66,12 +70,14 @@ import { useRouter } from 'vue-router'
 import { activeTenantFromHost, isLoginOrigin, loginUrl } from '@/utils/tenantHost'
 import { useAuthStore } from '@/stores/auth'
 import { useCapabilities } from '@/composables/useCapabilities'
+import { useBranding } from '@/composables/useBranding'
 import { useTheme } from '@/composables/useTheme'
 import { useHelpStore } from '@/stores/help'
 import TenantSelector from '@/components/TenantSelector.vue'
 
 const auth = useAuthStore()
 const { features } = useCapabilities()
+const { branding } = useBranding()
 const router = useRouter()
 const { theme, toggleTheme } = useTheme()
 const help = useHelpStore()
@@ -146,8 +152,18 @@ async function logout() {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
   color: var(--fg);
+}
+
+/* Bounded so an oversized logo cannot push the navigation off the bar. */
+.brand-icon {
+  height: 24px;
+  max-width: 120px;
+  object-fit: contain;
 }
 
 .mainnav {

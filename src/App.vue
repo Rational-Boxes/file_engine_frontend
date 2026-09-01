@@ -44,6 +44,7 @@ import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCommentsStore } from '@/stores/comments'
 import { initTheme } from '@/composables/useTheme'
+import { useBranding } from '@/composables/useBranding'
 import PdfPreviewOverlay from '@/components/PdfPreviewOverlay.vue'
 import ServerBusyNotice from '@/components/ServerBusyNotice.vue'
 import ModelViewerOverlay from '@/components/ModelViewerOverlay.vue'
@@ -54,6 +55,11 @@ const authStore = useAuthStore()
 const comments = useCommentsStore()
 
 initTheme()
+
+// White-label overrides, if the deployment ships any. Started here rather than
+// in the nav so the tab title and palette apply on the sign-in page too, which
+// renders before the nav exists.
+useBranding()
 
 onMounted(() => {
   // Adopt the tenant from the subdomain (someco.host.com → someco) before any

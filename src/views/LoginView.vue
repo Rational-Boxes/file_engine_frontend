@@ -20,7 +20,8 @@
     <div class="login-card">
       <TwoFactorChallenge v-if="auth.mfaChallenge" @done="onMfaDone" />
       <template v-else>
-      <h1>FileEngine</h1>
+      <img v-if="branding.iconUrl" class="login-icon" :src="branding.iconUrl" alt="" />
+      <h1>{{ branding.appName }}</h1>
       <p class="subtitle">Sign in to continue</p>
 
       <p v-if="route.query.reason === '2fa'" class="notice-2fa">
@@ -78,10 +79,12 @@ import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
 import { stashRedirect, takeRedirect } from '@/utils/redirect'
 import TwoFactorChallenge from '@/components/TwoFactorChallenge.vue'
+import { useBranding } from '@/composables/useBranding'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const { branding } = useBranding()
 
 // Leave the login page once a session exists. Done as a helper (not a bare
 // router.push) because the router guard reads auth.isAuthenticated: pushing in the
@@ -263,6 +266,14 @@ const onMfaDone = () => {
 h1 {
   margin: 0;
   font-size: 24px;
+}
+
+.login-icon {
+  display: block;
+  height: 48px;
+  max-width: 220px;
+  margin: 0 0 12px;
+  object-fit: contain;
 }
 
 .subtitle {
