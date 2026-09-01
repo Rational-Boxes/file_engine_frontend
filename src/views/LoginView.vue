@@ -69,7 +69,7 @@
 <script setup lang="ts">
 import { errorMessage } from '@/services/apiClient'
 import ProviderIcon from '@/components/ProviderIcon.vue'
-import { isLoginOrigin, tenantOrigin } from '@/utils/tenantHost'
+import { activeTenantFromHost, isLoginOrigin, tenantOrigin } from '@/utils/tenantHost'
 import { chooseTenant, setLastTenant } from '@/utils/lastTenant'
 import { forgetReachability, tenantOriginReachable } from '@/utils/tenantReach'
 import { nextTick, onMounted, ref } from 'vue'
@@ -105,6 +105,27 @@ async function goAfterLogin() {
   // symptom is identical: a working app on the wrong origin. It was not; the
   // probe had not been consulted at all.
   if (isLoginOrigin()) {
+    auth.mfaChallenge = null
+    return void await handOffToWorkspace(target === '/dashboard' ? '' : target)
+  }
+
+  // A tenant origin picked its workspace from the HOSTNAME, before anyone was
+  // authenticated — so it can name a tenant this account is not a member of.
+  // Someone given the deployment's main address, or holding a bookmark from a
+  // previous workspace, signs in successfully and then has every request
+  // refused with "not a member of the requested tenant": a working session
+  // pinned to a workspace they cannot use, which reads as a broken account
+  // rather than the wrong address.
+  //
+  // The token's tenant list is the authority, so send them to one they actually
+  // have — the same choice the sign-in origin makes, and the same code, rather
+  // than a second policy that can drift from it.
+  //
+  // Guarded on the list being non-empty: if loadTenants failed we know nothing
+  // about membership, and bouncing on no evidence would be worse than landing
+  // here and letting the request that actually fails say so.
+  const host = activeTenantFromHost()
+  if (host && auth.tenants.length && !auth.tenants.includes(host)) {
     auth.mfaChallenge = null
     return void await handOffToWorkspace(target === '/dashboard' ? '' : target)
   }
@@ -157,10 +178,12 @@ onMounted(async () => {
 /**
  * Carry this session to a tenant's own origin.
  *
- * Only runs on the shared sign-in origin, which is not a tenant and has no app
- * to show. The destination is the remembered workspace when the user still has
- * it, else their first — the token's roles map is the authority on what they
- * may reach, never the remembered hint.
+ * Runs from the shared sign-in origin, which is not a tenant and has no app to
+ * show — and from a tenant origin whose workspace this account is not a member
+ * of, where staying would mean a session every request is refused from. The
+ * destination is the remembered workspace when the user still has it, else
+ * their first — the token's roles map is the authority on what they may reach,
+ * never the remembered hint.
  */
 async function handOffToWorkspace(nextPath?: string) {
   const available = auth.tenants   // string[] — the tenants this token carries
