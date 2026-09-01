@@ -124,8 +124,18 @@ export function isLoginOrigin(): boolean {
  * `next` is a PATH on the tenant's own origin, never a full URL — a full URL
  * here would be an open-redirect parameter, and the tenant is named separately
  * so the return target is reconstructed rather than trusted.
+ *
+ * `signedOut` marks an explicit sign-out. The sign-in origin holds its OWN
+ * token, in its own storage, minted when the user signed in there — a different
+ * session from the one the tenant origin just discarded. Without this flag it
+ * arrives, finds that token still valid, and hands the user straight back to a
+ * workspace, so signing out looks like it did nothing.
  */
-export function loginUrl(next?: string, tenant?: string | null): string | null {
+export function loginUrl(
+  next?: string,
+  tenant?: string | null,
+  signedOut = false,
+): string | null {
   if (typeof window === 'undefined') return null
   const { protocol, hostname, port } = window.location
   const firstDot = hostname.indexOf('.')
@@ -135,6 +145,7 @@ export function loginUrl(next?: string, tenant?: string | null): string | null {
   const q = new URLSearchParams()
   if (next) q.set('next', next)
   if (tenant) q.set('t', tenant)
+  if (signedOut) q.set('signedout', '1')
   const qs = q.toString()
   return `${protocol}//${host}/login${qs ? '?' + qs : ''}`
 }

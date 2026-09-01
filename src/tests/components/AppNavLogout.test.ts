@@ -76,8 +76,18 @@ describe('signing out goes to the login route', () => {
   it('forwards to the bespoke login subdomain from a tenant origin', async () => {
     at('https://acme.example.com/dashboard')
     await signOut()
-    expect(window.location.href).toBe('https://login.example.com/login')
+    expect(window.location.href).toContain('https://login.example.com/login')
     expect(push).not.toHaveBeenCalled()
+  })
+
+  it('tells the sign-in origin this was a sign-out', async () => {
+    // That origin holds a token of its OWN, minted when the user signed in
+    // there. Arriving without saying so, it finds that session still valid and
+    // hands the user back to a workspace — sign-out looking like a no-op, with
+    // the session left live for whoever uses the machine next.
+    at('https://acme.example.com/dashboard')
+    await signOut()
+    expect(window.location.href).toContain('signedout=1')
   })
 
   it('does not leak the workspace to the sign-in page', async () => {
