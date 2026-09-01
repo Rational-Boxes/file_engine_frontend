@@ -275,6 +275,7 @@ import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { usePreviewStore } from '@/stores/preview'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { previewVerdictFromRow, canPreviewWithRenditions, canView3DModel } from '@/utils/previewable'
 import { loadRenditionSet, toRenditionSet } from '@/services/renditions'
 import { shareService, type DropProvenance } from '@/services/shareService'
@@ -286,6 +287,7 @@ const upload = useUploadStore()
 const model3d = useModel3dStore()
 const comments = useCommentsStore()
 const preview = usePreviewStore()
+const { features } = useCapabilities()
 
 // A file is viewable in 3D when it's a known model format AND has been converted
 // (its `model` XKT rendition lives among its hidden children).
@@ -332,6 +334,9 @@ async function loadAttentionFlags() {
 // markers simply do not appear.
 const dropProvenance = ref<Record<string, DropProvenance>>({})
 async function loadDropProvenance() {
+  // No sharing service means nothing ever arrived by a link, so the badge
+  // has nothing to show and this would be a failed request per listing.
+  if (!features.sharing) return
   const uids = files.items.filter((i) => !i.isDirectory && !i.deleted).map((i) => i.uid)
   if (!uids.length) {
     dropProvenance.value = {}
