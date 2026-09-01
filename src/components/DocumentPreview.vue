@@ -295,7 +295,7 @@
       <!-- Discussion (§10b): only on the full preview surface (not the compact
            drawer). Shown alongside the preview — side-by-side or stacked, and
            minimizable to a toggle. No preview → a button that opens the overlay. -->
-      <section v-if="fullWidth" class="dp-discussion" :style="discStyle">
+      <section v-if="fullWidth && features.discussion" class="dp-discussion" :style="discStyle">
         <ThreadPanel
           v-if="hasPreview"
           ref="threadPanelRef"
@@ -325,7 +325,7 @@
     </template>
 
     <ThreadOverlay
-      v-if="fullWidth"
+      v-if="fullWidth && features.discussion"
       :open="discussionOpen"
       :file-uid="uid"
       :name="name"
@@ -364,6 +364,7 @@ import { useDifferenceStore } from '@/stores/difference'
 import ThreadOverlay from '@/components/ThreadOverlay.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDiscussionDock } from '@/composables/useDiscussionDock'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { searchService } from '@/services/searchService'
 import { fileService } from '@/services/fileService'
 import { usePreviewStore } from '@/stores/preview'
@@ -406,6 +407,7 @@ const props = defineProps<{
 }>()
 
 const preview = usePreviewStore()
+const { features } = useCapabilities()
 
 // VIDEO_EXTS now lives beside the rendition helpers, so the rule that decides a
 // row has a video preview and the player that renders it share one list.
@@ -614,7 +616,9 @@ const navBoxStyle = computed(() => {
 // Docking behaviour (orientation, minimize, draggable divider) is shared with the
 // 3D viewer via a composable; combined only on the full preview surface.
 const { discussionPos, discLayout, dragging, combinedActive, discStyle, setPos, startDrag } =
-  useDiscussionDock(hasPreview, computed(() => !!props.fullWidth))
+  // The dock is only meaningful where the discussion service is deployed — its
+  // panel can otherwise do nothing but report that it cannot reach anything.
+  useDiscussionDock(hasPreview, computed(() => !!props.fullWidth && features.discussion))
 
 watch(() => props.uid, reload, { immediate: true })
 onBeforeUnmount(cleanup)
