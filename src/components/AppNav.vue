@@ -21,14 +21,24 @@
     <nav class="mainnav">
       <router-link to="/dashboard">Dashboard</router-link>
       <router-link to="/files">Files</router-link>
-      <router-link to="/search">Search</router-link>
-      <router-link to="/chat">AI Research Chat</router-link>
+      <!--
+        Hidden where the deployment cannot serve them. Search needs an embedding
+        model (without one nothing was ever indexed, so the box answers every
+        query with nothing and reads as an empty library rather than a feature
+        that is not installed); chat needs a provider it can actually reach.
+      -->
+      <router-link v-if="features.search" to="/search">Search</router-link>
+      <router-link v-if="features.chat" to="/chat">AI Research Chat</router-link>
       <!-- "Users & roles" undersold the page even before this: it also carries the
            two-factor and WebDAV session policies, now as tabs of their own. The
            label matches the view's own <h1>. -->
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/tenant">Tenant administration</router-link>
-      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/security">Security</router-link>
-      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/shares">Shared outside</router-link>
+      <!-- The Security view is the audit service's surface. Where that service
+           is absent the route answered index.html with HTTP 200 and the panel
+           died on undefined data — a missing service disguised as a front-end
+           type error. -->
+      <router-link v-if="auth.hasAccessLevel('admin') && features.audit" to="/admin/security">Security</router-link>
+      <router-link v-if="auth.hasAccessLevel('admin') && features.sharing" to="/admin/shares">Shared outside</router-link>
       <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/ops">System</router-link>
     </nav>
     <div class="user">
@@ -55,11 +65,13 @@
 import { useRouter } from 'vue-router'
 import { activeTenantFromHost, isLoginOrigin, loginUrl } from '@/utils/tenantHost'
 import { useAuthStore } from '@/stores/auth'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { useTheme } from '@/composables/useTheme'
 import { useHelpStore } from '@/stores/help'
 import TenantSelector from '@/components/TenantSelector.vue'
 
 const auth = useAuthStore()
+const { features } = useCapabilities()
 const router = useRouter()
 const { theme, toggleTheme } = useTheme()
 const help = useHelpStore()
