@@ -24,6 +24,7 @@ import { reactive, readonly } from 'vue'
 import {
   brandingService,
   DEFAULT_BRANDING,
+  DEFAULT_LOGIN,
   PALETTE_VARS,
   type Branding,
   type Palette,
@@ -31,7 +32,12 @@ import {
 
 const STYLE_ID = 'fe-branding-palette'
 
-const state = reactive<Branding>({ ...DEFAULT_BRANDING, light: {}, dark: {} })
+// Fields copied one by one below rather than Object.assign(state, b), so this
+// declaration and apply() have to be kept in step by hand. That is the cost of
+// keeping `state` the same reactive object across a reload; see apply().
+const fresh = (): Branding => ({ ...DEFAULT_BRANDING, light: {}, dark: {}, login: { ...DEFAULT_LOGIN } })
+
+const state = reactive<Branding>(fresh())
 let started = false
 
 function declarations(p: Palette): string {
@@ -70,6 +76,7 @@ function apply(b: Branding, doc: Document = document) {
   state.title = b.title
   state.light = b.light
   state.dark = b.dark
+  state.login = b.login
   if (typeof doc !== 'undefined' && doc) {
     doc.title = b.title
     applyPalette(b, doc)
@@ -87,7 +94,7 @@ export function useBranding() {
 /** Test seam. */
 export function resetBranding() {
   started = false
-  Object.assign(state, { ...DEFAULT_BRANDING, light: {}, dark: {} })
+  Object.assign(state, fresh())
   brandingService.reset()
   if (typeof document !== 'undefined') document.getElementById(STYLE_ID)?.remove()
 }

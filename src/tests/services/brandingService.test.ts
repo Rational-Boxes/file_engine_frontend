@@ -86,6 +86,10 @@ describe('normalise', () => {
   it('falls back to the product name rather than rendering an empty header', () => {
     expect(normalise({ appName: '   ' }).appName).toBe('FileEngine')
     expect(normalise(null).appName).toBe('FileEngine')
+    // The literal payload an unconfigured Ansible deployment serves: the role
+    // writes `{}` rather than omitting the file, because a bind-mount with no
+    // source makes podman create a DIRECTORY at the target.
+    expect(normalise({})).toEqual(DEFAULT_BRANDING)
   })
 })
 

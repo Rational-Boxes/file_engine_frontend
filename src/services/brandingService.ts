@@ -37,6 +37,25 @@ export interface Palette {
   success?: string
 }
 
+export interface LoginBranding {
+  /**
+   * Full-bleed media behind the sign-in card. An image, or a video to loop.
+   * Same-origin path (or a data: image); see safeMediaUrl.
+   */
+  backgroundUrl: string
+  /**
+   * Still shown before a video has any frames to paint, and INSTEAD of the
+   * video for anyone who has asked their system for reduced motion.
+   */
+  posterUrl: string
+  /**
+   * Scrim painted over the media, under the card. A photograph behind a form is
+   * the classic way to make a password field unreadable; this is what keeps the
+   * text legible over whatever the deployment chose.
+   */
+  overlay: string
+}
+
 export interface Branding {
   /** Shown at the left of the main navigation and on the sign-in page. */
   appName: string
@@ -46,6 +65,15 @@ export interface Branding {
   title: string
   light: Palette
   dark: Palette
+  login: LoginBranding
+}
+
+export const DEFAULT_LOGIN: LoginBranding = {
+  backgroundUrl: '',
+  posterUrl: '',
+  // Only ever painted when there is media under it, so this default costs a
+  // deployment nothing until it sets a background.
+  overlay: 'rgba(0, 0, 0, 0.45)',
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -54,6 +82,7 @@ export const DEFAULT_BRANDING: Branding = {
   title: 'FileEngine',
   light: {},
   dark: {},
+  login: DEFAULT_LOGIN,
 }
 
 // The CSS custom property each palette key drives, matching App.vue's :root.
@@ -98,6 +127,42 @@ export function safeIconUrl(v: unknown): string {
   return ''
 }
 
+// Background media: same-origin paths, plus data: images for something small.
+//
+// Same rule as the logo, and for the same reason — an off-site background is a
+// third-party request on every visit to the sign-in page, which is the one page
+// that is reachable without an account. Deliberately no data: video: a video
+// small enough to inline is not a video worth looping, and the base64 would sit
+// in the branding file every request pays for.
+export function safeMediaUrl(v: unknown): string {
+  const s = String(v ?? '').trim()
+  if (!s || s.length > 4096) return ''
+  if (s.startsWith('/') && !s.startsWith('//')) return s
+  if (/^data:image\/(png|jpeg|gif|webp|avif);/i.test(s)) return s
+  return ''
+}
+
+const VIDEO_EXT = /\.(mp4|webm|ogv|ogg|mov|m4v)$/i
+
+/** Whether a background URL should be played or shown. */
+export function mediaKind(url: string): 'video' | 'image' | 'none' {
+  if (!url) return 'none'
+  // Query and fragment stripped first: a cache-buster like `?v=3` would
+  // otherwise make every video look like an image and render in an <img>, which
+  // fails silently as a broken-image icon behind the sign-in form.
+  const path = url.split(/[?#]/)[0]
+  return VIDEO_EXT.test(path) ? 'video' : 'image'
+}
+
+function login(raw: unknown): LoginBranding {
+  const src = (raw ?? {}) as Record<string, unknown>
+  return {
+    backgroundUrl: safeMediaUrl(src.backgroundUrl),
+    posterUrl: safeMediaUrl(src.posterUrl),
+    overlay: safeColour(src.overlay) || DEFAULT_LOGIN.overlay,
+  }
+}
+
 function palette(raw: unknown): Palette {
   const src = (raw ?? {}) as Record<string, unknown>
   const out: Palette = {}
@@ -119,6 +184,7 @@ export function normalise(raw: unknown): Branding {
     title: String(src.title ?? '').trim().slice(0, 64) || appName,
     light: palette(src.light),
     dark: palette(src.dark),
+    login: login(src.login),
   }
 }
 

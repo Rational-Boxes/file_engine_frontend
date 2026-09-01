@@ -17,6 +17,38 @@
 
 <template>
   <div class="login-page">
+    <!--
+      Optional full-bleed background. aria-hidden and never focusable: it is
+      decoration, and a screen reader announcing a looping video before the
+      sign-in form would be actively worse than silence.
+    -->
+    <div v-if="loginMedia !== 'none'" class="login-bg" aria-hidden="true">
+      <!--
+        muted is not a preference, it is what makes autoplay work at all —
+        browsers block sound-capable autoplay. playsinline stops iOS taking the
+        video fullscreen over the form.
+
+        `.attr` on muted is load-bearing. A bare `muted` compiles to a DOM
+        PROPERTY assignment, which Vue makes after the element is in the
+        document — and some browsers decide about autoplay at insertion, by
+        which point the element still looks sound-capable and the background
+        never starts. `.attr` emits the real HTML attribute, so it is true
+        before the element is ever considered.
+      -->
+      <video
+        v-if="loginMedia === 'video'"
+        class="login-bg-media"
+        :src="branding.login.backgroundUrl"
+        :poster="branding.login.posterUrl || undefined"
+        :muted.attr="true"
+        autoplay
+        loop
+        playsinline
+        disablepictureinpicture
+      />
+      <img v-else class="login-bg-media" :src="loginStill" alt="" />
+      <div class="login-bg-scrim" :style="{ background: branding.login.overlay }" />
+    </div>
     <div class="login-card">
       <TwoFactorChallenge v-if="auth.mfaChallenge" @done="onMfaDone" />
       <template v-else>
@@ -73,18 +105,44 @@ import ProviderIcon from '@/components/ProviderIcon.vue'
 import { isLoginOrigin, tenantOrigin } from '@/utils/tenantHost'
 import { chooseTenant, setLastTenant } from '@/utils/lastTenant'
 import { forgetReachability, tenantOriginReachable } from '@/utils/tenantReach'
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
 import { stashRedirect, takeRedirect } from '@/utils/redirect'
 import TwoFactorChallenge from '@/components/TwoFactorChallenge.vue'
 import { useBranding } from '@/composables/useBranding'
+import { mediaKind } from '@/services/brandingService'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const { branding } = useBranding()
+
+// A full-screen looping video is the case prefers-reduced-motion exists for, so
+// a deployment's background never overrides it. Resolved to an element choice
+// rather than a CSS rule on purpose: the <video> is never rendered, so the file
+// is never fetched — someone who has asked for less motion should not also be
+// paying to download the animation they will not see.
+const reducedMotion =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false
+
+const loginMedia = computed(() => {
+  const kind = mediaKind(branding.login.backgroundUrl)
+  if (kind !== 'video' || !reducedMotion) return kind
+  // A poster is the still frame of the video, which is exactly the right
+  // fallback. Without one there is nothing to show, so the page goes back to
+  // its ordinary background rather than freezing on a blank black rectangle.
+  return branding.login.posterUrl ? 'image' : 'none'
+})
+
+// The video's own poster doubles as the still, so a deployment that sets both
+// gets one file used two ways rather than having to name the same image twice.
+const loginStill = computed(
+  () => branding.login.posterUrl || branding.login.backgroundUrl,
+)
 
 // Leave the login page once a session exists. Done as a helper (not a bare
 // router.push) because the router guard reads auth.isAuthenticated: pushing in the
@@ -246,6 +304,7 @@ const onMfaDone = () => {
 
 <style scoped>
 .login-page {
+  position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -253,7 +312,32 @@ const onMfaDone = () => {
   padding: 20px;
 }
 
+/* Fixed rather than absolute so the media covers the viewport even when the
+   card grows past it — a tall card on a short window would otherwise scroll the
+   background away and leave the page colour under the form. */
+.login-bg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.login-bg-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.login-bg-scrim {
+  position: absolute;
+  inset: 0;
+}
+
 .login-card {
+  /* Above the background, and its own stacking context so the scrim cannot
+     bleed over the form. */
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 360px;
   background: var(--card);
