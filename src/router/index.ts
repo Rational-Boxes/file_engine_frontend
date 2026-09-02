@@ -14,9 +14,11 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteLocationNormalized, RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { activeTenantFromHost, isLoginOrigin, loginUrl } from '@/utils/tenantHost'
 import { safeRedirect } from '@/utils/redirect'
+import { servingFromLoginOrigin } from '@/utils/loginOriginServe'
 
 const LoginView = () => import('@/views/LoginView.vue')
 const OAuthCallbackView = () => import('@/views/OAuthCallbackView.vue')
@@ -121,7 +123,18 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+/**
+ * The navigation policy, exported so it can be exercised on its own.
+ *
+ * Registered below with `router.beforeEach`. Driving the real router in a test
+ * would load every lazy view the policy can land on, so the policy is tested
+ * against `router.resolve()` output instead — and it is worth testing, because
+ * running BEFORE the destination view mounts is exactly how the sign-out bug
+ * below escaped a suite that covered the view.
+ */
+export function authGuard(
+  to: RouteLocationNormalized,
+): RouteLocationRaw | boolean | undefined {
   const auth = useAuthStore()
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     // On a TENANT origin, signing in happens at the shared login host — one
@@ -141,12 +154,40 @@ router.beforeEach((to) => {
     // only way in, so keep the existing behaviour.
     return { path: '/login', query: { redirect: to.fullPath } }
   }
+  // The sign-in origin is NOT a tenant and has no workspace to show. An
+  // authenticated visitor asking it for one — a second tab, a bookmark, or just
+  // `/` redirecting to the dashboard — was served the app from an origin that
+  // is nobody's: every request scoped by a header instead of the host, and a
+  // URL that names no workspace. The forward existed, but only on the sign-in
+  // path; arriving already signed in never reached it.
+  //
+  // Route to the login view instead, which owns the decision: it probes the
+  // tenant's subdomain and hands the session over, or falls back to serving
+  // from here. The destination travels as `next` so the deep link survives.
+  // Public routes are left alone — a share link or an invitation must open
+  // where it was opened.
+  if (isLoginOrigin() && auth.isAuthenticated && to.meta.requiresAuth
+      && !servingFromLoginOrigin()) {
+    return { path: '/login', query: { next: to.fullPath } }
+  }
   if (to.meta.requiresAdmin && !auth.hasAccessLevel('admin')) {
     return { path: '/files' }
   }
-  if (to.path === '/login' && auth.isAuthenticated) {
+  // Already signed in and asking for the sign-in page: there is nothing to log
+  // into, so carry on to where they were headed.
+  //
+  // EXCEPT after an explicit sign-out. A tenant origin discards its own token
+  // and sends the user here with `signedout=1`, and this origin still holds the
+  // SEPARATE token it minted when they signed in — origin-scoped storage means
+  // the tenant could not clear it. LoginView ends that session on mount, but
+  // this guard runs first: bouncing the navigation away as "already signed in"
+  // meant LoginView never mounted, so the sign-out silently landed the user
+  // back on the dashboard with a live session.
+  if (to.path === '/login' && auth.isAuthenticated && to.query.signedout !== '1') {
     return { path: safeRedirect(to.query.redirect) }
   }
-})
+}
+
+router.beforeEach(authGuard)
 
 export default router

@@ -110,6 +110,7 @@ import { errorMessage } from '@/services/apiClient'
 import ProviderIcon from '@/components/ProviderIcon.vue'
 import { activeTenantFromHost, isLoginOrigin, tenantOrigin } from '@/utils/tenantHost'
 import { chooseTenant, setLastTenant } from '@/utils/lastTenant'
+import { markServingFromLoginOrigin } from '@/utils/loginOriginServe'
 import { forgetReachability, tenantOriginReachable } from '@/utils/tenantReach'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -317,6 +318,10 @@ async function handOffToWorkspace(nextPath?: string) {
   // host, so every request is scoped exactly as it would be on the subdomain.
   // We are already authenticated on this origin, so no hand-off is needed at
   // all; the session we just created is the one being used.
+  // Say so before navigating: the router sends an authenticated visitor on this
+  // origin back here to be handed off, and this navigation is exactly the one it
+  // would bounce. The flag is what ends that loop.
+  markServingFromLoginOrigin()
   auth.switchTenant(target)
   await router.replace(next || '/dashboard')
 }
