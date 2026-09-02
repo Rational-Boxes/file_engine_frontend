@@ -15,6 +15,7 @@
 
 import apiClient from '@/services/apiClient'
 import { fileService } from '@/services/fileService'
+import { chunkedUpload, CHUNKED_THRESHOLD_BYTES } from '@/services/chunkedUpload'
 
 export const uploadService = {
   // Upload a file into a directory: stream the raw bytes to a node's content.
@@ -26,12 +27,25 @@ export const uploadService = {
     parentUid: string,
     file: File,
     onProgress?: (percent: number) => void,
+    signal?: AbortSignal,
   ): Promise<string> {
     const uid =
       (await fileService.findChildByName(parentUid, file.name)) ??
       (await fileService.touch(parentUid, file.name))
+
+    // Two shapes, one entry point. A single PUT is fewer moving parts and the
+    // browser already streams it, so it stays the default — but it is all or
+    // nothing, and for a large file that means a dropped connection costs the
+    // whole transfer. Above the threshold the file goes up in parts that can be
+    // retried and resumed individually. See chunkedUpload.
+    if (file.size >= CHUNKED_THRESHOLD_BYTES) {
+      await chunkedUpload.upload(uid, file, onProgress, signal)
+      return uid
+    }
+
     await apiClient.put(`/v1/files/${uid}/content`, file, {
       headers: { 'Content-Type': 'application/octet-stream' },
+      signal,
       onUploadProgress: (e) => {
         if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
       },
