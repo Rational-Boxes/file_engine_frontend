@@ -154,3 +154,57 @@ describe('a tenant origin', () => {
     expect(at('/dashboard')).toBeUndefined()
   })
 })
+
+/**
+ * A guard that redirects must SETTLE.
+ *
+ * The tests above each evaluate the guard once, which is why they all passed
+ * while the sign-in origin span: two rules pointed at each other. Authenticated
+ * on that origin, /dashboard was sent to /login to be handed off, and /login was
+ * sent back to /dashboard as "already signed in" — a cycle the browser walks
+ * until it locks up. Nothing that checks a single hop can see that; only
+ * following the chain can.
+ */
+function settle(start: string, max = 12) {
+    const seen: string[] = []
+    let path = start
+    for (let i = 0; i < max; i++) {
+        seen.push(path)
+        const r = at(path)
+        // undefined/false = the guard is done; the navigation proceeds.
+        if (r === undefined || r === false) return { path, hops: seen }
+        const next = r as { path: string; query?: Record<string, string> }
+        const q = next.query
+            ? '?' + Object.entries(next.query).map(([k, v]) => `${k}=${v}`).join('&')
+            : ''
+        path = next.path + q
+    }
+    return { path: 'DID_NOT_SETTLE', hops: seen }
+}
+
+describe('the guard settles instead of cycling', () => {
+    it('lands somewhere when an authenticated visitor asks the sign-in origin for a workspace', () => {
+        onLoginOrigin(true)
+        signedIn()
+        const { path, hops } = settle('/dashboard')
+        expect({ path, hops }).toMatchObject({ path: expect.not.stringContaining('DID_NOT_SETTLE') })
+    })
+
+    it('settles on the login view, which is what owns the hand-off', () => {
+        onLoginOrigin(true)
+        signedIn()
+        expect(settle('/dashboard').path).toContain('/login')
+    })
+
+    it('settles from a deep link too', () => {
+        onLoginOrigin(true)
+        signedIn()
+        expect(settle('/files?file=abc').path).not.toBe('DID_NOT_SETTLE')
+    })
+
+    it('still settles on a tenant origin', () => {
+        onLoginOrigin(false)
+        signedIn()
+        expect(settle('/login').path).toBe('/dashboard')
+    })
+})

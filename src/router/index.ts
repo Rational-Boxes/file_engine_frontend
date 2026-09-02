@@ -183,7 +183,13 @@ export function authGuard(
   // this guard runs first: bouncing the navigation away as "already signed in"
   // meant LoginView never mounted, so the sign-out silently landed the user
   // back on the dashboard with a live session.
-  if (to.path === '/login' && auth.isAuthenticated && to.query.signedout !== '1') {
+  // NOT on the sign-in origin. There, /login is the destination the rule above
+  // just sent this navigation to, and sending it back out again is a cycle the
+  // browser walks until the tab locks up — /dashboard -> /login -> /dashboard.
+  // That origin has no workspace of its own to carry on to, which is the whole
+  // reason the hand-off exists: let the login view mount and decide.
+  if (to.path === '/login' && auth.isAuthenticated
+      && to.query.signedout !== '1' && !isLoginOrigin()) {
     return { path: safeRedirect(to.query.redirect) }
   }
 }
