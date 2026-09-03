@@ -134,6 +134,13 @@ const keep = ref(1)
 
 watch(() => props.uid, load, { immediate: true })
 
+// The uid watcher is not enough on its own: a save through ONLYOFFICE writes a
+// new version of the file already open here, so the list goes stale while the
+// uid it is keyed on never changes. The drawer calls this when it learns the
+// file moved underneath it — on returning from the editor, and when the
+// background poll reports a new version.
+defineExpose({ reload: load })
+
 async function load() {
   if (!props.uid) return
   selected.value = []          // a selection from another file means nothing here

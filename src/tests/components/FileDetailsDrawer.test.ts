@@ -14,12 +14,14 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { defineComponent, h, ref as vueRef, nextTick, KeepAlive } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 const fns = vi.hoisted(() => ({
   stat: vi.fn(),
   listDirectory: vi.fn(),
+  versionsReload: vi.fn(),
   getMetadata: vi.fn(),
   checkPermission: vi.fn(),
   generatePreview: vi.fn(),
@@ -67,8 +69,17 @@ vi.mock('@/components/AclEditor.vue', () => ({
 vi.mock('@/components/DocumentPreview.vue', () => ({
   default: { name: 'DocumentPreview', props: ['uid', 'name', 'hasRenditions'], template: '<div/>' },
 }))
+// Exposes reload(), like the real component: the drawer calls it when the file
+// changes underneath an open drawer, and the tests below assert on it.
 vi.mock('@/components/FileVersions.vue', () => ({
-  default: { name: 'FileVersions', props: ['uid', 'name', 'current', 'canManage'], template: '<div/>' },
+  default: {
+    name: 'FileVersions',
+    props: ['uid', 'name', 'current', 'canManage'],
+    setup(_p: unknown, { expose }: { expose: (e: object) => void }) {
+      expose({ reload: fns.versionsReload })
+      return () => h('div')
+    },
+  },
 }))
 
 import FileDetailsDrawer from '@/components/FileDetailsDrawer.vue'
@@ -458,9 +469,115 @@ describe('FileDetailsDrawer — survives a background rescan', () => {
     expect(files.detailItem?.uid).toBe('f1')
     // The row moved on underneath, and the drawer moved with it.
     expect(files.detailItem?.size).toBe(42)
-    // …without re-running loadAll, which would reset the tab and re-request
-    // everything the drawer already has.
+    // The pane the user is on survives. This is the assertion that catches a
+    // re-pointed detailItem: that refires the select watcher, which resets the
+    // tab to Info. A silent re-read of the same file does not.
     expect((w.vm as unknown as { tab: string }).tab).toBe('Access')
-    expect(fns.stat.mock.calls.length).toBe(statCalls)
+    // It DOES re-read, once, because the row changing is how a version written
+    // out-of-band (an ONLYOFFICE save landing after the editor closed) reaches
+    // the Info pane and the version list. Silently: see the reload tests below.
+    expect(fns.stat.mock.calls.length).toBe(statCalls + 1)
+  })
+})
+
+// Editing in ONLYOFFICE leaves the browser view behind on a kept-alive route and
+// writes a NEW VERSION of the file the drawer is open on. Nothing the drawer is
+// keyed on changes, so without these it came back showing the state from before
+// the edit — the version just saved missing from the list.
+describe('FileDetailsDrawer — reloads a file that changed underneath it', () => {
+  const row = (over: Record<string, unknown> = {}) => ({
+    uid: 'f1', name: 'report.docx', type: 'file' as const, size: 10, isDirectory: false,
+    renditionCount: 0, hasRenditions: false, deleted: false, createdAt: 0,
+    modifiedAt: 100, owner: '', createdBy: '', modifiedBy: '', ...over,
+  })
+
+  // Mirrors App.vue: the browser view — and the drawer inside it — is cached
+  // while a full-page route (the ONLYOFFICE editor) is on screen, so the drawer
+  // is deactivated and activated rather than unmounted and rebuilt.
+  // Nested one level deep on purpose: in the real app the KeepAlive caches the
+  // BROWSER VIEW, and the drawer is a child of it. Activation has to reach down
+  // the cached tree, not just its root.
+  const BrowserView = defineComponent({
+    name: 'FileBrowserView',
+    render: () => h('div', [h(FileDetailsDrawer)]),
+  })
+  const mountKeptAlive = () => {
+    const shown = vueRef(true)
+    const Host = defineComponent({
+      render: () => h(KeepAlive, null, { default: () => (shown.value ? h(BrowserView) : null) }),
+    })
+    return { shown, w: mount(Host) }
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    routeStub.query = {}
+    fns.stat.mockResolvedValue({ uid: 'f1', name: 'report.docx', type: 'file', size: 10, owner: 'u', version: 'v1' })
+    fns.getMetadata.mockResolvedValue({})
+    fns.checkPermission.mockResolvedValue(true)
+    fns.loadRenditionSet.mockResolvedValue({})
+    fns.modelRendition.mockReturnValue(undefined)
+    provenance.mockResolvedValue({})
+  })
+
+  it('re-reads the file and the version list on returning from the editor', async () => {
+    const files = useFileStore()
+    files.items = [row()]
+    files.detailItem = row()
+    files.drawerOpen = true
+    const { shown } = mountKeptAlive()
+    await flushPromises()
+    const before = fns.stat.mock.calls.length
+
+    // Off to the editor and back: the cached tree is deactivated, then activated.
+    shown.value = false
+    await flushPromises()
+    shown.value = true
+    await flushPromises()
+
+    expect(fns.stat.mock.calls.length).toBe(before + 1)
+    expect(fns.versionsReload).toHaveBeenCalled()
+  })
+
+  it('follows a new version the background poll picks up', async () => {
+    const files = useFileStore()
+    files.detailItem = row()
+    files.drawerOpen = true
+    const w = mount(FileDetailsDrawer)
+    await flushPromises()
+    const access = w.findAll('.tabs button').find((b) => b.text() === 'Versions')!
+    await access.trigger('click')
+    const before = fns.stat.mock.calls.length
+
+    // What files.refresh() does when the ONLYOFFICE save callback lands: the row
+    // is updated IN PLACE, same object, new size and mtime.
+    Object.assign(files.detailItem!, { size: 4096, modifiedAt: 200 })
+    await nextTick()
+    // Silent: the panes are not emptied and refilled under the user. A blanking
+    // reload shows up here as the Info list disappearing for a frame.
+    expect(w.find('dl').exists()).toBe(true)
+    await flushPromises()
+
+    expect(fns.stat.mock.calls.length).toBe(before + 1)
+    expect(fns.versionsReload).toHaveBeenCalled()
+    // A reload nobody asked for must not move the user off the pane they are on.
+    expect((w.vm as unknown as { tab: string }).tab).toBe('Versions')
+  })
+
+  it('selecting a different file loads it once, not twice', async () => {
+    const files = useFileStore()
+    files.detailItem = row()
+    files.drawerOpen = true
+    mount(FileDetailsDrawer)
+    await flushPromises()
+    fns.stat.mockClear()
+    fns.versionsReload.mockClear()
+
+    files.detailItem = row({ uid: 'f2', name: 'other.docx', size: 77, modifiedAt: 300 })
+    await flushPromises()
+
+    expect(fns.stat.mock.calls.map((c) => c[0])).toEqual(['f2'])
+    expect(fns.versionsReload).not.toHaveBeenCalled()
   })
 })

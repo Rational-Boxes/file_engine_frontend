@@ -151,6 +151,7 @@
       <p class="muted">Version history <HelpIcon topic="versions" label="About version history" /></p>
       <FileVersions
         v-if="item && !item.isDirectory"
+        ref="versionsPanel"
         :uid="item.uid"
         :name="item.name"
         :current="info?.version"
@@ -201,10 +202,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { shareService, type DropProvenance } from '@/services/shareService'
 import { fileService, type NodeInfo } from '@/services/fileService'
+import type { FileItem } from '@/stores/files'
 import { useFileStore } from '@/stores/files'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
@@ -410,6 +412,19 @@ async function copyDeepLink() {
 }
 
 const info = ref<NodeInfo | null>(null)
+// The uid the panes currently hold, so a refresh can tell "the same file changed
+// underneath us" from "a different file was selected" — the latter belongs to
+// the select watcher below, which also resets the tab.
+const loadedUid = ref('')
+// The row as it looked when we last read it. What the poll changes when a new
+// version lands, and what tells a genuine change apart from the row watcher
+// simply hearing about the select we are already handling.
+const loadedRow = ref('')
+const rowKey = (d: FileItem | null) =>
+  d ? `${d.uid}:${d.modifiedAt}:${d.size}:${d.renditionCount}` : ''
+// The Versions pane loads its own list, keyed on the uid. That uid does not move
+// when a new version is written, so it has to be told.
+const versionsPanel = ref<{ reload: () => void } | null>(null)
 const metadata = ref<Record<string, string>>({})
 const metaKeys = computed(() => Object.keys(metadata.value).sort())
 const effective = ref<Record<string, boolean>>({})
@@ -418,19 +433,29 @@ const error = ref<string | null>(null)
 const newKey = ref('')
 const newValue = ref('')
 
-async function loadAll(uid: string) {
+// `silent` re-reads everything WITHOUT first blanking what is on screen. A
+// reload the user did not ask for — returning from the editor, or the background
+// poll noticing a new version — should look like the numbers changing, not like
+// the drawer emptying and filling again.
+async function loadAll(uid: string, { silent = false } = {}) {
+  loadedUid.value = uid
+  loadedRow.value = rowKey(files.detailItem)
   error.value = null
-  info.value = null
-  metadata.value = {}
-  effective.value = {}
+  if (!silent) {
+    info.value = null
+    metadata.value = {}
+    effective.value = {}
+  }
   // NB: the active tab is intentionally NOT reset here — loadAll also runs after
   // in-tab edits (ACL grant, version restore) via @changed, and those must keep
   // the user on their current tab. The tab is reset only on file-select (watch).
   // Reset the per-file 3D conversion state.
-  modelReady.value = false
-  generating.value = false
-  genMessage.value = ''
-  genError.value = false
+  if (!silent) {
+    modelReady.value = false
+    generating.value = false
+    genMessage.value = ''
+    genError.value = false
+  }
   provenance.value = null
   // Best-effort and deliberately NOT in the Promise.all below: sharing may be
   // switched off for the deployment, in which case this 404s, and a drawer that
@@ -464,6 +489,49 @@ watch(
     }
   },
   { immediate: true },
+)
+
+/**
+ * Re-read the open file in place: same file, same tab, nothing blanked.
+ *
+ * Editing a document in ONLYOFFICE leaves the drawer behind on a route the
+ * router keeps alive, and the editor writes a NEW VERSION of the very file the
+ * drawer is showing. Nothing about the drawer's own inputs changes when that
+ * happens — the uid it is keyed on is the same uid — so on "← Back" it showed
+ * the stat, the size and above all the version list from before the edit, and
+ * the version just saved was missing until the file was deselected and picked
+ * again. The Versions pane is keyed on the uid too, and is told separately.
+ */
+async function reloadInPlace() {
+  const open = files.detailItem
+  if (!files.drawerOpen || !open || open.uid !== loadedUid.value) return
+  await loadAll(open.uid, { silent: true })
+  versionsPanel.value?.reload()
+}
+
+// Coming back from any full-page route the browser view is kept alive behind —
+// the ONLYOFFICE editor, the preview page. onActivated fires on the whole cached
+// tree, so the drawer hears about it without the views having to tell it.
+onActivated(reloadInPlace)
+
+// The other half of the same problem. ONLYOFFICE persists on a delay: an explicit
+// Save writes the version immediately (a forcesave callback), but a plain close
+// writes it when the editing session ends, which can be seconds AFTER the user is
+// back and looking at the drawer. So also follow the row itself: the background
+// poll updates it in place when the file's version, size or renditions move, and
+// that is the signal that there is something new to show. Watching a joined
+// string rather than a fresh array on purpose — Vue compares a getter's result by
+// identity, so an array literal would re-run this on every unrelated change.
+//
+// The key comparison is what keeps this from doubling every open: selecting a
+// file changes the row too, and the select watcher above has already loaded it by
+// the time this runs.
+watch(
+  () => rowKey(files.detailItem),
+  (key) => {
+    if (!key || key === loadedRow.value) return
+    void reloadInPlace()
+  },
 )
 
 async function addMeta() {
