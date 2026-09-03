@@ -19,6 +19,7 @@ import { createPinia, setActivePinia } from 'pinia'
 
 const fns = vi.hoisted(() => ({
   stat: vi.fn(),
+  listDirectory: vi.fn(),
   getMetadata: vi.fn(),
   checkPermission: vi.fn(),
   generatePreview: vi.fn(),
@@ -29,6 +30,7 @@ const fns = vi.hoisted(() => ({
 vi.mock('@/services/fileService', () => ({
   fileService: {
     stat: fns.stat,
+    listDirectory: fns.listDirectory,
     getMetadata: fns.getMetadata,
     checkPermission: fns.checkPermission,
     downloadItem: vi.fn(),
@@ -405,5 +407,60 @@ describe('FileDetailsDrawer — click-off closes', () => {
     await flushPromises()
 
     expect(files.drawerOpen).toBe(false)
+  })
+})
+
+// The background poll must be invisible to an open drawer. Not just "still
+// open": the pane you are on and the request the drawer already made must both
+// survive, or a rescan silently throws away half-typed metadata and bounces you
+// back to Info every few seconds.
+describe('FileDetailsDrawer — survives a background rescan', () => {
+  const row = (over: Record<string, unknown> = {}) => ({
+    uid: 'f1', name: 'a.txt', type: 'file' as const, size: 1, isDirectory: false,
+    renditionCount: 0, hasRenditions: false, deleted: false, createdAt: 0,
+    modifiedAt: 0, owner: '', createdBy: '', modifiedBy: '', ...over,
+  })
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    routeStub.query = {}
+    fns.stat.mockResolvedValue({ uid: 'f1', name: 'a.txt', type: 'file', size: 1, owner: 'u', version: 'v1' })
+    fns.getMetadata.mockResolvedValue({})
+    fns.checkPermission.mockResolvedValue(true)
+    fns.loadRenditionSet.mockResolvedValue({})
+    fns.modelRendition.mockReturnValue(undefined)
+    provenance.mockResolvedValue({})
+  })
+
+  it('keeps the drawer open, on its tab, without refetching', async () => {
+    const files = useFileStore()
+    files.items = [row()]
+    const w = openWith({ uid: 'f1', name: 'a.txt', hasRenditions: false })
+    await flushPromises()
+
+    // Land on a tab other than the default, as a user reading permissions would.
+    const access = w.findAll('.tabs button').find((b) => b.text() === 'Access')!
+    await access.trigger('click')
+    expect((w.vm as unknown as { tab: string }).tab).toBe('Access')
+    const statCalls = fns.stat.mock.calls.length
+
+    // A rescan that sees a change: same file, new version (size + mtime move),
+    // plus a sibling appearing.
+    fns.listDirectory.mockResolvedValue([
+      row({ size: 42, modifiedAt: 99 }),
+      row({ uid: 'f2', name: 'b.txt' }),
+    ])
+    await files.refresh()
+    await flushPromises()
+
+    expect(files.drawerOpen).toBe(true)
+    expect(files.detailItem?.uid).toBe('f1')
+    // The row moved on underneath, and the drawer moved with it.
+    expect(files.detailItem?.size).toBe(42)
+    // …without re-running loadAll, which would reset the tab and re-request
+    // everything the drawer already has.
+    expect((w.vm as unknown as { tab: string }).tab).toBe('Access')
+    expect(fns.stat.mock.calls.length).toBe(statCalls)
   })
 })

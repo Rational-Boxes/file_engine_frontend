@@ -178,16 +178,42 @@ export const useFileStore = defineStore('files', {
         return // transient — leave the current listing intact
       }
       if (listingSignature(items) === listingSignature(this.items)) return
+      const previous = this.items
       this.items = items
       // Prune selection of any uids that no longer exist in the listing.
       if (this.selected.size) {
         const present = new Set(items.map((i) => i.uid))
         for (const uid of [...this.selected]) if (!present.has(uid)) this.selected.delete(uid)
       }
-      // If the open details drawer is for an item that vanished, close it.
-      if (this.detailItem && !items.some((i) => i.uid === this.detailItem!.uid)) {
-        this.drawerOpen = false
-        this.detailItem = null
+      // Keep the open drawer open across a rescan.
+      //
+      // Closing it is only right for a row that was IN the listing and has since
+      // gone (deleted, moved out, renamed away). Testing absence alone was wrong
+      // for a drawer that was never a row to begin with: openCurrentFolderDetails
+      // points it at the folder you are INSIDE, whose uid is never among its own
+      // children, so every poll that saw any change at all closed it — the drawer
+      // shut itself a few seconds after opening, and again on each re-open, for
+      // exactly as long as the folder kept changing.
+      //
+      // When the row is still there the drawer follows it, so a rename or a new
+      // version shows through instead of going stale — but IN PLACE. Assigning a
+      // new object to detailItem is not equivalent: the drawer watches
+      // `() => [files.drawerOpen, files.detailItem?.uid]`, and because that
+      // getter builds a fresh array Vue compares the two by identity and re-runs
+      // the callback on ANY dependency change, uid included or not. That reload
+      // resets the pane you are on to Info and re-requests the stat, metadata and
+      // every permission check — so the drawer stayed open but threw away what
+      // you were doing in it every few seconds, which is barely better than
+      // closing. Mutating the object leaves the watched key untouched.
+      const detailUid = this.detailItem?.uid
+      if (detailUid) {
+        const current = items.find((i) => i.uid === detailUid)
+        if (current) {
+          Object.assign(this.detailItem!, current)
+        } else if (previous.some((i) => i.uid === detailUid)) {
+          this.drawerOpen = false
+          this.detailItem = null
+        }
       }
     },
 

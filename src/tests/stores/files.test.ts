@@ -364,3 +364,73 @@ describe('files store — folder properties', () => {
     expect(store.detailItem).toBeNull()
   })
 })
+
+// The background poll (FileBrowserView, VITE_FILE_LIST_POLL_MS) calls refresh()
+// every few seconds. It must be invisible: no spinner, no lost selection, and —
+// the bug these cover — no drawer slamming shut under the user.
+describe('files store — background rescan keeps the drawer open', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    ;(fileService.listDirectory as any).mockResolvedValue([dir, file])
+    ;(fileService.checkPermission as any).mockResolvedValue(false)
+  })
+
+  it('leaves the drawer for the folder you are IN open when the listing changes', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    // Inside d1 now: the listing is its CHILDREN, which never include d1 itself.
+    ;(fileService.listDirectory as any).mockResolvedValue([file])
+    await store.openDirectory(dir)
+    store.openCurrentFolderDetails()
+    expect(store.drawerOpen).toBe(true)
+
+    // A rescan that sees a change. 'd1' is the folder we are inside, so it is
+    // never among its own children — the drawer must survive that anyway.
+    ;(fileService.listDirectory as any).mockResolvedValue([
+      file,
+      { ...file, uid: 'f2', name: 'new.txt' },
+    ])
+    await store.refresh()
+
+    expect(store.items).toHaveLength(2)
+    expect(store.drawerOpen).toBe(true)
+    expect(store.detailItem?.uid).toBe('d1')
+  })
+
+  it('follows a row across a rescan rather than going stale', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    store.openDetails(file)
+
+    ;(fileService.listDirectory as any).mockResolvedValue([dir, { ...file, name: 'b.txt', size: 9 }])
+    await store.refresh()
+
+    expect(store.drawerOpen).toBe(true)
+    expect(store.detailItem?.uid).toBe('f1')
+    expect(store.detailItem?.name).toBe('b.txt')
+  })
+
+  it('still closes the drawer when its row leaves the listing', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    store.openDetails(file)
+
+    ;(fileService.listDirectory as any).mockResolvedValue([dir])
+    await store.refresh()
+
+    expect(store.drawerOpen).toBe(false)
+    expect(store.detailItem).toBeNull()
+  })
+
+  it('does not touch the listing at all when nothing changed', async () => {
+    const store = useFileStore()
+    await store.openRoot()
+    store.openDetails(file)
+    const before = store.items
+
+    await store.refresh() // same two rows
+    expect(store.items).toBe(before)
+    expect(store.drawerOpen).toBe(true)
+  })
+})
