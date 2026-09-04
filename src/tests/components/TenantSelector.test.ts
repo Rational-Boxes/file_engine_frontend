@@ -31,7 +31,7 @@ vi.mock('@/utils/tenantHost', () => ({ subdomainTenancyEnabled, tenantOrigin }))
 vi.mock('@/utils/tenantReach', () => ({
   tenantOriginReachable: reachable, forgetReachability: vi.fn(),
 }))
-vi.mock('@/utils/lastTenant', () => ({ setLastTenant: vi.fn() }))
+vi.mock('@/utils/lastTenant', () => ({ rememberTenantFor: vi.fn() }))
 vi.mock('@/services/authService', () => ({
   authService: { ssoHandoff }, default: { ssoHandoff },
 }))

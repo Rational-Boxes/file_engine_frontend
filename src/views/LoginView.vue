@@ -109,7 +109,7 @@
 import { errorMessage } from '@/services/apiClient'
 import ProviderIcon from '@/components/ProviderIcon.vue'
 import { activeTenantFromHost, isLoginOrigin, tenantOrigin } from '@/utils/tenantHost'
-import { chooseTenant, setLastTenant } from '@/utils/lastTenant'
+import { chooseTenant, getLastTenantFor, rememberTenantFor } from '@/utils/lastTenant'
 import { markServingFromLoginOrigin } from '@/utils/loginOriginServe'
 import { forgetReachability, tenantOriginReachable } from '@/utils/tenantReach'
 import { computed, nextTick, onMounted, ref } from 'vue'
@@ -241,7 +241,18 @@ onMounted(async () => {
   // a workspace. End it before deciding anything: auth.logout() revokes it at
   // the bridge as well as clearing it locally, so the session does not simply
   // sit there for whoever uses the machine next.
-  if (route.query.signedout === '1' && auth.isAuthenticated) await auth.logout()
+  //
+  // And clear THIS origin's state whether or not that token is still good. The
+  // sign-in origin's session is short-lived and usually lapsed by the time
+  // someone signs out on a tenant origin — but its `fileengine_tenant` does not
+  // lapse with it. Left behind, that stale pin is stamped onto the next
+  // sign-in's requests, and the next user is told they are "not a member of the
+  // requested tenant" for the workspace the LAST user was in. There is no
+  // session to revoke in that case; there is still everything to forget.
+  if (route.query.signedout === '1') {
+    if (auth.isAuthenticated) await auth.logout()
+    else auth.forgetLocalSession()
+  }
 
   providers.value = await authService.oauthProviders()
   // Already signed in AND standing on the shared sign-in origin: there is
@@ -275,7 +286,7 @@ async function handOffToWorkspace(nextPath?: string) {
   // An unrecognised or absent name falls through to the normal choice
   // (remembered, else first), so a stale link degrades instead of failing.
   const requested = String(route.query.t || '')
-  const target = available.includes(requested) ? requested : chooseTenant(available)
+  const target = available.includes(requested) ? requested : chooseTenant(available, getLastTenantFor(auth.user))
   if (!target) {
     // Authenticated, but a member of nothing. Saying so is far better than an
     // empty app or a redirect loop back to this page.
@@ -287,7 +298,7 @@ async function handOffToWorkspace(nextPath?: string) {
   // path wins (a fresh sign-in carries the stashed redirect); otherwise it is
   // whatever the bounce brought us here with.
   const next = nextPath || String(route.query.next || '')
-  setLastTenant(target)
+  rememberTenantFor(auth.user, target)
 
   // Forwarding to the tenant's own origin is the preferred outcome — its own
   // cookie jar and storage, and a URL that says which workspace you are in. But

@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FileEngine</title>
+    <script>
+      // Paint the theme before the bundle loads. The app sets `data-theme` as
+      // soon as it mounts, but "as soon as it mounts" is still after the first
+      // paint — and with dark as the default that meant a white flash on every
+      // load. Kept deliberately tiny and dependency-free; the key and the
+      // default match useTheme.ts, which owns the behaviour from mount onwards.
+      try {
+        var t = localStorage.getItem('fe.theme')
+        document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark')
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark')
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

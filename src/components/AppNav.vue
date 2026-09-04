@@ -91,6 +91,17 @@ async function logout() {
   // route to: pushing /login left the user on the tenant host, where the login
   // view has a session-shaped path back out and lands them on the dashboard —
   // signed out, but looking like they never left.
+  // Signing out ON the sign-in origin — the case where the tenant subdomain was
+  // unreachable and the app is being served from here. There is no other origin
+  // to go to, so replace this entry with the sign-in form: `replace`, not
+  // `push`, so Back does not return to a dashboard belonging to a session that
+  // no longer exists. `signedout=1` marks it as deliberate, which is what stops
+  // the login view handing the visitor straight back into a workspace.
+  if (isLoginOrigin()) {
+    router.replace({ path: '/login', query: { signedout: '1' } })
+    return
+  }
+
   const tenant = activeTenantFromHost()
   if (tenant && !isLoginOrigin()) {
     // No `next` and NO tenant, unlike the guard. The guard is resuming an
@@ -104,13 +115,15 @@ async function logout() {
     // reads as a no-op.
     const url = loginUrl(undefined, null, true)
     if (url) {
-      window.location.href = url
+      // replace, not assign: the dashboard we are leaving belongs to a session
+      // that no longer exists, and Back must not return to it.
+      window.location.replace(url)
       return
     }
   }
   // No subdomain tenancy (bare localhost, an IP), or the host has no label to
   // swap — the in-app form is the only way back in.
-  router.push('/login')
+  router.replace('/login')
 }
 </script>
 

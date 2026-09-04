@@ -55,6 +55,7 @@ vi.mock('vue-router', () => ({
 import LoginView from '@/views/LoginView.vue'
 import SsoLandingView from '@/views/SsoLandingView.vue'
 import { useAuthStore } from '@/stores/auth'
+import { rememberTenantFor } from '@/utils/lastTenant'
 
 beforeEach(() => {
   oauthProviders.mockReset().mockResolvedValue([])
@@ -75,7 +76,7 @@ function signedInAt(tenants: string[]) {
   const auth = useAuthStore()
   auth.token = 'a-token'
   auth.tenants = tenants
-  auth.user = { username: 'someone' } as never
+  auth.user = 'someone'
   const w = mount(LoginView, { global: { stubs: { RouterLink: true, TwoFactorChallenge: true } } })
   return { w, auth }
 }
@@ -84,7 +85,7 @@ describe('the requested tenant survives the bounce', () => {
   it('goes to the tenant that was asked for, not the remembered one', async () => {
     // Exactly the switching failure: last-used is acme, the bounce asks for
     // someco. Before the fix this returned the user to acme.
-    window.localStorage.setItem('fe_last_tenant', 'acme')
+    rememberTenantFor('someone', 'acme')
     query.value = { t: 'someco' }
     signedInAt(['acme', 'someco'])
     await flushPromises()
@@ -96,7 +97,7 @@ describe('the requested tenant survives the bounce', () => {
   it('ignores a tenant the token does not carry', async () => {
     // The parameter is a URL hint. The token's list is the authority — a hint
     // must never widen access, only choose among what is already permitted.
-    window.localStorage.setItem('fe_last_tenant', 'acme')
+    rememberTenantFor('someone', 'acme')
     query.value = { t: 'not-mine' }
     signedInAt(['acme', 'someco'])
     await flushPromises()
@@ -104,7 +105,7 @@ describe('the requested tenant survives the bounce', () => {
   })
 
   it('falls back to the remembered workspace when nothing is requested', async () => {
-    window.localStorage.setItem('fe_last_tenant', 'someco')
+    rememberTenantFor('someone', 'someco')
     signedInAt(['acme', 'someco'])
     await flushPromises()
     expect(ssoHandoff).toHaveBeenCalledWith('someco')

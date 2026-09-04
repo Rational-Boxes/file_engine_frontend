@@ -19,8 +19,9 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 const push = vi.fn()
+const replace = vi.fn()
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace }),
   RouterLink: { name: 'RouterLink', props: ['to'], template: '<a><slot/></a>' },
 }))
 vi.mock('@/components/TenantSelector.vue', () => ({
@@ -34,14 +35,19 @@ import AppNav from '@/components/AppNav.vue'
 import { useAuthStore } from '@/stores/auth'
 
 /** Point window.location at `href`, leaving the rest of window intact — replacing
- *  the whole object breaks vue-test-utils, which builds DOM events from it. */
+ *  the whole object breaks vue-test-utils, which builds DOM events from it.
+ *  location.replace is a spy that also moves href, since sign-out replaces the
+ *  current entry rather than pushing a new one. */
 const realLocation = window.location
 function at(href: string) {
   const u = new URL(href)
+  const loc: Record<string, unknown> = {
+    protocol: u.protocol, hostname: u.hostname, port: u.port,
+    pathname: u.pathname, search: u.search, hash: u.hash, href,
+  }
+  loc.replace = vi.fn((to: string) => { loc.href = to })
   Object.defineProperty(window, 'location', {
-    value: { protocol: u.protocol, hostname: u.hostname, port: u.port,
-             pathname: u.pathname, search: u.search, hash: u.hash, href },
-    writable: true, configurable: true,
+    value: loc, writable: true, configurable: true,
   })
 }
 function restoreLocation() {
@@ -59,7 +65,7 @@ async function signOut() {
 describe('signing out goes to the login route', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    push.mockClear()
+    push.mockClear(); replace.mockClear()
     const auth = useAuthStore()
     auth.token = 'tok'
     auth.user = 'alice'
@@ -70,7 +76,10 @@ describe('signing out goes to the login route', () => {
   it('sends a bare host to the in-app /login form', async () => {
     at('http://localhost:3000/dashboard')
     await signOut()
-    expect(push).toHaveBeenCalledWith('/login')
+    // replace, not push: the dashboard behind us belongs to a session that no
+    // longer exists, and Back must not return to it.
+    expect(replace).toHaveBeenCalledWith('/login')
+    expect(push).not.toHaveBeenCalled()
   })
 
   it('forwards to the bespoke login subdomain from a tenant origin', async () => {
@@ -91,9 +100,10 @@ describe('signing out goes to the login route', () => {
   })
 
   it('does not leak the workspace to the sign-in page', async () => {
-    // clearLastTenant() deliberately forgets the workspace on an explicit sign
-    // out, so the next person on a shared machine meets a clean login. Putting
-    // ?t=acme on the URL would hand it straight back.
+    // The workspace memory is per user now and keyed by a hash, so the sign-in
+    // page recovers it for whoever actually signs in. Putting ?t=acme on the URL
+    // instead would aim the NEXT person's sign-in at this user's workspace,
+    // which is the bug this whole change exists to close.
     at('https://acme.example.com/dashboard')
     await signOut()
     expect(window.location.href).not.toContain('acme')
@@ -101,10 +111,13 @@ describe('signing out goes to the login route', () => {
 
   it('stays in-app when already on the sign-in origin', async () => {
     // login.example.com IS the sign-in page; forwarding it to itself would be a
-    // reload at best and a loop at worst.
+    // reload at best and a loop at worst. This is the "served from here" case —
+    // the tenant subdomain was unreachable — so what must NOT happen is being
+    // left on, or sent back to, a dashboard on an origin that is no tenant's.
     at('https://login.example.com/dashboard')
     await signOut()
-    expect(push).toHaveBeenCalledWith('/login')
+    expect(replace).toHaveBeenCalledWith({ path: '/login', query: { signedout: '1' } })
+    expect(push).not.toHaveBeenCalled()
     expect(window.location.href).toBe('https://login.example.com/dashboard')
   })
 
@@ -113,7 +126,7 @@ describe('signing out goes to the login route', () => {
     // returns null rather than inventing one.
     at('http://192.168.1.10/dashboard')
     await signOut()
-    expect(push).toHaveBeenCalledWith('/login')
+    expect(replace).toHaveBeenCalledWith('/login')
   })
 
   it('clears the session', async () => {

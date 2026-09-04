@@ -17,8 +17,10 @@ import { defineStore } from 'pinia'
 import axios from 'axios'
 import { authService, type Identity } from '@/services/authService'
 import { tokenStorage } from '@/utils/tokenStorage'
-import { errorMessage } from '@/services/apiClient'
-import { clearLastTenant, setLastTenant } from '@/utils/lastTenant'
+import { errorMessage, errorStatus } from '@/services/apiClient'
+import { getLastTenantFor, rememberTenantFor } from '@/utils/lastTenant'
+import { clearRedirect } from '@/utils/redirect'
+import { resetServingFromLoginOrigin } from '@/utils/loginOriginServe'
 import { activeTenantFromHost } from '@/utils/tenantHost'
 
 type AccessLevel = 'user' | 'editor' | 'admin'
@@ -110,7 +112,7 @@ export const useAuthStore = defineStore('auth', {
       try {
         await authService.refresh()
         this.syncToken()
-        this.applyIdentity(await authService.whoami())
+        this.applyIdentity(await this.whoamiHere())
         this.scheduleRefresh()
       } catch {
         await this.logout()
@@ -120,6 +122,17 @@ export const useAuthStore = defineStore('auth', {
     applyIdentity(id: Identity) {
       this.user = id.user
       this.tenant = id.tenant
+      // Keep the persisted pin in step with the tenant the bridge actually
+      // resolved. The request interceptor reads storage, not this store, so a
+      // correction that lives only here would be undone by the very next
+      // request — which is how a wrong pin survives being told it is wrong.
+      if (id.tenant && tokenStorage.getActiveTenant() !== id.tenant) {
+        tokenStorage.setActiveTenant(id.tenant)
+      }
+      // Where this person works, remembered against THEM. This is the one
+      // place both halves are known and both come from the bridge, so it is
+      // the one place the memory can be recorded truthfully.
+      rememberTenantFor(id.user, id.tenant)
       this.roles = id.roles || []
       this.accessLevel = levelFromRoles(this.roles)
     },
@@ -134,13 +147,23 @@ export const useAuthStore = defineStore('auth', {
       if (fromHost) {
         tokenStorage.setActiveTenant(fromHost)
         this.tenant = fromHost
-        // Remember it for the shared login origin. Recorded HERE rather than at
-        // sign-in so that arriving by any route counts — following a link,
-        // switching workspace in-app, or typing the URL — which is the whole
-        // reason this is a parent-domain cookie and not login-origin storage.
-        setLastTenant(fromHost)
-      } else {
+        // NOT remembered here. The memory is per user now, and at this point in
+        // the boot nobody has been identified yet — whoami has not run. It is
+        // recorded in applyIdentity instead, which is reached by every route
+        // that ends in a session (sign-in, reload, refresh, hand-off), so
+        // "arriving by any route counts" still holds.
+      } else if (tokenStorage.getAccessToken()) {
         this.tenant = tokenStorage.getActiveTenant()
+      } else {
+        // Off a tenant host the persisted pin is the only hint we have — but it
+        // is only a SELECTION while a session owns it. With no token it is a
+        // leftover from whoever signed in here last, and keeping it aims the
+        // NEXT sign-in at their workspace: the login request carries their
+        // tenant as X-Tenant, the bridge issues the token for a tenant the new
+        // user is actually in, and every request after that names the old one —
+        // whoami answers 403 "not a member of the requested tenant" and the
+        // sign-in appears to fail for an account that is perfectly fine.
+        this.forgetActiveTenant()
       }
     },
 
@@ -151,7 +174,7 @@ export const useAuthStore = defineStore('auth', {
       // Show the switcher immediately from the remembered set; loadTenants refreshes.
       this.tenants = tokenStorage.getTenants()
       try {
-        this.applyIdentity(await authService.whoami())
+        this.applyIdentity(await this.whoamiHere())
         await this.loadTenants()
         this.scheduleRefresh()
       } catch {
@@ -202,7 +225,38 @@ export const useAuthStore = defineStore('auth', {
       if (!tenant || tenant === this.tenant) return false
       tokenStorage.setActiveTenant(tenant)
       this.tenant = tenant
+      rememberTenantFor(this.user, tenant)
       return true
+    },
+
+    /**
+     * whoami, not defeated by a tenant pin that was chosen before anyone was
+     * authenticated.
+     *
+     * The active tenant comes from the subdomain, or from what this origin
+     * remembers — both decided while signed out, so both can name a workspace
+     * this account is not in. The bridge issues the session for a tenant the
+     * user IS in and then refuses every request that names the other one, so
+     * the session is real and unusable at the same time: a sign-in that looks
+     * broken for an account that is fine.
+     *
+     * A 403 here means the pin is wrong, not the session. Drop it and ask
+     * again: with no X-Tenant the bridge answers for the token's own tenant,
+     * which issueToken guarantees is a real membership. `2fa_required` is a
+     * different 403 — the session is the problem there, and the response
+     * interceptor has already sent the user back to sign in.
+     */
+    async whoamiHere(): Promise<Identity> {
+      try {
+        return await authService.whoami()
+      } catch (e) {
+        const recoverable = errorStatus(e) === 403
+          && errorMessage(e) !== '2fa_required'
+          && !!tokenStorage.getActiveTenant()
+        if (!recoverable) throw e
+        this.forgetActiveTenant()
+        return await authService.whoami()
+      }
     },
 
     // After a full session token has been stored (password-only login, 2FA
@@ -210,7 +264,7 @@ export const useAuthStore = defineStore('auth', {
     // timer. Shared by every path that ends in a session.
     async hydrateSession() {
       this.syncToken()
-      this.applyIdentity(await authService.whoami())
+      this.applyIdentity(await this.whoamiHere())
       await this.loadTenants()
       this.scheduleRefresh()
     },
@@ -226,8 +280,17 @@ export const useAuthStore = defineStore('auth', {
         // The subdomain is authoritative for which tenant we're logging into, so
         // carry it explicitly (X-Tenant) — don't rely on the bridge parsing the
         // Host, which isn't the tenant subdomain behind the dev proxy. Priority:
-        // explicit arg > current subdomain > persisted/selected tenant.
-        const activeTenant = tenant || activeTenantFromHost() || this.tenant || undefined
+        // explicit arg > current subdomain > where THIS username last worked.
+        //
+        // That last term used to be `this.tenant` — the active pin, whoever put
+        // it there. On the shared sign-in origin that is the previous user's
+        // workspace, and aiming this login at it is what produced "not a member
+        // of the requested tenant" for an account that was perfectly fine. The
+        // per-user memory answers the same question without borrowing anyone
+        // else's answer, and a user we have never seen simply contributes
+        // nothing (the bridge then picks a tenant they are actually in).
+        const activeTenant =
+          tenant || activeTenantFromHost() || getLastTenantFor(username) || undefined
         if (activeTenant) {
           tokenStorage.setActiveTenant(activeTenant)
           this.tenant = activeTenant
@@ -242,6 +305,13 @@ export const useAuthStore = defineStore('auth', {
           return false
         }
         await this.hydrateSession()
+        // hydrateSession recorded the memory against the identity the bridge
+        // resolved. Record it against the typed name too when the two differ
+        // (a directory may answer a bare uid with a full address, or vice
+        // versa) — the login lookup only ever has the typed form to go on.
+        if (this.user && this.tenant && this.user.toLowerCase() !== username.trim().toLowerCase()) {
+          rememberTenantFor(username, this.tenant)
+        }
         return true
       } catch (e) {
         // A 401 here is a rejected username/password — show a clear, in-app message
@@ -356,7 +426,7 @@ export const useAuthStore = defineStore('auth', {
       }
       this.syncToken()
       try {
-        this.applyIdentity(await authService.whoami())
+        this.applyIdentity(await this.whoamiHere())
         await this.loadTenants()
         this.scheduleRefresh()
         return true
@@ -384,21 +454,71 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    async logout() {
-      if (refreshTimer) clearTimeout(refreshTimer)
-      refreshTimer = undefined
-      await authService.logout()
-      // Forget the remembered workspace on an EXPLICIT sign-out: on a shared
-      // machine the next person should meet a clean login, not be told which
-      // workspace the last one used.
-      clearLastTenant()
-      this.token = null
-      this.user = null
+    /**
+     * Forget WHICH WORKSPACE requests are aimed at: the active-tenant pin sent
+     * as X-Tenant, and the remembered list behind the switcher.
+     *
+     * Not the per-user "last workspace" memory — that one belongs to a person
+     * rather than to a session, is always checked against the token's own
+     * tenants before it is honoured, and survives sign-out on purpose.
+     *
+     * The pin lives in localStorage because the request interceptor reads it
+     * there, which also means it OUTLIVES the session that chose it unless
+     * something clears it. That is the whole bug this exists to close: a pin
+     * left behind by the last user is stamped onto the next user's requests.
+     */
+    forgetActiveTenant() {
+      tokenStorage.setActiveTenant(null)
+      tokenStorage.setTenants([])
       this.tenant = null
       this.tenants = []
+    },
+
+    /**
+     * Everything a sign-out clears ON THIS ORIGIN — token, identity, and every
+     * trace of which workspace was in use — with no network call.
+     *
+     * Used on its own when there is nothing to revoke: signing out on a tenant
+     * origin bounces to the sign-in origin with `?signedout=1`, and that origin
+     * holds its own storage. Its token has often expired by then, so there is no
+     * session to end — but the tenant it remembers is still there, and is
+     * exactly what would pin the next sign-in to the wrong workspace.
+     */
+    forgetLocalSession() {
+      if (refreshTimer) clearTimeout(refreshTimer)
+      refreshTimer = undefined
+      tokenStorage.clearTokens()
+      this.forgetActiveTenant()
+      // Where the last session was headed, and the last session's decision to
+      // serve a workspace from the sign-in origin. Both are properties of a
+      // session and neither may outlive one: the stash would replay someone
+      // else's destination, and the serve-here flag would put the next sign-in
+      // on `login.<domain>/dashboard` — an origin that is no tenant's — instead
+      // of forwarding it to a workspace.
+      clearRedirect()
+      resetServingFromLoginOrigin()
+      // The per-user workspace memory (utils/lastTenant) is deliberately NOT
+      // touched: it is what lets this user come back to their own workspace next
+      // time, and it cannot mislead anyone else — it is keyed by a hash of the
+      // username, so the next person at this machine neither inherits it nor can
+      // read whose it was.
+      this.token = null
+      this.user = null
       this.roles = []
       this.accessLevel = 'user'
       this.mfaChallenge = null
+    },
+
+    async logout() {
+      // Forget the workspace BEFORE the round-trip. Revoking does not need it,
+      // and the await below is not a quiet moment: a sign-out navigates, and
+      // App.vue's initTenantFromHost runs while the revoke is still in flight —
+      // reading the tenant we are in the middle of forgetting straight back out
+      // of storage.
+      this.forgetActiveTenant()
+      // Revoke at the bridge (this still needs the token) and drop it locally.
+      await authService.logout()
+      this.forgetLocalSession()
     },
   },
 })

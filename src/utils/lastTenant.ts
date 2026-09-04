@@ -14,14 +14,32 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
- * "Which workspace was I last in?" — the hint that lets the shared sign-in
- * origin send a returning user straight through instead of asking again.
+ * "Which workspace was THIS PERSON last in?" — the hint that lets the shared
+ * sign-in origin send a returning user straight through instead of asking
+ * again.
+ *
+ * **PER USER, not per browser.** It used to be one name for the whole machine,
+ * which made it a trap rather than a convenience: user A signs out of workspace
+ * X, user B signs in, and B's session is aimed at X — a workspace B may not be
+ * in at all. The bridge then issues B's token for a tenant B *is* in and refuses
+ * every request naming X, so the sign-in succeeds and the app is dead on
+ * arrival ("not a member of the requested tenant"). Keyed by user, A's memory
+ * is waiting for A the next time A signs in, and is invisible to B.
  *
  * **This is a hint, never a credential.** Nothing may be authorised on the
  * strength of it. It names a tenant the user may no longer belong to, may be
  * edited freely in devtools, and is read by an origin that has not yet
  * authenticated anyone. Every consumer re-checks the name against the tenants
  * the user's token actually carries and falls back when it does not match.
+ *
+ * **The user is not stored, only a hash of it.** Usernames here are email
+ * addresses, and a plain `fe_last_tenant:alice@example.com` in localStorage
+ * hands the address to anything that can read the store — and to anyone glancing
+ * at devtools on a shared machine. The hash is deterministic so the lookup
+ * works, which necessarily means someone who already has a candidate address can
+ * confirm it: this OBSCURES the address, it does not protect it. That is the
+ * right trade for a routing hint, and it is why nothing more sensitive than a
+ * tenant name is kept here.
  *
  * TWO STORES, ON PURPOSE.
  *
@@ -46,6 +64,33 @@ const KEY = 'fe_last_tenant'
 // Long enough that it is still there next time someone signs in, short enough
 // that a stale name expires rather than lingering for years.
 const MAX_AGE_DAYS = 180
+// A browser is used by a handful of people at most. The cap bounds the cookie
+// (which travels on every request to the domain) and quietly forgets whoever
+// has not signed in for longest.
+const MAX_USERS = 8
+
+/** [hashed user, tenant], most recently recorded first. */
+type Entry = [string, string]
+
+/**
+ * FNV-1a, 64-bit. Deterministic, dependency-free, and synchronous — which
+ * `crypto.subtle` is not, and this is read on the path that decides where a
+ * sign-in is aimed.
+ *
+ * Not a security boundary (see the header): its job is to keep email addresses
+ * out of plain sight in the browser's storage. 64 bits is far more than enough
+ * to keep the handful of accounts on one machine distinct, and a collision
+ * would cost nothing anyway — the hint is checked against the token's tenants
+ * before it is honoured, so the worst case is landing on your first workspace.
+ */
+function userKey(user: string): string {
+  const s = user.trim().toLowerCase()
+  let h = 0xcbf29ce484222325n
+  for (let i = 0; i < s.length; i++) {
+    h = BigInt.asUintN(64, (h ^ BigInt(s.charCodeAt(i))) * 0x100000001b3n)
+  }
+  return h.toString(16).padStart(16, '0')
+}
 
 function readCookie(): string | null {
   if (typeof document === 'undefined') return null
@@ -56,59 +101,86 @@ function readCookie(): string | null {
   return null
 }
 
-function writeCookie(tenant: string): boolean {
+function writeCookie(value: string): boolean {
   if (typeof document === 'undefined') return false
   const domain = parentCookieDomain()
   if (!domain) return false
   const secure = typeof window !== 'undefined' && window.location.protocol === 'https:'
   document.cookie =
-    `${KEY}=${encodeURIComponent(tenant)}; Domain=${domain}; Path=/; ` +
+    `${KEY}=${encodeURIComponent(value)}; Domain=${domain}; Path=/; ` +
     `Max-Age=${MAX_AGE_DAYS * 24 * 60 * 60}; SameSite=Lax${secure ? '; Secure' : ''}`
   // Read it back rather than predicting. A public-suffix parent (".ngrok.io")
   // is refused silently by the browser, and no amount of string inspection here
   // could tell us that without shipping a Public Suffix List.
-  return readCookie() === tenant
+  return readCookie() === value
 }
 
-/** The last workspace this browser was in, or null. Cookie wins. */
-export function getLastTenant(): string | null {
-  const fromCookie = readCookie()
-  if (fromCookie) return fromCookie
+// Anything unreadable is treated as "nothing remembered" rather than repaired:
+// this store is a convenience, and the next successful sign-in rewrites it. That
+// also absorbs the pre-per-user shape, which was a bare tenant name.
+function readEntries(): Entry[] {
+  const raw = readCookie() ?? safeLocal()
+  if (!raw) return []
   try {
-    return window.localStorage.getItem(KEY) || null
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (e): e is Entry =>
+        Array.isArray(e) && e.length === 2 && typeof e[0] === 'string' && typeof e[1] === 'string',
+    )
+  } catch {
+    return []
+  }
+}
+
+function safeLocal(): string | null {
+  try {
+    return window.localStorage.getItem(KEY)
   } catch {
     return null // private mode / storage disabled
   }
 }
 
-/**
- * Remember the workspace. Written on entering a tenant and on switching, so the
- * memory reflects where the user actually works rather than only where they
- * last logged in.
- */
-export function setLastTenant(tenant: string): void {
-  if (!tenant) return
-  writeCookie(tenant)
+function writeEntries(entries: Entry[]): void {
+  const value = JSON.stringify(entries.slice(0, MAX_USERS))
+  writeCookie(value)
   try {
     // Always, even when the cookie stuck: it costs nothing and keeps the login
     // origin working if the cookie is later blocked or cleared independently.
-    window.localStorage.setItem(KEY, tenant)
+    window.localStorage.setItem(KEY, value)
   } catch {
     /* storage unavailable — the cookie alone will have to do */
   }
 }
 
-/** Forget it — on explicit sign-out, so a shared machine does not leak it. */
-export function clearLastTenant(): void {
-  const domain = parentCookieDomain()
-  if (typeof document !== 'undefined' && domain) {
-    document.cookie = `${KEY}=; Domain=${domain}; Path=/; Max-Age=0; SameSite=Lax`
-  }
-  try {
-    window.localStorage.removeItem(KEY)
-  } catch {
-    /* nothing to do */
-  }
+/**
+ * Remember where this user works. Written whenever a session resolves to a
+ * tenant — sign-in, reload, refresh, an in-app switch — so the memory reflects
+ * where they actually work rather than only where they last logged in.
+ *
+ * Deliberately survives sign-out: forgetting it would be forgetting the whole
+ * point. What must not survive a sign-out is the ACTIVE tenant pin (`X-Tenant`,
+ * in tokenStorage), which is a property of the session rather than of the
+ * person — see the auth store's forgetActiveTenant.
+ */
+export function rememberTenantFor(user: string | null | undefined, tenant: string): void {
+  if (!user || !tenant) return
+  const key = userKey(user)
+  writeEntries([[key, tenant], ...readEntries().filter(([k]) => k !== key)])
+}
+
+/** The workspace this user was last in, or null if we have not seen them. */
+export function getLastTenantFor(user: string | null | undefined): string | null {
+  if (!user) return null
+  const key = userKey(user)
+  return readEntries().find(([k]) => k === key)?.[1] ?? null
+}
+
+/** Forget one user's workspace. Everyone else's memory is left alone. */
+export function forgetTenantFor(user: string | null | undefined): void {
+  if (!user) return
+  const key = userKey(user)
+  writeEntries(readEntries().filter(([k]) => k !== key))
 }
 
 /**
@@ -119,7 +191,7 @@ export function clearLastTenant(): void {
  * is used, which is both the stable choice (the list is ordered) and the right
  * landing place for a first sign-in with nothing remembered yet.
  */
-export function chooseTenant(available: string[], remembered = getLastTenant()): string | null {
+export function chooseTenant(available: string[], remembered: string | null): string | null {
   if (!available.length) return null
   if (remembered && available.includes(remembered)) return remembered
   return available[0]

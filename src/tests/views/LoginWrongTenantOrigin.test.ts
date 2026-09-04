@@ -60,6 +60,7 @@ vi.mock('vue-router', () => ({
 
 import LoginView from '@/views/LoginView.vue'
 import { useAuthStore } from '@/stores/auth'
+import { rememberTenantFor } from '@/utils/lastTenant'
 
 /** Mount the sign-in page and complete a password sign-in that yields `tenants`. */
 async function signIn(tenants: string[]) {
@@ -74,7 +75,7 @@ async function signIn(tenants: string[]) {
   vi.spyOn(auth, 'ldapLogin').mockImplementation(async () => {
     auth.token = 'a-token'
     auth.tenants = tenants
-    auth.user = { username: 'john@arcdigitalservices.com' } as never
+    auth.user = 'john@arcdigitalservices.com'
     return true
   })
   await w.find('form.ldap-form').trigger('submit')
@@ -142,7 +143,7 @@ describe('signing in on a workspace that is not yours', () => {
 
   it('prefers the remembered workspace when it is still one of theirs', async () => {
     hostTenant.mockReturnValue('default')
-    window.localStorage.setItem('fe_last_tenant', 'beta')
+    rememberTenantFor('john@arcdigitalservices.com', 'beta')
     await signIn(['arcdigital', 'beta'])
 
     expect(ssoHandoff).toHaveBeenCalledWith('beta')
@@ -151,7 +152,7 @@ describe('signing in on a workspace that is not yours', () => {
   it('ignores a remembered workspace the account no longer has', async () => {
     // The hint is not a credential: the token's list is the authority.
     hostTenant.mockReturnValue('default')
-    window.localStorage.setItem('fe_last_tenant', 'somewhere-else')
+    rememberTenantFor('john@arcdigitalservices.com', 'somewhere-else')
     await signIn(['arcdigital'])
 
     expect(ssoHandoff).toHaveBeenCalledWith('arcdigital')
