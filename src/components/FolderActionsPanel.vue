@@ -118,7 +118,9 @@
           <tr v-for="(r, i) in runs" :key="r.event_id || i">
             <td><span class="fap-chip" :class="chipClass(r.status)">{{ r.status }}</span></td>
             <td>{{ actionLabel(r.action_type) }}</td>
-            <td class="mono" :title="r.file_uid">{{ truncate(r.file_uid) }}</td>
+            <td :class="{ mono: !fileNames[r.file_uid] }" :title="r.file_uid">
+              {{ fileLabel(r.file_uid) }}
+            </td>
             <td class="fap-ts">{{ r.ts || '—' }}</td>
             <td class="fap-detail">{{ runReason(r) }}</td>
           </tr>
@@ -160,6 +162,7 @@ import { folderActionsService } from '@/services/folderActionsService'
 import { errorMessage } from '@/services/apiClient'
 import type { ActionBinding, ActionType, ActionRun } from '@/types/folderActions'
 import { cachedFolderPath, looksLikeUid, resolveFolderPath } from '@/utils/folderPath'
+import { useFileNames } from '@/composables/useFileNames'
 
 const props = defineProps<{ uid: string; canWrite: boolean; canManage: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
@@ -239,6 +242,31 @@ function truncate(s: string, n = 12): string {
   return s.length > n ? s.slice(0, n) + '…' : s
 }
 
+// The run log records which FILE an action ran on, and a uid is the only thing
+// it may record. Two reasons, and the second is the binding one:
+//
+//  - a name captured at run time goes stale on the first rename; and
+//  - **a filename can carry personal information**, so it must not be copied
+//    into a second store with its own lifetime. Held only by the file, it is
+//    destroyed when the file is — an erasure takes the name with it, and this
+//    log then shows a uid, which is the correct outcome. Denormalising the name
+//    into the run record would leave that name legible here after the platform
+//    has certified the file destroyed. This is the same rule the audit log
+//    follows: reference files by uid, resolve names for display only.
+//
+// So the name is LOOKED UP, every session, and never persisted — the same way
+// the binding hints turn a stored destination uid back into a path.
+//
+// Falls back to the truncated uid: while the lookup is in flight (the composable
+// marks it with an empty string to dedupe), and for a file that has been
+// deleted, erased, or that this viewer cannot reach. The full uid stays in the
+// title either way, so the row can always be tied back to the file.
+const { names: fileNames, resolve: resolveFileNames } = useFileNames()
+
+function fileLabel(uid: string): string {
+  return fileNames.value[uid] || truncate(uid)
+}
+
 async function loadBindings() {
   if (!props.uid) return
   loading.value = true
@@ -293,6 +321,9 @@ async function loadRuns() {
   error.value = null
   try {
     runs.value = await folderActionsService.folderRuns(props.uid)
+    // Unique uids only: a log is mostly the same few files handled repeatedly,
+    // and each lookup is a stat.
+    resolveFileNames([...new Set(runs.value.map((r) => r.file_uid))])
     runsLoaded.value = true
   } catch (e) {
     error.value = errorMessage(e, 'Failed to load run log')
