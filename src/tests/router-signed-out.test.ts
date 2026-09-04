@@ -145,6 +145,27 @@ describe('an authenticated visitor to the sign-in origin', () => {
   })
 })
 
+/**
+ * The fallback that serves a workspace FROM the sign-in origin is a decision
+ * about one session — that user, that probe, that moment. Carried into the next
+ * one it silently skips the hand-off, and the next person to sign in is left on
+ * `login.<domain>/dashboard`: an origin that is no tenant's, reached without the
+ * subdomain ever being probed for them.
+ */
+describe('serving from the sign-in origin does not outlive the session', () => {
+  it('puts the next session back through the login view, not straight to a dashboard', async () => {
+    onLoginOrigin(true)
+    const auth = signedIn()
+    markServingFromLoginOrigin()
+    expect(at('/dashboard')).toBeUndefined() // this session is served from here
+
+    await auth.logout()
+    auth.token = 'a-new-session' // whoever signs in next, on the same page
+
+    expect(at('/dashboard')).toMatchObject({ path: '/login' })
+  })
+})
+
 describe('a tenant origin', () => {
   it('serves its own workspace rather than routing to a sign-in page', () => {
     // The forward is specific to the origin that has no tenant. Everywhere else

@@ -58,7 +58,7 @@ function mountWithSession() {
   const auth = useAuthStore()
   auth.token = 'the-sign-in-origins-own-token'
   auth.tenants = ['arcdigital']
-  auth.user = { username: 'john@arcdigitalservices.com' } as never
+  auth.user = 'john@arcdigitalservices.com'
   const w = mount(LoginView, {
     global: { stubs: { RouterLink: true, TwoFactorChallenge: true } },
   })
@@ -102,6 +102,25 @@ describe('arriving at the sign-in origin after an explicit sign-out', () => {
     expect(logout).toHaveBeenCalled()
     expect(auth.token).toBeNull()
     expect(auth.isAuthenticated).toBe(false)
+  })
+
+  it('forgets the workspace even when this origin’s token has already expired', async () => {
+    // The usual case, and the one that produced the bug report. This origin's
+    // session is short-lived and is normally lapsed by the time someone signs
+    // out on a tenant origin — so there is nothing to revoke, and the old code
+    // therefore did nothing at all. But `fileengine_tenant` does not expire with
+    // the token: left behind, it is stamped onto the NEXT person's requests as
+    // X-Tenant, and they are told they are "not a member of the requested
+    // tenant" for a workspace that was never theirs.
+    window.localStorage.setItem('fileengine_tenant', 'arcdigital')
+    setActivePinia(createPinia())
+    const auth = useAuthStore()
+    expect(auth.isAuthenticated).toBe(false) // no session to end
+    mount(LoginView, { global: { stubs: { RouterLink: true, TwoFactorChallenge: true } } })
+    await flushPromises()
+
+    expect(window.localStorage.getItem('fileengine_tenant')).toBeNull()
+    expect(auth.tenant).toBeNull()
   })
 })
 

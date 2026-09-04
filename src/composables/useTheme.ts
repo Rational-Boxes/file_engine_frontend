@@ -18,7 +18,9 @@ import { ref } from 'vue'
 // Light/dark theme, persisted, applied as `data-theme` on <html> (see App.vue vars).
 type Theme = 'light' | 'dark'
 const KEY = 'fe.theme'
-const theme = ref<Theme>('light')
+// Dark is the default look of the app: it is what a first visit gets, and what
+// it goes back to if the stored choice is ever unreadable.
+const theme = ref<Theme>('dark')
 
 function applyTheme(t: Theme) {
   theme.value = t
@@ -33,12 +35,16 @@ function applyTheme(t: Theme) {
 }
 
 export function initTheme() {
-  let t: Theme = 'light'
+  // Dark unless the user has said otherwise IN THE APP. The OS preference is
+  // deliberately not consulted any more: it used to decide for anyone who had
+  // never touched the toggle, which made the default whatever the machine
+  // happened to be set to rather than what the app looks like. An explicit
+  // choice still wins, and the toggle is one click away for anyone who wants
+  // the other one.
+  let t: Theme = 'dark'
   try {
     const saved = localStorage.getItem(KEY)
     if (saved === 'dark' || saved === 'light') t = saved
-    else if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
-      t = 'dark'
   } catch {
     /* ignore */
   }

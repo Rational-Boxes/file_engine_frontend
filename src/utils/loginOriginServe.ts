@@ -47,7 +47,17 @@ export function servingFromLoginOrigin(): boolean {
   return servingHere
 }
 
-/** Test seam — forget the decision. */
+/**
+ * Forget the decision.
+ *
+ * Called on sign-out (and by tests). The fallback was chosen for a SESSION —
+ * that user, that probe, that moment — and leaving it set means the next person
+ * to sign in on this page is served the workspace from the sign-in origin
+ * without the subdomain ever being probed for them: signed in, on
+ * `login.<domain>/dashboard`, an origin that is nobody's workspace. Clearing it
+ * puts the next session back through the ordinary route — probe, hand off, and
+ * only then fall back.
+ */
 export function resetServingFromLoginOrigin(): void {
   servingHere = false
 }

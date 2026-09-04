@@ -28,7 +28,7 @@
 import { useAuthStore } from '@/stores/auth'
 import { subdomainTenancyEnabled, tenantOrigin } from '@/utils/tenantHost'
 import { tenantOriginReachable } from '@/utils/tenantReach'
-import { setLastTenant } from '@/utils/lastTenant'
+import { rememberTenantFor } from '@/utils/lastTenant'
 import { authService } from '@/services/authService'
 
 const auth = useAuthStore()
@@ -63,7 +63,7 @@ const onChange = async (e: Event) => {
     if (origin && await tenantOriginReachable(origin)) {
       try {
         const code = await authService.ssoHandoff(value)
-        setLastTenant(value)
+        rememberTenantFor(auth.user, value)
         const url = new URL(origin + '/sso')
         url.searchParams.set('code', code)
         window.location.assign(url.toString())
@@ -80,8 +80,7 @@ const onChange = async (e: Event) => {
   // choice and hard-reload: a clean boot is what clears the KeepAlive-cached
   // views, the stores and the name caches, none of which an in-place field swap
   // can reliably reset.
-  setLastTenant(value)
-  auth.switchTenant(value)
+  auth.switchTenant(value)  // records the choice against this user as it goes
   window.location.reload()
 }
 </script>

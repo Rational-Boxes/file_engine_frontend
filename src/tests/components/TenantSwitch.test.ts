@@ -45,6 +45,7 @@ vi.mock('@/utils/tenantReach', () => ({
 
 import TenantSelector from '@/components/TenantSelector.vue'
 import { useAuthStore } from '@/stores/auth'
+import { getLastTenantFor } from '@/utils/lastTenant'
 
 function mountSwitcher(host = 'acme.example.com') {
   vi.stubGlobal('window', Object.assign(Object.create(window), {
@@ -95,10 +96,14 @@ describe('switching to another tenant subdomain', () => {
   })
 
   it('remembers the workspace it is moving to, not the one being left', async () => {
+    // Against THIS user: the memory is per person now, so the next one to sign
+    // in on this browser inherits nothing from the switch.
     reachable.mockResolvedValue(true)
-    const { w } = mountSwitcher()
+    const { w, auth } = mountSwitcher()
+    auth.user = 'someone@example.com'
     await pick(w, 'someco')
-    expect(window.localStorage.getItem('fe_last_tenant')).toBe('someco')
+    expect(getLastTenantFor('someone@example.com')).toBe('someco')
+    expect(getLastTenantFor('somebody-else@example.com')).toBeNull()
   })
 
   it('switches in place when the target subdomain is not serving the app', async () => {

@@ -54,7 +54,7 @@ function mountAuthenticated(tenants: string[]) {
   const auth = useAuthStore()
   auth.token = 'a-token'
   auth.tenants = tenants
-  auth.user = { username: 'someone' } as never
+  auth.user = 'someone'
   const w = mount(LoginView, {
     global: { stubs: { RouterLink: true, TwoFactorChallenge: true } },
   })
@@ -142,7 +142,7 @@ describe('a FRESH sign-in on the shared origin forwards too', () => {
     setActivePinia(createPinia())
     const auth = useAuthStore()
     auth.tenants = tenants
-    auth.user = { username: 'someone' } as never
+    auth.user = 'someone'
     // Succeeds and leaves a session behind, like the real action does.
     auth.ldapLogin = (async () => { auth.token = 'a-token'; return true }) as never
     // Signed OUT at mount, so onMounted must not hand off — this has to come

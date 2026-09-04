@@ -47,3 +47,15 @@ export function takeRedirect(): string {
     return '/dashboard'
   }
 }
+
+// Drop any stashed destination. Called on sign-out: the stash is where the
+// PREVIOUS user was headed, and replaying it into the next person's session
+// sends them somewhere they never asked for — possibly a deep link naming a
+// file that was never theirs.
+export function clearRedirect(): void {
+  try {
+    sessionStorage.removeItem(KEY)
+  } catch {
+    /* sessionStorage may be unavailable */
+  }
+}
