@@ -30,6 +30,23 @@ export type ShareKindValue = (typeof ShareKind)[keyof typeof ShareKind]
 export type ShareStatus =
   | 'active' | 'expired' | 'revoked' | 'exhausted' | 'blocked' | 'not_working'
 
+/**
+ * The states a link can never come back from. Mirrors `Link.is_dead` in the
+ * service — the server refuses to widen these with a 409, and the UI should not
+ * offer the control in the first place.
+ *
+ * `blocked` is absent on purpose: a lockout lifts, so adding an address to a
+ * locked link is a real grant that simply waits. So is `not_working`, which is
+ * about the CREATOR's access to the resource, not about the link.
+ */
+const DEAD_STATUSES: readonly ShareStatus[] = ['revoked', 'expired', 'exhausted']
+
+/** May this link's recipient list still be widened? Unknown status => yes, so
+ *  a caller that has not loaded the badge yet is not silently locked out. */
+export function canWidenLink(status?: ShareStatus): boolean {
+  return !status || !DEAD_STATUSES.includes(status)
+}
+
 export interface ShareLink {
   link_uid: string
   kind: ShareKindValue

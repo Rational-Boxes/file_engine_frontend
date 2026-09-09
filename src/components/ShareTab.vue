@@ -43,6 +43,7 @@
           <ShareLinkDetail
             v-if="expanded === l.link_uid"
             :link-uid="l.link_uid"
+            :status="l.status"
             class="share-detail"
           />
         </li>

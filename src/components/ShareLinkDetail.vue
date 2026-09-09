@@ -41,7 +41,7 @@
       <li v-if="!recipients.length" class="muted">No recipients.</li>
     </ul>
 
-    <div class="sld-add">
+    <div v-if="canWiden" class="sld-add">
       <input
         v-model="newEmail"
         type="email"
@@ -52,9 +52,19 @@
     </div>
     <!-- Adding widens who can reach the resource, so it is audited as a
          permission change. Say that rather than let it feel like an edit. -->
-    <small class="muted">
+    <small v-if="canWiden" class="muted">
       Adding an address lets that person use this link. They still need a code,
       and you still send them the link yourself.
+    </small>
+    <!--
+      A dead link cannot be widened. The control is REMOVED rather than left to
+      fail, because the failure would arrive after the creator believed they had
+      sent someone access — and the roster above would have shown the address
+      sitting there as if it worked.
+    -->
+    <small v-else class="muted">
+      This link is {{ deadLabel }}, so nobody else can be added to it. Create a
+      new link to share this with someone else.
     </small>
 
     <!-- ── ledger ─────────────────────────────────────────────────────── -->
@@ -78,14 +88,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
-  shareService, type ShareRecipient, type ShareRedemption,
+  canWidenLink, shareService,
+  type ShareRecipient, type ShareRedemption, type ShareStatus,
 } from '@/services/shareService'
 import { errorMessage } from '@/services/apiClient'
 
-const props = defineProps<{ linkUid: string }>()
+// `status` is optional so the component stays usable anywhere the badge is not
+// to hand; `canWidenLink` treats "unknown" as widenable, and the server is the
+// one that actually refuses.
+const props = defineProps<{ linkUid: string; status?: ShareStatus }>()
+
+const canWiden = computed(() => canWidenLink(props.status))
+const deadLabel = computed(() => (
+  props.status === 'exhausted' ? 'used up' : props.status ?? 'no longer live'))
 
 const recipients = ref<ShareRecipient[]>([])
 const redemptions = ref<ShareRedemption[]>([])
