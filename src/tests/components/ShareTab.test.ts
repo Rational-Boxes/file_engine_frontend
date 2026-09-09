@@ -161,3 +161,115 @@ describe('ShareTab', () => {
     expect(w.text()).toMatch(/no longer have access/i)
   })
 })
+
+/**
+ * Revoking is irreversible — there is no un-revoke, and re-sharing mints a new
+ * URL that everyone already holding the old one has to be sent again. It sat in
+ * a row of ordinary buttons with nothing between a stray click and the call.
+ */
+function link(over: Record<string, unknown> = {}) {
+  return {
+    link_uid: 'l1', kind: ShareKind.FILE, status: 'active',
+    max_uses: 5, uses_consumed: 0, max_files: 0, files_consumed: 0,
+    expires_at: new Date(Date.now() + 86_400_000).toISOString(), ...over,
+  }
+}
+
+// ConfirmModal teleports to <body>, which the wrapper cannot see. Stubbing
+// Teleport renders it in place so the dialog can be asserted on normally.
+function mountWithDialog(props: Record<string, unknown> = {}) {
+  return mount(ShareTab, {
+    props: { resourceUid: 'uid-1', isFolder: false, name: 'Contract.pdf', ...props },
+    global: { stubs: { HelpIcon: true, teleport: true } },
+  })
+}
+
+const rowRevoke = (w: ReturnType<typeof mountWithDialog>) =>
+  w.findAll('button').find((b) => b.text() === 'Revoke' && !b.classes('cm-btn'))
+
+describe('ShareTab — revoking', () => {
+  it('offers no Revoke on a link that is already revoked', async () => {
+    // The reported defect. The call is a no-op the server answers
+    // `changed: false`, so the button was offering an action that does nothing.
+    listForNode.mockResolvedValue([link({ status: 'revoked' })])
+    const w = mountWithDialog()
+    await flushPromises()
+    expect(w.text()).toMatch(/Revoked/)        // the badge is still there
+    expect(rowRevoke(w)).toBeUndefined()       // the button is not
+  })
+
+  it.each(['active', 'expired', 'exhausted', 'blocked', 'not_working'] as const)(
+    'keeps Revoke on a %s link', async (status) => {
+      // Expired and used-up links keep it on purpose: revoking still writes an
+      // "I ended this" record that running out of road does not.
+      listForNode.mockResolvedValue([link({ status })])
+      const w = mountWithDialog()
+      await flushPromises()
+      expect(rowRevoke(w)).toBeDefined()
+    })
+
+  it('does not revoke on the row click — that click only asks', async () => {
+    // The whole point. Before this, one click on a button in a row of buttons
+    // ended the link for everyone holding it.
+    listForNode.mockResolvedValue([link()])
+    const w = mountWithDialog()
+    await flushPromises()
+    await rowRevoke(w)!.trigger('click')
+    expect(revoke).not.toHaveBeenCalled()
+    expect(w.find('.cm-panel').exists()).toBe(true)
+  })
+
+  it('revokes once the dialog is confirmed', async () => {
+    listForNode.mockResolvedValue([link()])
+    revoke.mockResolvedValue(undefined)
+    const w = mountWithDialog()
+    await flushPromises()
+    await rowRevoke(w)!.trigger('click')
+    await w.find('.cm-danger').trigger('click')
+    await flushPromises()
+    expect(revoke).toHaveBeenCalledWith('l1')
+    expect(w.find('.cm-panel').exists()).toBe(false)
+    expect(listForNode).toHaveBeenCalledTimes(2)   // the list is reloaded
+  })
+
+  it('revokes nothing when the dialog is cancelled', async () => {
+    listForNode.mockResolvedValue([link()])
+    const w = mountWithDialog()
+    await flushPromises()
+    await rowRevoke(w)!.trigger('click')
+    const cancel = w.findAll('.cm-btn').find((b) => b.text() === 'Cancel')!
+    await cancel.trigger('click')
+    await flushPromises()
+    expect(revoke).not.toHaveBeenCalled()
+    expect(w.find('.cm-panel').exists()).toBe(false)
+  })
+
+  it('says what is lost and that it cannot be undone', async () => {
+    // "Revoke this link?" alone reads as tidying up. What deserves the pause is
+    // that people who were sent it stop being able to open it.
+    listForNode.mockResolvedValue([link()])
+    const w = mountWithDialog()
+    await flushPromises()
+    await rowRevoke(w)!.trigger('click')
+    const dialog = w.find('.cm-panel').text()
+    expect(dialog).toMatch(/lose access/i)
+    expect(dialog).toContain('Contract.pdf')
+    expect(dialog).toMatch(/cannot be undone/i)
+    expect(dialog).toMatch(/new address/i)
+  })
+
+  it('closes the dialog when the drawer moves to another file', async () => {
+    // Otherwise it stays open over a different file, aimed at a link that is no
+    // longer on screen — and Confirm would revoke the one you walked away from.
+    listForNode.mockResolvedValue([link()])
+    const w = mountWithDialog()
+    await flushPromises()
+    await rowRevoke(w)!.trigger('click')
+    expect(w.find('.cm-panel').exists()).toBe(true)
+
+    await w.setProps({ resourceUid: 'uid-2' })
+    await flushPromises()
+    expect(w.find('.cm-panel').exists()).toBe(false)
+    expect(revoke).not.toHaveBeenCalled()
+  })
+})

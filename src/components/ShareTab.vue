@@ -31,7 +31,20 @@
           <button class="share-btn" @click="toggle(l.link_uid)">
             {{ expanded === l.link_uid ? 'Hide' : 'Who / activity' }}
           </button>
-          <button class="share-btn" @click="revoke(l)">Revoke</button>
+          <!--
+            Once a link is revoked there is nothing left for this to do — the
+            server answers `changed: false` — so the button is removed rather
+            than left to look like a pending action. Expired and used-up links
+            keep it: revoking those still writes a real "I ended this" record,
+            which a link that merely ran out of road does not have.
+          -->
+          <button
+            v-if="l.status !== 'revoked'"
+            class="share-btn"
+            @click="askRevoke(l)"
+          >
+            Revoke
+          </button>
           <!--
             The reason a link stopped working is the single most expensive
             support conversation this feature can create: nothing about the link
@@ -161,6 +174,26 @@
       Sharing with someone who has an account? Use the
       <button class="link" @click="$emit('go-access')">Access</button> tab instead.
     </p>
+
+    <!--
+      Revoking cannot be undone: there is no un-revoke, and re-sharing mints a
+      NEW URL, so everyone already holding the old one has to be told again.
+      That is too much to hang on one unguarded click in a row of buttons.
+
+      A dialog rather than a second click in the same spot — the two-click
+      pattern used by the tenant-wide console is defeated by exactly the input
+      this is meant to stop, since a double click lands on both states. This
+      moves the confirm elsewhere, focuses Cancel, and takes Escape.
+    -->
+    <ConfirmModal
+      :open="revokeTarget !== null"
+      title="Revoke this link?"
+      :message="revokeMessage"
+      confirm-label="Revoke"
+      :danger="true"
+      @confirm="confirmRevoke"
+      @cancel="revokeTarget = null"
+    />
   </section>
 </template>
 
@@ -173,6 +206,7 @@ import {
 } from '@/services/shareService'
 import { errorMessage } from '@/services/apiClient'
 import ShareLinkDetail from '@/components/ShareLinkDetail.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 
 const props = defineProps<{ resourceUid: string; isFolder: boolean; name: string }>()
 defineEmits<{ (e: 'go-access'): void }>()
@@ -185,6 +219,7 @@ const error = ref('')
 const busy = ref(false)
 const recipientInput = ref('')
 const expanded = ref<string | null>(null)
+const revokeTarget = ref<ShareLink | null>(null)
 
 const form = ref({
   kind: (props.isFolder ? ShareKind.FOLDER : ShareKind.FILE) as ShareKindValue,
@@ -301,7 +336,37 @@ function toggle(uid: string) {
   expanded.value = expanded.value === uid ? null : uid
 }
 
-async function revoke(l: ShareLink) {
+function askRevoke(l: ShareLink) {
+  revokeTarget.value = l
+}
+
+/**
+ * Named for what the recipient loses, not for the row being changed — "revoke
+ * this link" reads as tidying up, and the thing worth pausing over is that
+ * people who were sent it stop being able to open it.
+ */
+const revokeMessage = computed(() => {
+  const l = revokeTarget.value
+  if (!l) return ''
+  // The recipient count is not on this payload — it belongs to the tenant-wide
+  // console — so this says "everyone it was sent to" rather than inventing a
+  // number, and names the item so the dialog is not ambiguous in a drawer that
+  // can be reopened over a different file.
+  const what = kindLabel(l.kind).toLowerCase()
+  return `Everyone this ${what} link was sent to will lose access to`
+    + ` “${props.name}”. This cannot be undone — sharing it again creates a new`
+    + ' address, which you would have to send out yourself.'
+})
+
+/**
+ * Separate from `askRevoke`, deliberately: one function with a `confirmed` flag
+ * bound to the row button would revoke on the first click the moment someone
+ * mistyped the guard. There is no path from a row click to this.
+ */
+async function confirmRevoke() {
+  const l = revokeTarget.value
+  revokeTarget.value = null
+  if (!l) return
   try {
     await shareService.revoke(l.link_uid)
     if (created.value?.link_uid === l.link_uid) created.value = null
@@ -313,6 +378,9 @@ async function revoke(l: ShareLink) {
 
 watch(() => props.resourceUid, () => {
   created.value = null
+  // Or the dialog would still be open over a different file, aimed at a link
+  // that is no longer on screen.
+  revokeTarget.value = null
   void load()
 }, { immediate: true })
 </script>
