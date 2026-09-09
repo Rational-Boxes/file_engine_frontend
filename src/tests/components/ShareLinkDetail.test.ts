@@ -47,9 +47,9 @@ function redemption(over: Record<string, unknown> = {}) {
   }
 }
 
-function mountDetail() {
+function mountDetail(props: Record<string, unknown> = {}) {
   return mount(ShareLinkDetail, {
-    props: { linkUid: 'l1' },
+    props: { linkUid: 'l1', ...props },
     global: { stubs: { RouterLink: { template: '<a><slot/></a>' } } },
   })
 }
@@ -159,5 +159,49 @@ describe('ShareLinkDetail', () => {
     const w = mountDetail()
     await flushPromises()
     expect(w.find('.sld-err').exists()).toBe(true)
+  })
+})
+
+/**
+ * A dead link cannot be widened — the server 409s. The control is removed here
+ * rather than left to fail, because the failure arrives only AFTER the creator
+ * believes they have given someone access.
+ *
+ * Production, 2026-09-09: an address was added 28 seconds after the link was
+ * revoked. It could never be used, but it sat on the roster looking as if it
+ * could, and the audit chain recorded a permission grant that never happened.
+ */
+describe('ShareLinkDetail — widening a link that is past saving', () => {
+  it.each(['revoked', 'expired', 'exhausted'] as const)(
+    'offers no way to add an address to a %s link', async (status) => {
+      const w = mountDetail({ status })
+      await flushPromises()
+      expect(w.find('.sld-add').exists()).toBe(false)
+      expect(w.text()).toMatch(/nobody else can be added/i)
+    })
+
+  it.each(['active', 'blocked', 'not_working'] as const)(
+    'still offers it for a %s link', async (status) => {
+      // `blocked` is a lockout that lifts and `not_working` is about the
+      // creator's own access — neither is the link being over, so refusing
+      // would take away something legitimate.
+      const w = mountDetail({ status })
+      await flushPromises()
+      expect(w.find('.sld-add').exists()).toBe(true)
+    })
+
+  it('still offers it when the status is not known', async () => {
+    // The component is usable without the badge to hand; the server is the one
+    // that actually refuses, so the UI must not lock the door on a guess.
+    const w = mountDetail()
+    await flushPromises()
+    expect(w.find('.sld-add').exists()).toBe(true)
+  })
+
+  it('names the state in words a creator would use', async () => {
+    const w = mountDetail({ status: 'exhausted' })
+    await flushPromises()
+    expect(w.text()).toContain('used up')
+    expect(w.text()).not.toContain('exhausted')
   })
 })
