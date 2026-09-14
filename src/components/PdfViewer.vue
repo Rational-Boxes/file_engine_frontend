@@ -250,7 +250,32 @@ async function loadDoc() {
     hasMarkup.value = false
     emit('dirty', false)
     emit('has-markup', false)
-    loadingTask = lib!.getDocument({ url: props.src })
+    // Self-hosted runtime data (staged into public/pdfjs by
+    // scripts/copy-pdfjs-assets.mjs). pdfjs concatenates filenames straight onto
+    // these, so the trailing slashes are load-bearing.
+    //
+    // useSystemFonts:false is the important one. It defaults to true in the
+    // browser, and in that mode pdfjs deliberately SKIPS its own bundled
+    // substitutes and resolves non-embedded fonts through CSS `local(<name>)`
+    // against the host OS instead — so the same PDF renders differently per
+    // platform. macOS matches font names Windows and Linux do not (it activates
+    // faces on request-by-name), and when the match is symbol-encoded, pdfjs has
+    // already re-encoded the char codes through SymbolSetEncoding /
+    // ZapfDingbatsEncoding / the U+F000-F0FF symbolic range — so body text came
+    // out as dingbats and Greek on Mac Chrome while looking fine elsewhere.
+    // Forcing the bundled Liberation/Foxit data trades a little fidelity (real
+    // Arial on a Mac) for identical output on every platform, which is what a
+    // viewer with position-anchored markup needs.
+    const base = import.meta.env.BASE_URL // always ends in '/'
+    loadingTask = lib!.getDocument({
+      url: props.src,
+      standardFontDataUrl: `${base}pdfjs/standard_fonts/`,
+      cMapUrl: `${base}pdfjs/cmaps/`,
+      cMapPacked: true,
+      iccUrl: `${base}pdfjs/iccs/`,
+      wasmUrl: `${base}pdfjs/wasm/`,
+      useSystemFonts: false,
+    })
     pdfDoc = await loadingTask.promise
     // The canonical "the user changed the markup" signal: annotationStorage fires
     // onSetModified when an editor edit lands. (There is no annotationeditor*changed

@@ -5,7 +5,9 @@
   "author": "James Hickman <james@rationalboxes.com>",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-pdfjs-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-pdfjs-assets.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
