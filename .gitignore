@@ -6,3 +6,5 @@ dist/
 html/
 coverage/.claude/
 .claude/
+# staged by scripts/copy-pdfjs-assets.mjs (prebuild/predev)
+public/pdfjs/
