@@ -15,6 +15,7 @@
 
 import apiClient from '@/services/apiClient'
 import type { AclEntry, Principal, PrincipalSuggestions } from '@/types'
+import { isSystemRole } from '@/utils/systemRoles'
 
 interface RawAclEntry {
   principal: string
@@ -37,6 +38,11 @@ export const aclService = {
   // Requires MANAGE_ACL on the node (enforced by the core → 403 otherwise).
   async getAcls(uid: string): Promise<AclEntry[]> {
     const { data } = await apiClient.get<{ acls?: RawAclEntry[] }>(`/v1/nodes/${uid}/acls`)
+    // Deliberately unfiltered, unlike the role list and the type-ahead: an ACL
+    // an administrator is reading must be the WHOLE ACL, or it quietly answers
+    // "who can reach this?" wrongly. The workers' `file_services` grant sits on
+    // every tenant root, so it shows — the ACL editor renders it as a locked
+    // system row that cannot be edited away. See AclEditor's isSystemRow.
     return (data?.acls ?? []).map((a) => ({
       principal: a.principal,
       type: a.type,
@@ -57,7 +63,13 @@ export const aclService = {
     if (opts.types?.length) params.types = opts.types.join(',')
     if (opts.limit && opts.limit > 0) params.limit = String(opts.limit)
     const { data } = await apiClient.get<Partial<PrincipalSuggestions>>('/v1/principals', { params })
-    return { users: data?.users ?? [], roles: data?.roles ?? [], claims: data?.claims ?? [] }
+    // Roles are filtered so a system role cannot be typed into the add-principal
+    // box and granted somewhere new; users and claims pass through untouched.
+    return {
+      users: data?.users ?? [],
+      roles: (data?.roles ?? []).filter((r) => !isSystemRole(r)),
+      claims: data?.claims ?? [],
+    }
   },
 }
 

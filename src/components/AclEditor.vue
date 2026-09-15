@@ -24,10 +24,19 @@
       <p v-if="canManage" class="acl-order">Evaluation order (top → bottom):</p>
       <table class="acl-list">
       <tbody>
-        <tr v-for="(e, idx) in orderedEntries" :key="idx" :class="{ deny: e.effect === 'deny' }">
+        <tr
+          v-for="(e, idx) in orderedEntries"
+          :key="idx"
+          :class="{ deny: e.effect === 'deny', system: isSystemRow(e) }"
+        >
           <td class="acl-principal">
             <span class="acl-kind" :class="'acl-kind-' + kindOf(e)">{{ kindLabel(kindOf(e)) }}</span>
             <span class="acl-name" :title="e.principal">{{ e.principal }}</span>
+            <span
+              v-if="isSystemRow(e)"
+              class="acl-system"
+              title="Platform role held by the background services. Shown so the rule set is complete; it is not editable here."
+            >system</span>
           </td>
           <td class="acl-effect">
             <span class="acl-eff" :class="e.effect">{{ e.effect }}</span>
@@ -36,7 +45,7 @@
             <span v-for="p in decode(e.permissions)" :key="p.key" class="acl-chip">
               {{ p.label }}
               <button
-                v-if="canManage"
+                v-if="canManage && !isSystemRow(e)"
                 class="acl-x"
                 :title="`Revoke ${p.label}`"
                 @click="revoke(e, p.key)"
@@ -125,6 +134,7 @@ import { aclService } from '@/services/aclService'
 import { fileService } from '@/services/fileService'
 import { errorMessage, ROOT_UID } from '@/services/apiClient'
 import { PERMS, decodePermissions } from '@/utils/permissions'
+import { isSystemRole } from '@/utils/systemRoles'
 import {
   encodePrincipal,
   principalKindFromType,
@@ -190,6 +200,21 @@ async function load() {
 
 function kindOf(e: AclEntry): PrincipalKind {
   return principalKindFromType(e.type)
+}
+
+// A rule the platform owns rather than the administrator: the `file_services`
+// role the background workers hold, granted at every tenant root.
+//
+// It is SHOWN — an ACL that an administrator is reading has to be the whole ACL,
+// or it answers "who can reach this?" wrongly — but it is not editable, because
+// revoking it strips read/write from all four workers at once and the symptom
+// surfaces much later as scattered PermissionDenied. The role is already absent
+// from the add-principal type-ahead, so this is the only way one can appear.
+//
+// Must test the KIND too: a user who happened to be named `file_services` is a
+// finding, not plumbing, and must stay editable.
+function isSystemRow(e: AclEntry): boolean {
+  return kindOf(e) === 'role' && isSystemRole(e.principal)
 }
 
 function kindLabel(k: PrincipalKind): string {
@@ -290,9 +315,16 @@ async function cloneParent() {
   busy.value = true
   error.value = ''
   const atom = (principal: string, effect: string, key: string) => `${principal}\t${effect}\t${key}`
+  // System rows are excluded from BOTH sides of the diff, which is what keeps
+  // them un-editable in practice rather than only in the markup. Left in
+  // `current` the clone would REVOKE the workers' grant wherever the parent
+  // lacks it; left in `target` it would propagate a rule the administrator
+  // never asked for. Neither belongs in a "copy the parent's permissions"
+  // gesture, so the clone leaves these rules exactly as it found them.
   const toAtoms = (list: AclEntry[]): Set<string> => {
     const s = new Set<string>()
     for (const e of list) {
+      if (isSystemRow(e)) continue
       const principal = encodePrincipal({ kind: principalKindFromType(e.type), value: e.principal })
       for (const p of decode(e.permissions)) s.add(atom(principal, e.effect, p.key))
     }
@@ -386,6 +418,25 @@ async function revoke(e: AclEntry, permKey: string) {
 
 .acl-list tr.deny .acl-name {
   color: #b00020;
+}
+
+/* A platform-owned rule. Muted rather than hidden: it belongs in the rule set an
+   administrator reads, but it carries no controls, so it should not read as
+   something awaiting action. */
+.acl-list tr.system {
+  opacity: 0.72;
+}
+
+.acl-system {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted, #667);
+  white-space: nowrap;
+  cursor: help;
 }
 
 .acl-principal {

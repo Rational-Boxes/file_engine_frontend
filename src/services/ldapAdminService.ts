@@ -14,6 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import ldapAdminClient from '@/services/ldapAdminClient'
+import { isSystemRole } from '@/utils/systemRoles'
 
 // Typed wrapper over the LDAP Manager REST API (SPECIFICATION.md §7). Public
 // endpoints (invite/reset/password-policy) don't need the bearer token, but the
@@ -134,8 +135,13 @@ export interface WebdavSessionTtl {
 
 export const ldapAdminService = {
   // --- tenant admin: roles ---
+  // System roles are filtered out HERE rather than in each view, because this
+  // one list feeds all of them: the tenant-admin Roles tab (which offers
+  // Delete), its Users tab (which assigns from the same array), and the
+  // integrations panel. See @/utils/systemRoles.
   async listRoles(): Promise<Role[]> {
-    return (await ldapAdminClient.get('/v1/admin/roles')).data
+    const roles: Role[] = (await ldapAdminClient.get('/v1/admin/roles')).data ?? []
+    return roles.filter((r) => !isSystemRole(r.name))
   },
   async createRole(name: string): Promise<Role> {
     return (await ldapAdminClient.post('/v1/admin/roles', { name })).data
