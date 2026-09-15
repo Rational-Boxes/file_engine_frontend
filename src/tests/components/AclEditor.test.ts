@@ -16,10 +16,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const { getAcls, grantPermission, revokePermission } = vi.hoisted(() => ({
+const { getAcls, grantPermission, revokePermission, stat } = vi.hoisted(() => ({
   getAcls: vi.fn(),
   grantPermission: vi.fn(),
   revokePermission: vi.fn(),
+  stat: vi.fn(),
 }))
 
 vi.mock('@/services/aclService', async (importOriginal) => {
@@ -27,7 +28,7 @@ vi.mock('@/services/aclService', async (importOriginal) => {
   return { ...actual, aclService: { getAcls } }
 })
 vi.mock('@/services/fileService', () => ({
-  fileService: { grantPermission, revokePermission },
+  fileService: { grantPermission, revokePermission, stat },
 }))
 
 import AclEditor from '@/components/AclEditor.vue'
@@ -214,5 +215,90 @@ describe('AclEditor', () => {
     await flushPromises()
     expect(w.find('.acl-add').exists()).toBe(false)
     expect(w.find('.acl-x').exists()).toBe(false)
+  })
+})
+
+// --- system rows -----------------------------------------------------------
+//
+// `file_services` is the role the four background workers hold, granted at every
+// tenant root. It is SHOWN — an ACL an administrator is reading has to be the
+// whole ACL — but it must not be editable: revoking it strips read/write from
+// all four workers at once, and the symptom surfaces much later as scattered
+// PermissionDenied. See @/utils/systemRoles.
+describe('AclEditor system rows', () => {
+  const SYSTEM = { principal: 'file_services', type: 1, permissions: 0x400 | 0x200, effect: 'allow' }
+  const NORMAL = { principal: 'editors', type: 1, permissions: 0x400, effect: 'allow' }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    grantPermission.mockResolvedValue(undefined)
+    revokePermission.mockResolvedValue(undefined)
+    stat.mockResolvedValue({ parent_uid: '' })
+  })
+
+  it('shows the row rather than hiding it, so the rule set stays complete', async () => {
+    getAcls.mockResolvedValue([SYSTEM, NORMAL])
+    const w = mountEditor()
+    await flushPromises()
+    expect(w.findAll('tbody tr')).toHaveLength(2)
+    expect(w.text()).toContain('file_services')
+  })
+
+  it('marks it as a system row and offers no revoke control', async () => {
+    getAcls.mockResolvedValue([SYSTEM, NORMAL])
+    const w = mountEditor()
+    await flushPromises()
+    const rows = w.findAll('tbody tr')
+    const sys = rows.find((r) => r.text().includes('file_services'))!
+    const normal = rows.find((r) => r.text().includes('editors'))!
+
+    expect(sys.classes()).toContain('system')
+    expect(sys.find('.acl-system').exists()).toBe(true)
+    expect(sys.findAll('.acl-x')).toHaveLength(0)
+    // The ordinary role alongside it keeps its controls — this is not just
+    // "canManage is false".
+    expect(normal.findAll('.acl-x').length).toBeGreaterThan(0)
+  })
+
+  it('locks it as a ROLE only — a user of that name stays editable', async () => {
+    // Nothing should create such a user, which is why it must not be quietly
+    // locked if one exists: that is a finding, not plumbing.
+    getAcls.mockResolvedValue([{ ...SYSTEM, type: 0 }])
+    const w = mountEditor()
+    await flushPromises()
+    const row = w.find('tbody tr')
+    expect(row.classes()).not.toContain('system')
+    expect(row.findAll('.acl-x').length).toBeGreaterThan(0)
+  })
+
+  it('clone-parent never revokes it when the parent lacks it', async () => {
+    // The hazard that makes "shown" different from "shown and safe": the clone
+    // diffs the parent's ACL against this node's and revokes the extras.
+    stat.mockResolvedValue({ parent_uid: 'p1' })
+    getAcls.mockImplementation(async (uid: string) =>
+      uid === 'p1' ? [NORMAL] : [SYSTEM, NORMAL],
+    )
+    const w = mountEditor()
+    await flushPromises()
+    await w.find('.acl-clone button').trigger('click')
+    await flushPromises()
+
+    const revoked = revokePermission.mock.calls.map((c) => c[1].principal)
+    expect(revoked).not.toContain('role:file_services')
+    expect(revoked).toHaveLength(0)
+  })
+
+  it('clone-parent never propagates it to a child that lacks it', async () => {
+    stat.mockResolvedValue({ parent_uid: 'p1' })
+    getAcls.mockImplementation(async (uid: string) =>
+      uid === 'p1' ? [SYSTEM, NORMAL] : [NORMAL],
+    )
+    const w = mountEditor()
+    await flushPromises()
+    await w.find('.acl-clone button').trigger('click')
+    await flushPromises()
+
+    const granted = grantPermission.mock.calls.map((c) => c[1].principal)
+    expect(granted).not.toContain('role:file_services')
   })
 })

@@ -18,9 +18,11 @@
 // a group under the tenant like `administrators`, so it came back from the role
 // registry and surfaced in the admin UI with a Delete button next to it.
 //
-// Suppression is at the SERVICE boundary so every consumer is covered once.
-// These tests pin it there — at the two services rather than at each view —
-// because that is the property that makes the coverage true.
+// The rule is SUPPRESS FROM MANAGEMENT, NOT FROM VIEW, and these tests pin both
+// halves of it at the service boundary:
+//   listRoles / searchPrincipals  filtered — nothing should offer the role
+//   getAcls                       NOT filtered — a read ACL must be complete
+// The locked-row half lives in the editor; see AclEditor.test.ts.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -97,23 +99,18 @@ describe('aclService.getAcls', () => {
     principal, type, permissions: 0x1730, effect: 0,
   })
 
-  it('hides the workers grant that sits on every tenant root', async () => {
+  it('does NOT filter — a read ACL must be the whole ACL', async () => {
+    // Deliberately unlike listRoles/searchPrincipals. Dropping a live grant here
+    // would make the editor answer "who can reach this?" wrongly; the editor
+    // locks the row instead (see the AclEditor tests).
     h.apiGet.mockResolvedValue({
       data: { acls: [acl('james', 0), acl('file_services', 1), acl('editors', 1)] },
     })
     const entries = await aclService.getAcls('root-uid')
-    expect(entries.map((e) => e.principal)).toEqual(['james', 'editors'])
+    expect(entries.map((e) => e.principal)).toEqual(['james', 'file_services', 'editors'])
   })
 
-  it('only hides it as a ROLE — a user of that name would still show', async () => {
-    // Nothing should ever create such a user, which is exactly why it must not
-    // be silently hidden if one exists: that is a finding, not noise.
-    h.apiGet.mockResolvedValue({ data: { acls: [acl('file_services', 0)] } })
-    const entries = await aclService.getAcls('root-uid')
-    expect(entries.map((e) => e.principal)).toEqual(['file_services'])
-  })
-
-  it('still maps the entries it keeps', async () => {
+  it('still maps effect', async () => {
     h.apiGet.mockResolvedValue({
       data: { acls: [{ principal: 'editors', type: 1, permissions: 0x30, effect: 1 }] },
     })

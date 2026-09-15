@@ -28,10 +28,20 @@
 // as something to assign to a person, which would hand them worker-level rights
 // across the whole tenant.
 //
-// Filtering happens at the SERVICE boundary (ldapAdminService, aclService) so
-// every consumer is covered once — the tenant-admin Roles and Users tabs, the
-// integrations panel, and the ACL editor's add-principal type-ahead — rather
-// than each component remembering to do it.
+// The rule is SUPPRESS FROM MANAGEMENT, NOT FROM VIEW, and the two halves land
+// in different places:
+//
+//   Filtered out, at the service boundary so every consumer is covered once:
+//     ldapAdminService.listRoles()   Roles tab, Users tab, integrations panel
+//     aclService.searchPrincipals()  the ACL add-principal type-ahead
+//   Shown but locked:
+//     the ACL editor renders an existing `role:file_services` grant as a system
+//     row with no controls (AclEditor's isSystemRow), and the clone-parent diff
+//     skips it on both sides so it is not editable in practice either.
+//
+// The split is deliberate. An ACL an administrator is reading has to be the
+// WHOLE ACL — filtering a live grant out of it quietly answers "who can reach
+// this?" wrongly — but nothing should offer the role as a thing to hand out.
 //
 // Two things this deliberately does NOT do:
 //   * It does not filter the roles carried on a USER record. A person should
