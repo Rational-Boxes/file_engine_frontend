@@ -15,6 +15,7 @@
 
 import apiClient from '@/services/apiClient'
 import type { AclEntry, Principal, PrincipalSuggestions } from '@/types'
+import { isSystemRole } from '@/utils/systemRoles'
 
 interface RawAclEntry {
   principal: string
@@ -37,12 +38,21 @@ export const aclService = {
   // Requires MANAGE_ACL on the node (enforced by the core → 403 otherwise).
   async getAcls(uid: string): Promise<AclEntry[]> {
     const { data } = await apiClient.get<{ acls?: RawAclEntry[] }>(`/v1/nodes/${uid}/acls`)
-    return (data?.acls ?? []).map((a) => ({
-      principal: a.principal,
-      type: a.type,
-      permissions: a.permissions,
-      effect: a.effect === 1 ? 'deny' : 'allow',
-    }))
+    return (data?.acls ?? [])
+      // type 1 is ROLE. The workers' `file_services` grant sits on every tenant
+      // root, so without this the editor listed a row an administrator is not
+      // meant to manage — and could remove, taking all four workers' access
+      // with it. Hidden, not read-only: the entry is platform plumbing, so it
+      // is not part of the access picture an administrator is reasoning about.
+      // NOTE this means the editor does not show the node's COMPLETE ACL; the
+      // core still enforces the hidden grant.
+      .filter((a) => !(a.type === 1 && isSystemRole(a.principal)))
+      .map((a) => ({
+        principal: a.principal,
+        type: a.type,
+        permissions: a.permissions,
+        effect: a.effect === 1 ? 'deny' : 'allow',
+      }))
   },
 
   // Type-ahead over roles, claims, and users for the ACL editor. `query` is a
@@ -57,7 +67,13 @@ export const aclService = {
     if (opts.types?.length) params.types = opts.types.join(',')
     if (opts.limit && opts.limit > 0) params.limit = String(opts.limit)
     const { data } = await apiClient.get<Partial<PrincipalSuggestions>>('/v1/principals', { params })
-    return { users: data?.users ?? [], roles: data?.roles ?? [], claims: data?.claims ?? [] }
+    // Roles are filtered so a system role cannot be typed into the add-principal
+    // box and granted somewhere new; users and claims pass through untouched.
+    return {
+      users: data?.users ?? [],
+      roles: (data?.roles ?? []).filter((r) => !isSystemRole(r)),
+      claims: data?.claims ?? [],
+    }
   },
 }
 
