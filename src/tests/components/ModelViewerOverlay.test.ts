@@ -100,7 +100,7 @@ vi.mock('@/components/Model3DViewer.vue', () => ({
 vi.mock('@/components/ThreadPanel.vue', () => ({
   default: defineComponent({
     name: 'ThreadPanel',
-    props: ['fileUid', 'embedded', 'hideDock', 'pos', 'anchorProvider'],
+    props: ['fileUid', 'embedded', 'hideDock', 'pos', 'anchorProvider', 'activeThreadId'],
     emits: ['threads', 'restore-view', 'count', 'layout', 'update:pos'],
     setup(_, { expose }) {
       expose({ scrollToThread: hh.scrollToThread, startAnnotation: hh.startAnnotation })
@@ -862,5 +862,53 @@ describe('ModelViewerOverlay — the way out survives a comparison', () => {
     const w = await open(true)
     await w.find('.mv-head-main .mv-x').trigger('click')
     expect(useModel3dStore().isOpen).toBe(false)
+  })
+
+  // --- thread highlight lifecycle ------------------------------------------
+  //
+  // This overlay is mounted unconditionally in App.vue and only its inner markup
+  // is v-if'd, so closing it does NOT tear the component down — its refs live on
+  // into the next open. The highlighted thread came back still selected.
+  it('highlights the thread whose marker is clicked in the scene', async () => {
+    const w = mountOverlay()
+    useModel3dStore().open('file1', 'tower.ifc')
+    await flushPromises()
+
+    w.findComponent({ name: 'Model3DViewer' }).vm.$emit('annotation-activate', 't-3')
+    await flushPromises()
+    expect(w.findComponent({ name: 'ThreadPanel' }).props('activeThreadId')).toBe('t-3')
+  })
+
+  it('CLEARS the highlight on close, so reopening does not restore the last selection', async () => {
+    const w = mountOverlay()
+    const store = useModel3dStore()
+    store.open('file1', 'tower.ifc')
+    await flushPromises()
+    w.findComponent({ name: 'Model3DViewer' }).vm.$emit('annotation-activate', 't-3')
+    await flushPromises()
+
+    store.close()
+    await flushPromises()
+    store.open('file1', 'tower.ifc')
+    await flushPromises()
+
+    expect(w.findComponent({ name: 'ThreadPanel' }).props('activeThreadId')).toBeNull()
+  })
+
+  it('keeps the highlight across a model switch while still open', async () => {
+    // Deliberate: activating a comment sets the highlight and THEN restores its
+    // view, and that restore may switch models. Clearing on a uid change would
+    // wipe the highlight the activation had just set, so the reset hangs off
+    // close only.
+    const w = mountOverlay()
+    const store = useModel3dStore()
+    store.open('file1', 'tower.ifc')
+    await flushPromises()
+    w.findComponent({ name: 'Model3DViewer' }).vm.$emit('annotation-activate', 't-3')
+    await flushPromises()
+
+    store.open('file2', 'annexe.ifc') // switch models without closing
+    await flushPromises()
+    expect(w.findComponent({ name: 'ThreadPanel' }).props('activeThreadId')).toBe('t-3')
   })
 })

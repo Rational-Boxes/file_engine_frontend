@@ -1018,6 +1018,18 @@ watch(
       deepLinkRestored = false
       threadsCache = []
       anchorMiss.value = false
+      // This overlay is mounted unconditionally in App.vue and only its INNER
+      // markup is v-if'd, so closing it does not tear the component down — every
+      // ref here survives into the next open. The highlighted thread therefore
+      // came back still selected, which is the same defect DocumentPreview had
+      // but for the opposite reason: there the component itself unmounted and
+      // the state was missed on a FILE change; here nothing unmounts at all.
+      //
+      // Cleared on close rather than on the uid watcher on purpose. Activating a
+      // comment sets activeThreadId and then restores its view, and that restore
+      // may legitimately SWITCH MODELS — clearing on a uid change would wipe the
+      // highlight the activation had just set.
+      activeThreadId.value = null
     }
   },
 )
