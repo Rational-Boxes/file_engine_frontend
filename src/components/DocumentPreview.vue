@@ -1280,6 +1280,26 @@ function cleanup() {
   }
   chatlogHtml.value = '' // plain text — no blob URL to revoke
   closeMedia()
+  // closeMedia() above already clears the MARKUP half of the highlight
+  // (markupView, activeMarkupCommentId, its blob URL). The thread half was
+  // missed: onRestorePlain() sets activeThreadId when the reader activates any
+  // plain comment, and nothing ever put it back. cleanup() runs from reload()
+  // and on unmount, so clearing it here covers both a file change on a reused
+  // instance and a close/reopen of the overlay.
+  //
+  // diffView goes with it. It is the substitute activeThreadId points AT, so
+  // leaving it behind would keep a comparison of the previous file on screen
+  // while its thread highlight had gone. NOT covered by a test: driving
+  // onShowDiff from the component tests needs differenceService stubbed
+  // (getWhenReady polls), and the panel is mid-teardown while it does. The
+  // activeThreadId half above IS covered, both paths.
+  //
+  // Deliberately not reset: the ?comment=/?thread= deep link (focusComment /
+  // focusThread). Those are the caller's intent for the file being opened, and
+  // the flash they trigger clears itself after 1.6s.
+  activeThreadId.value = null
+  diffView.value = null
+  diffError.value = ''
 }
 </script>
 
