@@ -59,7 +59,12 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ q
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ tenant: 'default' }) }))
 // The discussion children are exercised by their own tests; stub them here so the
 // preview tests stay focused (and don't pull in the discussion service / WS).
-vi.mock('@/components/ThreadPanel.vue', () => ({ default: { name: 'ThreadPanel', render: () => null } }))
+vi.mock('@/components/ThreadPanel.vue', () => ({ default: {
+  name: 'ThreadPanel',
+  props: ['activeCommentId', 'activeThreadId', 'substituteActive', 'fileUid', 'focusComment', 'focusThread'],
+  emits: ['show-markup', 'show-diff', 'restore-plain', 'layout', 'update:pos'],
+  render: () => null,
+} }))
 vi.mock('@/components/ThreadOverlay.vue', () => ({ default: { name: 'ThreadOverlay', render: () => null } }))
 // The PDF.js viewer (Phase 7.1) dynamic-imports pdfjs internally; stub it and expose
 // its `src`/`editable` props so the preview tests can assert what the viewer is
@@ -535,5 +540,72 @@ describe('DocumentPreview — where "Open file location" belongs', () => {
     // The other file action is unaffected — getting the source file is still
     // worth doing from the drawer.
     expect(w.findAll('.link').some((b) => b.text().includes('Download original'))).toBe(true)
+  })
+})
+
+// --- comment highlight lifecycle -------------------------------------------
+//
+// Activating a comment lights it up, and the highlight has two halves that are
+// cleared in different places:
+//   markup  activeCommentId -> CommentNode's .markup-active   (closeMedia)
+//   thread  activeThreadId  -> ThreadPanel's .thread-active   (cleanup)
+//
+// The thread half was the bug: onRestorePlain() sets activeThreadId whenever the
+// reader activates a plain comment, and nothing put it back — so the comment
+// selected last stayed selected the next time the surface opened, and on a host
+// that reuses this instance (the details drawer, the preview route) it carried
+// onto a different file entirely.
+describe('DocumentPreview comment highlight', () => {
+  const panel = (w: ReturnType<typeof mount>) => w.findComponent({ name: 'ThreadPanel' })
+
+  async function openReview(uid = 'f1') {
+    checkPermission.mockResolvedValue(true)
+    loadRenditionSet.mockResolvedValue({ preview: ref_('p1', 'preview', 'png'), pdf: ref_('pdf1', 'pdf', 'pdf') })
+    const w = mount(DocumentPreview, { props: { uid, name: 'a.pdf', fullWidth: true } })
+    await flushPromises()
+    return w
+  }
+
+  it('highlights the thread when a plain comment is activated', async () => {
+    const w = await openReview()
+    panel(w).vm.$emit('restore-plain', 't-7')
+    await flushPromises()
+    expect(panel(w).props('activeThreadId')).toBe('t-7')
+  })
+
+  it('CLEARS the thread highlight when the surface is pointed at another file', async () => {
+    const w = await openReview()
+    panel(w).vm.$emit('restore-plain', 't-7')
+    await flushPromises()
+    await w.setProps({ uid: 'f2', name: 'b.pdf' })
+    await flushPromises()
+    expect(panel(w).props('activeThreadId')).toBeNull()
+  })
+
+  it('CLEARS the thread highlight on unmount, so a reopen starts clean', async () => {
+    // cleanup() is the shared hook: reload() calls it on a uid change and
+    // onBeforeUnmount calls it on close. This pins the close/reopen path that
+    // the hosts using v-if depend on.
+    const w = await openReview()
+    panel(w).vm.$emit('restore-plain', 't-7')
+    await flushPromises()
+    const vm = w.vm as unknown as { activeThreadId?: unknown }
+    w.unmount()
+    expect(vm.activeThreadId ?? null).toBeNull()
+  })
+
+  it('still resets the markup half (closeMedia covers it; guard against regressing that)', async () => {
+    const w = await openReview()
+    panel(w).vm.$emit('show-markup', { renditionUid: 'm1', name: 'a-markup.pdf', page: 1 }, 'c-42')
+    await flushPromises()
+    expect(panel(w).props('activeCommentId')).toBe('c-42')
+    await w.setProps({ uid: 'f2', name: 'b.pdf' })
+    await flushPromises()
+    expect(panel(w).props('activeCommentId')).toBeNull()
+  })
+
+  it('leaves a ?comment= deep link alone — that is intent for the file being opened', async () => {
+    const w = await openReview()
+    expect(panel(w).props('focusComment')).toBe(undefined)
   })
 })
