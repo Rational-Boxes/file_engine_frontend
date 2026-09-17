@@ -20,15 +20,27 @@
  * cut/copy/paste + batch-delete + versions behaviour, including the regression
  * where a versioned copy must preserve history and current = latest version.
  *
- * Run against a running stack (core + http_bridge):
+ * Also covers "New document here" (the file browser's inline document creation):
+ * a zero-byte touch with an office extension, de-duplicated naming, and that
+ * ONLYOFFICE issues an editor config for the result — the editor assertions skip
+ * cleanly when CSAI is absent or in-browser editing is switched off.
+ *
+ * Run against a running stack (core + http_bridge; csai for the editor part):
  *   node e2e/file-ops.mjs
- * Env: FE_PASS is required (no hardcoded default); BRIDGE_URL, FE_USER and
- * FE_TENANT have local-dev defaults.
+ * Env: FE_PASS is required (no hardcoded default); BRIDGE_URL, CSAI_URL, FE_USER
+ * and FE_TENANT have local-dev defaults.
  */
 const BRIDGE = process.env.BRIDGE_URL || 'http://localhost:8090'
 const USER = process.env.FE_USER || 'testuser@rationalboxes.com'
 const PASS = process.env.FE_PASS
 const TENANT = process.env.FE_TENANT || 'default'
+// CSAI owns the ONLYOFFICE editor config; the "New document here" flow is only
+// real if a zero-byte touched file is something the editor will open.
+const CSAI = process.env.CSAI_URL || 'http://localhost:8092'
+// Where the emailed 2FA code is read from when the tenant requires 2FA. Same
+// MailHog seam scripts/test_e2e_service_cred.sh and webdav_bridge/test_webdav.sh
+// already use, so the test user works whether or not they are enrolled.
+const MAILHOG = process.env.MAILHOG_URL || 'http://localhost:8025'
 const ROOT = '00000000-0000-0000-0000-000000000000'
 
 if (!PASS) {
@@ -46,12 +58,49 @@ const assert = (cond, msg) => {
 const body = (o) => ({ headers: H({ 'Content-Type': 'application/json' }), body: JSON.stringify(o) })
 const j = async (res) => { const t = await res.text(); try { return JSON.parse(t) } catch { return t } }
 
+// Password login, completing an email-2FA challenge when the tenant requires one.
+// Without this the whole suite is unrunnable against any tenant with 2FA on — the
+// token endpoint answers `mfa_required` and there is no session to test with.
+const twoFactor = async (mfaToken) => {
+  const send = { 'Content-Type': 'application/json' }
+  await fetch(`${MAILHOG}/api/v1/messages`, { method: 'DELETE' }).catch(() => {})
+  await fetch(`${BRIDGE}/v1/auth/2fa`, {
+    method: 'POST', headers: send,
+    body: JSON.stringify({ mfa_token: mfaToken, action: 'send', method: 'email' }),
+  })
+  // The mail is sent asynchronously; poll briefly rather than sleeping a fixed
+  // amount, so a slow SMTP hop does not look like a missing code.
+  let code = ''
+  for (let i = 0; i < 20 && !code; i++) {
+    await new Promise((r) => setTimeout(r, 250))
+    const box = await j(await fetch(`${MAILHOG}/api/v2/messages`))
+    const raw = box?.items?.[0]?.Content?.Body || ''
+    // Quoted-printable soft line breaks would split a code across lines.
+    const body = raw.replace(/=\r?\n/g, '')
+    code = (body.match(/\b(\d{6})\b/) || [])[1] || ''
+  }
+  if (!code) {
+    // Almost always the send cap (3 per 15 min per user) after repeated runs —
+    // which presented as a bare "login failed" and cost real time to diagnose.
+    throw new Error(
+      'no emailed 2FA code arrived — either MailHog is not running, or the ' +
+      'code-send rate limit is in effect (wait a few minutes between runs)',
+    )
+  }
+  const done = await j(await fetch(`${BRIDGE}/v1/auth/2fa`, {
+    method: 'POST', headers: send,
+    body: JSON.stringify({ mfa_token: mfaToken, method: 'email', code }),
+  }))
+  return done.token
+}
+
 const login = async () => {
   const res = await fetch(`${BRIDGE}/v1/auth/token`, {
     method: 'POST',
     headers: { Authorization: 'Basic ' + Buffer.from(`${USER}:${PASS}`).toString('base64'), 'X-Tenant': TENANT },
   })
-  token = (await j(res)).token
+  const out = await j(res)
+  token = out.mfa_required ? await twoFactor(out.mfa_token) : out.token
   if (!token) throw new Error(`login failed for ${USER}`)
 }
 const mkdir = async (parent, name) => (await j(await fetch(`${BRIDGE}/v1/dirs/${parent}`, { method: 'POST', ...body({ name }) }))).uid
@@ -63,6 +112,33 @@ const listDir = async (uid) => (await j(await fetch(`${BRIDGE}/v1/dirs/${uid}`, 
 const copy = (uid, dest) => fetch(`${BRIDGE}/v1/nodes/${uid}/copy`, { method: 'POST', ...body({ destination_parent_uid: dest }) })
 const move = (uid, dest) => fetch(`${BRIDGE}/v1/nodes/${uid}/move`, { method: 'POST', ...body({ destination_parent_uid: dest }) })
 const rm = (uid, isDir) => fetch(`${BRIDGE}/v1/${isDir ? 'dirs' : 'files'}/${uid}`, { method: 'DELETE', headers: H() })
+const entry = async (parent, name) => (await listDir(parent)).find((e) => e.name === name)
+// What the SPA's fileService.createEmptyFile does: touch, then write an EMPTY
+// body. The touch alone leaves a node with no version, whose bytes endpoint
+// 404s — which the Document Server hits before it can open anything.
+const createEmpty = async (parent, name) => {
+  const uid = await touch(parent, name)
+  await fetch(`${BRIDGE}/v1/files/${uid}/content`, {
+    method: 'PUT', headers: H({ 'Content-Type': 'application/octet-stream' }), body: '',
+  })
+  return uid
+}
+// CSAI accepts the bridge's bearer token (bridge introspection), so the session
+// we already hold works here too.
+const editorConfig = (uid) =>
+  fetch(`${CSAI}/v1/onlyoffice/config/${uid}`, { headers: H() }).catch(() => null)
+
+// Mirrors utils/office.ts uniqueDocumentName — the SPA de-duplicates the name
+// client-side before touching, so the E2E has to create the same names the UI
+// would in order to be testing the same thing.
+const uniqueDocumentName = (taken, base, ext) => {
+  const used = new Set(taken.map((n) => n.toLowerCase()))
+  const stem = (base || '').trim() || 'Document'
+  const candidate = (n) => (n === 1 ? `${stem}.${ext}` : `${stem} (${n}).${ext}`)
+  let n = 1
+  while (used.has(candidate(n).toLowerCase())) n++
+  return candidate(n)
+}
 
 async function main() {
   await login()
@@ -116,6 +192,81 @@ async function main() {
   assert((await listDir(work)).filter((e) => e.name === 'upload.txt').length === 1, 're-upload does not duplicate')
   assert((await versions(existing.uid)).length === 2, 're-upload adds a new version')
   assert((await content(existing.uid)) === 'u2', 're-upload updates the current content')
+
+  // --- "New document here" -------------------------------------------------
+  // The whole feature is: touch a name with an office extension, then open it in
+  // ONLYOFFICE. There is no template and no upload, so what has to hold is that
+  // a ZERO-BYTE node is created, that a second one does not version onto the
+  // first, and that the editor will actually open it.
+  console.log('new document: touch creates an empty, editable office document')
+  const docs = await mkdir(work, 'newdocs')
+  const n1 = uniqueDocumentName([], 'Document', 'docx')
+  assert(n1 === 'Document.docx', 'first new document is named "Document.docx"')
+  const doc1 = await createEmpty(docs, n1)
+  const e1 = await entry(docs, n1)
+  assert(!!doc1 && !!e1, 'the document node was created')
+  assert(e1.size === 0, 'the new document is zero bytes (no template, no upload)')
+  // The regression this guards: a touch with no PUT leaves NO version, so the
+  // bytes 404 and the editor cannot open the file it was just handed.
+  const bytes = await fetch(`${BRIDGE}/v1/files/${doc1}/content`, { headers: H() })
+  assert(bytes.status === 200, 'its bytes are served (an empty first version exists, not just a node)')
+  assert((await bytes.text()) === '', 'and they read back empty')
+  assert((await versions(doc1)).length === 1, 'exactly one (empty) version to start from')
+
+  console.log('new document: a second one is a NEW FILE, never a new version')
+  const taken = (await listDir(docs)).map((e) => e.name)
+  const n2 = uniqueDocumentName(taken, 'Document', 'docx')
+  assert(n2 === 'Document (2).docx', 'the second is de-duplicated to "Document (2).docx"')
+  const doc2 = await createEmpty(docs, n2)
+  assert(doc2 !== doc1, 'the second document is a distinct node')
+  assert((await listDir(docs)).filter((e) => e.type !== 'directory').length === 2,
+    'two documents exist (creating never versions onto an existing file — contrast the upload case above)')
+  assert((await versions(doc1)).length === 1, 'the first document gained no version from the second')
+
+  console.log('new document: ONLYOFFICE opens the empty file')
+  const sheet = await createEmpty(docs, 'Spreadsheet.xlsx')
+  const deck = await createEmpty(docs, 'Presentation.pptx')
+  const cfgRes = await editorConfig(doc1)
+  // A 404 here is ambiguous and must not be read as "disabled": the endpoint
+  // answers 404 both when editing is switched off AND when its own stat of the
+  // file failed (e.g. CSAI cannot reach the core). Only the first is a reason to
+  // skip; the second is exactly the breakage this block exists to catch, so it
+  // is distinguished by the detail rather than by the status alone.
+  const cfgDetail = cfgRes && cfgRes.status === 404 ? String((await j(cfgRes.clone())).detail || '') : ''
+  const editingOff = cfgDetail.includes('disabled')
+  if (!cfgRes) {
+    console.log('  – CSAI unreachable at', CSAI, '— skipping editor assertions')
+  } else if (editingOff) {
+    console.log('  – in-browser editing is disabled on this deployment — skipping editor assertions')
+  } else {
+    assert(cfgRes.status !== 404, `editor config did not 404 on a lookup failure (${cfgDetail || 'no detail'})`)
+    assert(cfgRes.status === 200, 'editor config is issued for a zero-byte .docx')
+    const cfg = (await j(cfgRes)).config || {}
+    assert(cfg.documentType === 'word', 'it opens in the word editor')
+    assert(cfg.document && cfg.document.fileType === 'docx', 'the editor is told the file type is docx')
+    assert(!!(cfg.document && cfg.document.url), 'the config carries a download URL for the Document Server')
+    // The Document Server fetches those bytes next; an empty body is the point.
+    //
+    // Fetched from CSAI's own origin rather than from the URL verbatim: that URL
+    // carries CSAI_ONLYOFFICE_CALLBACK_BASE, which is the PUBLIC address the
+    // Document Server reaches back on (an ngrok tunnel in dev). Whether that
+    // tunnel is up is a deployment question; what this test is about is whether
+    // CSAI serves the bytes for a scoped download token, so keep the token and
+    // the path and swap the origin.
+    const dlPath = new URL(cfg.document.url).pathname.replace(/^\/csai/, '')
+    const dlQuery = new URL(cfg.document.url).search
+    const dl = await fetch(`${CSAI}${dlPath}${dlQuery}`)
+    assert(dl.status === 200, 'the scoped download token serves the empty document')
+    assert((await dl.arrayBuffer()).byteLength === 0, 'it serves zero bytes, which the editor opens as a blank document')
+    const sheetCfg = (await j(await editorConfig(sheet))).config || {}
+    const deckCfg = (await j(await editorConfig(deck))).config || {}
+    assert(sheetCfg.documentType === 'cell', 'an empty .xlsx opens in the spreadsheet editor')
+    assert(deckCfg.documentType === 'slide', 'an empty .pptx opens in the presentation editor')
+    // The menu only offers office types; anything else must be refused rather
+    // than opening an editor that cannot save.
+    const notOffice = await createEmpty(docs, 'notes.zip')
+    assert((await editorConfig(notOffice)).status === 415, 'a non-office file is refused (415), not offered an editor')
+  }
 
   await rm(work, true) // cleanup
   console.log(`\n${passed} passed, ${failed} failed`)

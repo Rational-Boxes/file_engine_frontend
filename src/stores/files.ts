@@ -15,6 +15,7 @@
 
 import { defineStore } from 'pinia'
 import { fileService, type FileItem } from '@/services/fileService'
+import { uniqueDocumentName } from '@/utils/office'
 import { ROOT_UID } from '@/services/apiClient'
 import { errorMessage, errorStatus } from '@/services/apiClient'
 
@@ -342,6 +343,35 @@ export const useFileStore = defineStore('files', {
       this.breadcrumbs = this.breadcrumbs.slice(0, index + 1)
       this.currentUid = crumb.uid
       await this.load()
+    },
+
+    // Create an empty office document in the current directory and return its
+    // uid so the caller can open it in the editor. Zero bytes on purpose — see
+    // utils/office.ts: the Document Server makes a blank document of whatever
+    // the extension says, and the first save writes the real content.
+    //
+    // createEmptyFile, not touch: a touched node has no version, so its bytes
+    // endpoint 404s and the editor fails to open the document it was just told
+    // to open. The empty first version is what makes the file real.
+    //
+    // The name is de-duplicated against the listing already in hand, so this
+    // costs one request. Never versions onto an existing file: uploads do that
+    // (replace-on-path), but "new document" that quietly became "new version of
+    // someone else's document" is a different act than the one asked for.
+    async createDocument(baseName: string, ext: string): Promise<string | null> {
+      const name = uniqueDocumentName(
+        this.items.map((i) => i.name),
+        baseName,
+        ext,
+      )
+      try {
+        const uid = await fileService.createEmptyFile(this.currentUid, name)
+        await this.load()
+        return uid
+      } catch (e) {
+        this.error = errorMessage(e, 'Failed to create document')
+        return null
+      }
     },
 
     async createDirectory(name: string) {

@@ -14,7 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { describe, it, expect } from 'vitest'
-import { fileExtension, isEditableOffice, officeDocumentType } from '@/utils/office'
+import { fileExtension, isEditableOffice, officeDocumentType, creatableDocumentTypes, uniqueDocumentName } from '@/utils/office'
 
 describe('fileExtension', () => {
   it('extracts the lowercased extension', () => {
@@ -44,5 +44,48 @@ describe('officeDocumentType', () => {
     expect(officeDocumentType('a.xlsx')).toBe('cell')
     expect(officeDocumentType('a.pptx')).toBe('slide')
     expect(officeDocumentType('a.png')).toBe('')
+  })
+})
+
+describe('creatableDocumentTypes', () => {
+  it('offers everything when the deployment did not say', () => {
+    // Unknown is not off — an older service with no capabilities endpoint must
+    // not silently withdraw the feature.
+    expect(creatableDocumentTypes().map((t) => t.ext)).toEqual(['docx', 'xlsx', 'pptx'])
+    expect(creatableDocumentTypes([]).map((t) => t.ext)).toEqual(['docx', 'xlsx', 'pptx'])
+  })
+
+  it('offers only what the Document Server reports it opens', () => {
+    expect(creatableDocumentTypes(['docx', 'txt', 'pdf']).map((t) => t.ext)).toEqual(['docx'])
+  })
+
+  it('tolerates leading dots and case in the reported list', () => {
+    expect(creatableDocumentTypes(['.DOCX', '.Xlsx']).map((t) => t.ext)).toEqual(['docx', 'xlsx'])
+  })
+})
+
+describe('uniqueDocumentName', () => {
+  it('uses the plain name when nothing collides', () => {
+    expect(uniqueDocumentName([], 'Document', 'docx')).toBe('Document.docx')
+  })
+
+  it('suffixes before the extension on a collision', () => {
+    expect(uniqueDocumentName(['Document.docx'], 'Document', 'docx')).toBe('Document (2).docx')
+    expect(uniqueDocumentName(['Document.docx', 'Document (2).docx'], 'Document', 'docx')).toBe(
+      'Document (3).docx',
+    )
+  })
+
+  it('compares case-insensitively, as the store does', () => {
+    expect(uniqueDocumentName(['document.DOCX'], 'Document', 'docx')).toBe('Document (2).docx')
+  })
+
+  it('does not collide across different extensions', () => {
+    expect(uniqueDocumentName(['Budget.xlsx'], 'Budget', 'docx')).toBe('Budget.docx')
+  })
+
+  it('trims, and falls back when the user gives an empty name', () => {
+    expect(uniqueDocumentName([], '  Notes  ', 'docx')).toBe('Notes.docx')
+    expect(uniqueDocumentName([], '   ', 'docx')).toBe('Document.docx')
   })
 })

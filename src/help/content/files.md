@@ -56,6 +56,20 @@ showing each file's progress and letting you **Clear finished** when done.
 > ever lost. See [version history](#versions). (You upload individual files, not
 > whole folders.)
 
+## Creating a document here
+
+**New document** makes an empty Word document, spreadsheet or presentation in the
+folder you are looking at, and opens it in the browser editor straight away — no
+downloading a blank file, no uploading one back. Choose the type, give it a name,
+and start typing; the first save writes it into the folder as an ordinary file with
+[version history](#versions) like any other.
+
+If the name is already taken the new document gets a number — *Document (2).docx* —
+rather than becoming a new version of the file that is already there.
+
+The button appears only where you can write, and only when your deployment has
+in-browser editing. See [editing documents](#editing).
+
 ## Organizing
 
 - **New folder** creates a subfolder in the current location.

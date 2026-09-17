@@ -17,7 +17,15 @@
 
 <template>
   <div ref="root" class="kebab">
-    <button ref="btn" class="kebab-btn" aria-label="Actions" @click.stop="toggle">⋮</button>
+    <button
+      ref="btn"
+      class="kebab-btn"
+      :class="{ 'kebab-btn-labelled': label }"
+      :aria-label="label || 'Actions'"
+      :aria-expanded="open"
+      aria-haspopup="menu"
+      @click.stop="toggle"
+    >{{ label || '⋮' }}<span v-if="label" class="kebab-caret" aria-hidden="true">▾</span></button>
     <Teleport to="body">
       <ul
         v-if="open"
@@ -49,7 +57,11 @@ export interface KebabItem {
   danger?: boolean
 }
 
-defineProps<{ items: KebabItem[] }>()
+// `label` turns the ⋮ affordance into an ordinary labelled button with the same
+// menu behind it — teleported, flipped when there is no room below, closed on
+// outside click/Escape/scroll. Toolbar entry points ("New document") want that
+// behaviour and a word rather than a glyph; row actions want the glyph.
+defineProps<{ items: KebabItem[]; label?: string }>()
 const emit = defineEmits<{ (e: 'select', action: string): void }>()
 
 const open = ref(false)
@@ -132,6 +144,23 @@ onBeforeUnmount(() => {
 
 .kebab-btn:hover {
   background: var(--border);
+}
+
+/* Labelled variant: matches the toolbar's .btn so it sits in a row of buttons
+   without looking like a different kind of control. */
+.kebab-btn-labelled {
+  font-size: inherit;
+  color: inherit;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.kebab-caret {
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0.7;
 }
 </style>
 
