@@ -146,15 +146,27 @@ onBeforeUnmount(() => {
   background: var(--border);
 }
 
-/* Labelled variant: matches the toolbar's .btn so it sits in a row of buttons
-   without looking like a different kind of control. */
+/* Labelled variant: a button in a row of buttons, so it has to match them —
+   these values track the toolbar's own .btn rule.
+
+   line-height is the one that is easy to miss. The glyph variant sets it to 1 so
+   a bare ⋮ has no leading; inherit that with a word in the button and it stands
+   a couple of pixels shorter than everything beside it, with identical padding.
+   Explicitly `normal`, which is what an unstyled button uses. */
 .kebab-btn-labelled {
   font-size: inherit;
+  font-weight: 500;
+  line-height: normal;
   color: inherit;
   border: 1px solid var(--border);
-  background: var(--surface);
-  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--card);
+  padding: 8px 14px;
   cursor: pointer;
+}
+
+.kebab-btn-labelled:hover {
+  background: var(--bg);
 }
 
 .kebab-caret {
