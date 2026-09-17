@@ -21,6 +21,24 @@ To start from a blank page instead, use **New document** in the file browser
 toolbar: pick the type, name it, and the empty document opens in the editor
 immediately. See [uploading & organizing files](#files).
 
+## Quick edits to text files
+
+Files stored as plain text — HTML, Markdown, YAML, JSON, CSV, config files, source
+code — open in a simple built-in text editor instead: choose **✎ Edit as text** in
+a file's details drawer. It is there for the small correction that would otherwise
+mean downloading the file, editing it, and uploading it back.
+
+Saving writes a **new version**, exactly like an upload, so nothing is overwritten
+and you can always go back. **Ctrl+S** (**⌘S** on a Mac) saves without reaching for
+the button, and leaving with unsaved changes asks first.
+
+Two things it deliberately will not do: open a file whose bytes are not valid text
+(saving one back would corrupt it, so it says so instead), and replace the document
+editor for Word, Excel or PowerPoint files — those keep their formatting and belong
+in the editor above. A `.txt`, `.csv` or `.html` offers both, because they are
+different jobs: this one edits the characters, the document editor formats a
+document.
+
 The button appears for document types the editor understands, including:
 
 - **Documents** — Word files (`.docx` and friends), OpenDocument text (`.odt`), rich

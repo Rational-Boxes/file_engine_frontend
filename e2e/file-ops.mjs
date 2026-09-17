@@ -20,7 +20,9 @@
  * cut/copy/paste + batch-delete + versions behaviour, including the regression
  * where a versioned copy must preserve history and current = latest version.
  *
- * Also covers "New document here" (the file browser's inline document creation):
+ * Also covers the inline TEXT EDITOR (read as text, save back as a new version,
+ * UTF-8 round trip) and "New document here" (the file browser's inline document
+ * creation):
  * a zero-byte touch with an office extension, de-duplicated naming, and that
  * ONLYOFFICE issues an editor config for the result — the editor assertions skip
  * cleanly when CSAI is absent or in-browser editing is switched off.
@@ -116,6 +118,10 @@ const entry = async (parent, name) => (await listDir(parent)).find((e) => e.name
 // What the SPA's fileService.createEmptyFile does: touch, then write an EMPTY
 // body. The touch alone leaves a node with no version, whose bytes endpoint
 // 404s — which the Document Server hits before it can open anything.
+// What the text editor's Save does: PUT the edited characters back as UTF-8.
+const putText = (uid, text) => fetch(`${BRIDGE}/v1/files/${uid}/content`, {
+  method: 'PUT', headers: H({ 'Content-Type': 'text/plain; charset=utf-8' }), body: text,
+})
 const createEmpty = async (parent, name) => {
   const uid = await touch(parent, name)
   await fetch(`${BRIDGE}/v1/files/${uid}/content`, {
@@ -267,6 +273,52 @@ async function main() {
     const notOffice = await createEmpty(docs, 'notes.zip')
     assert((await editorConfig(notOffice)).status === 415, 'a non-office file is refused (415), not offered an editor')
   }
+
+  // --- the inline text editor ---------------------------------------------
+  // The editor is a textarea over two calls: read the bytes as text, PUT the
+  // edited text back. What has to hold at this layer is that the round trip is
+  // LOSSLESS and that saving versions rather than overwrites — a text editor
+  // that silently mangles a file, or loses its history, is worse than none.
+  console.log('text editor: round-trips content and versions on save')
+  const tdir = await mkdir(work, 'textedit')
+  const tf = await createEmpty(tdir, 'config.yaml')
+  assert((await content(tf)) === '', 'a new text file starts empty')
+
+  // Save #1 — what the editor does with the first typed content.
+  const v1 = 'key: value\nlist:\n  - one\n'
+  await putText(tf, v1)
+  assert((await content(tf)) === v1, 'saved text reads back byte-for-byte')
+
+  // Save #2 — editing again must ADD a version, never replace the first.
+  const v2 = 'key: changed\nlist:\n  - one\n  - two\n'
+  await putText(tf, v2)
+  const tv = await versions(tf)
+  assert(tv.length === 3, 'each save is a new version (empty + two edits)')
+  assert((await content(tf)) === v2, 'current content is the latest save')
+  const firstEdit = await (await fetch(
+    `${BRIDGE}/v1/files/${tf}/versions/${encodeURIComponent(tv[1])}`, { headers: H() })).text()
+  assert(firstEdit === v1, 'the previous save is still retrievable in full')
+
+  // Non-ASCII and newlines are where a naive text round trip breaks: the editor
+  // writes a UTF-8 Blob, so multi-byte characters must survive exactly.
+  const utf8 = 'greeting: caf\u00e9 \u2014 \u65e5\u672c\u8a9e\nemoji: \u2713\n'
+  await putText(tf, utf8)
+  assert((await content(tf)) === utf8, 'multi-byte UTF-8 survives the round trip unchanged')
+
+  // An empty save is a legitimate edit (clearing a file), not a no-op to skip.
+  await putText(tf, '')
+  assert((await content(tf)) === '', 'clearing the file is a save like any other')
+  // 5 = the empty create, three edits, and this clear. Measured, not reasoned:
+  // the question worth pinning is whether an EMPTY save versions at all, since
+  // if it did not, clearing a file would be the one edit you could not undo.
+  assert((await versions(tf)).length === 5, 'and it too is a version, so it can be undone')
+
+  console.log('text editor: the menu entry creates a .txt the editor can open')
+  const nf = await createEmpty(tdir, 'Notes.txt')
+  const nfEntry = await entry(tdir, 'Notes.txt')
+  assert(nfEntry && nfEntry.size === 0, 'New document → Text file creates an empty .txt')
+  await putText(nf, 'first line\n')
+  assert((await content(nf)) === 'first line\n', 'and it saves like any other text file')
 
   await rm(work, true) // cleanup
   console.log(`\n${passed} passed, ${failed} failed`)

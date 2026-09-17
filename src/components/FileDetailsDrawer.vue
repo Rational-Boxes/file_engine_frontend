@@ -118,6 +118,20 @@
         ✎ Edit in browser
       </button>
 
+      <!-- Quick plain-text edit: HTML, YAML, Markdown, JSON, config, source —
+           anything stored as text. Offered alongside "Edit in browser" rather
+           than instead of it, because on the few names they share (.txt, .csv,
+           .html) they do different jobs: this one edits the characters, the
+           document editor formats a document. Gated on write access, like any
+           other mutation in this drawer; the PUT is what actually enforces it. -->
+      <button
+        v-if="item && !item.isDirectory && canEdit && isText"
+        class="btn edit-btn"
+        @click="openTextEditor"
+      >
+        ✎ Edit as text
+      </button>
+
       <button
         v-if="item && !item.isDirectory && canDownload"
         class="btn dl-btn"
@@ -223,6 +237,7 @@ import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { is3DModel } from '@/utils/modelFormat'
 import { useOfficeEditing } from '@/composables/useOfficeEditing'
+import { isEditableText } from '@/utils/textFile'
 import { useCapabilities } from '@/composables/useCapabilities'
 import { loadRenditionSet, modelRendition } from '@/services/renditions'
 import { searchService } from '@/services/searchService'
@@ -390,6 +405,16 @@ const { canEdit: isOfficeEditable } = useOfficeEditing(
 )
 function openEditor() {
   if (item.value) router.push(`/edit/${item.value.uid}`)
+}
+
+// Text editability is a property of the NAME alone — no permission probe and no
+// capability probe, because the editor needs no service beyond the bridge and
+// the PUT enforces WRITE on its own. (Contrast isOfficeEditable, which asks the
+// core, because the ONLYOFFICE config endpoint refuses without WRITE and an
+// offered-then-refused button is worse than no button.)
+const isText = computed(() => isEditableText(item.value?.name ?? ''))
+function openTextEditor() {
+  if (item.value) router.push(`/text/${item.value.uid}`)
 }
 
 // Copy a shareable deep link (opens the file's folder, selects it, opens this
