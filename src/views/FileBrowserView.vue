@@ -67,13 +67,20 @@
         >✕</button>
         <button v-if="canModify" class="btn" @click="newFolder">New folder</button>
         <!--
-          New document here. Needs WRITE on this folder AND a deployment with
-          in-browser editing — a new empty .docx is only useful if something can
-          open it, so without the Document Server this offers nothing and is
-          hidden rather than failing at the last step.
+          New document here. Gated on exactly what New folder is gated on — WRITE
+          on this folder — and nothing else.
+          
+          It previously also required the capabilities probe to report in-browser
+          editing, which sounds prudent and is not: the probe answering "no", or
+          answering slowly, or being unreachable, made the control VANISH. A
+          missing button is indistinguishable from a feature that was never
+          deployed, which is exactly how it was first reported. Creating a
+          document is a filesystem act and stands on its own; if the editor is
+          absent the file is still made, and the editor route reports its own
+          absence in the one place that can say anything useful about it.
         -->
         <KebabMenu
-          v-if="canModify && features.editing && newDocumentItems.length"
+          v-if="canModify"
           label="New document"
           :items="newDocumentItems"
           @select="newDocument"

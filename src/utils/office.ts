@@ -70,13 +70,19 @@ export const NEW_DOCUMENT_TYPES: NewDocumentType[] = [
 ]
 
 // The types this DEPLOYMENT can actually open, given the extension list the
-// capabilities endpoint reports. An empty/absent list means "could not ask" —
-// which capabilitiesService deliberately treats as available rather than off —
-// so offer everything rather than silently withdrawing the feature.
+// capabilities endpoint reports — a refinement of the menu's contents, never a
+// reason for it to be empty.
+//
+// An empty/absent list means "could not ask", which capabilitiesService
+// deliberately treats as available rather than off. A list that filters
+// everything out is treated the same way: the deployment told us something we
+// could not act on, and the answer to that is to offer the standard types, not
+// to present an empty menu.
 export function creatableDocumentTypes(extensions?: string[]): NewDocumentType[] {
   if (!extensions || extensions.length === 0) return NEW_DOCUMENT_TYPES
   const have = new Set(extensions.map((e) => e.replace(/^\./, '').toLowerCase()))
-  return NEW_DOCUMENT_TYPES.filter((t) => have.has(t.ext))
+  const offered = NEW_DOCUMENT_TYPES.filter((t) => have.has(t.ext))
+  return offered.length ? offered : NEW_DOCUMENT_TYPES
 }
 
 // A name not already used in `taken`, by appending " (2)", " (3)", … before the
