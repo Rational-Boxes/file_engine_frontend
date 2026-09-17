@@ -61,12 +61,16 @@ export interface NewDocumentType {
   label: string
   /** Default base name offered in the name prompt (no extension). */
   defaultName: string
+  /** Which editor the new file opens in. 'office' needs the Document Server;
+   *  'text' is the SPA's own editor and needs nothing beyond the bridge. */
+  editor: 'office' | 'text'
 }
 
 export const NEW_DOCUMENT_TYPES: NewDocumentType[] = [
-  { ext: 'docx', label: 'Word document', defaultName: 'Document' },
-  { ext: 'xlsx', label: 'Spreadsheet', defaultName: 'Spreadsheet' },
-  { ext: 'pptx', label: 'Presentation', defaultName: 'Presentation' },
+  { ext: 'docx', label: 'Word document', defaultName: 'Document', editor: 'office' },
+  { ext: 'xlsx', label: 'Spreadsheet', defaultName: 'Spreadsheet', editor: 'office' },
+  { ext: 'pptx', label: 'Presentation', defaultName: 'Presentation', editor: 'office' },
+  { ext: 'txt', label: 'Text file', defaultName: 'Notes', editor: 'text' },
 ]
 
 // The types this DEPLOYMENT can actually open, given the extension list the
@@ -79,10 +83,15 @@ export const NEW_DOCUMENT_TYPES: NewDocumentType[] = [
 // could not act on, and the answer to that is to offer the standard types, not
 // to present an empty menu.
 export function creatableDocumentTypes(extensions?: string[]): NewDocumentType[] {
+  // Text files are never filtered: they open in the SPA's own editor, so what
+  // the Document Server will or will not accept has no bearing on them. A
+  // deployment with no ONLYOFFICE at all still offers a text file.
+  const text = NEW_DOCUMENT_TYPES.filter((t) => t.editor === 'text')
+  const office = NEW_DOCUMENT_TYPES.filter((t) => t.editor === 'office')
   if (!extensions || extensions.length === 0) return NEW_DOCUMENT_TYPES
   const have = new Set(extensions.map((e) => e.replace(/^\./, '').toLowerCase()))
-  const offered = NEW_DOCUMENT_TYPES.filter((t) => have.has(t.ext))
-  return offered.length ? offered : NEW_DOCUMENT_TYPES
+  const offered = office.filter((t) => have.has(t.ext))
+  return (offered.length ? offered : office).concat(text)
 }
 
 // A name not already used in `taken`, by appending " (2)", " (3)", … before the

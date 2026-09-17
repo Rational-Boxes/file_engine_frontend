@@ -227,6 +227,24 @@ export const fileService = {
   // editor, and a 404 there is a failed open with no useful message. Writing an
   // empty body costs one request and makes "empty" mean a real zero-byte
   // version, which is what creating an empty file over WebDAV does too.
+  // Read a file's bytes as text, for the inline editor. Decoded as UTF-8; a file
+  // that is not valid UTF-8 comes back with replacement characters rather than
+  // throwing, which the editor checks for before it offers to save (saving that
+  // back would replace the undecodable bytes with U+FFFD — silent corruption).
+  async readText(uid: string): Promise<string> {
+    const blob = await this.downloadFile(uid)
+    return await blob.text()
+  },
+
+  // Write text back as a new version. `text/plain; charset=utf-8` rather than
+  // octet-stream: the bytes are known to be text here, and the Blob encodes as
+  // UTF-8 regardless of what the browser would infer from a bare string.
+  async writeText(uid: string, text: string): Promise<void> {
+    await apiClient.put(`/v1/files/${uid}/content`, new Blob([text], { type: 'text/plain' }), {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    })
+  },
+
   async createEmptyFile(parentUid: string, name: string): Promise<string> {
     const uid = await this.touch(parentUid, name)
     await apiClient.put(`/v1/files/${uid}/content`, new Blob([]), {

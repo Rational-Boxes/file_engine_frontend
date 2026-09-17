@@ -727,7 +727,7 @@ const newDocument = async (ext: string) => {
   const uid = await files.createDocument(base, type.ext)
   // createDocument reports its own failure into files.error; only navigate on a
   // real uid, or a failed create would send the user to an editor for nothing.
-  if (uid) router.push({ name: 'Edit', params: { uid } })
+  if (uid) router.push({ name: type.editor === 'text' ? 'EditText' : 'Edit', params: { uid } })
 }
 
 const rename = async (item: FileItem) => {

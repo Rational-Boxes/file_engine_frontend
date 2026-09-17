@@ -51,16 +51,16 @@ describe('creatableDocumentTypes', () => {
   it('offers everything when the deployment did not say', () => {
     // Unknown is not off — an older service with no capabilities endpoint must
     // not silently withdraw the feature.
-    expect(creatableDocumentTypes().map((t) => t.ext)).toEqual(['docx', 'xlsx', 'pptx'])
-    expect(creatableDocumentTypes([]).map((t) => t.ext)).toEqual(['docx', 'xlsx', 'pptx'])
+    expect(creatableDocumentTypes().map((t) => t.ext)).toEqual(['docx', 'xlsx', 'pptx', 'txt'])
+    expect(creatableDocumentTypes([]).map((t) => t.ext)).toEqual(['docx', 'xlsx', 'pptx', 'txt'])
   })
 
   it('offers only what the Document Server reports it opens', () => {
-    expect(creatableDocumentTypes(['docx', 'txt', 'pdf']).map((t) => t.ext)).toEqual(['docx'])
+    expect(creatableDocumentTypes(['docx', 'pdf']).map((t) => t.ext)).toEqual(['docx', 'txt'])
   })
 
   it('tolerates leading dots and case in the reported list', () => {
-    expect(creatableDocumentTypes(['.DOCX', '.Xlsx']).map((t) => t.ext)).toEqual(['docx', 'xlsx'])
+    expect(creatableDocumentTypes(['.DOCX', '.Xlsx']).map((t) => t.ext)).toEqual(['docx', 'xlsx', 'txt'])
   })
 })
 
@@ -87,5 +87,18 @@ describe('uniqueDocumentName', () => {
   it('trims, and falls back when the user gives an empty name', () => {
     expect(uniqueDocumentName([], '  Notes  ', 'docx')).toBe('Notes.docx')
     expect(uniqueDocumentName([], '   ', 'docx')).toBe('Document.docx')
+  })
+})
+
+describe('creatableDocumentTypes — the text entry', () => {
+  it('survives a Document Server that opens nothing at all', () => {
+    // A text file opens in the SPA's own editor, so the docserver's list has no
+    // bearing on it. A deployment without ONLYOFFICE still offers one.
+    expect(creatableDocumentTypes(['pdf']).map((t) => t.ext)).toContain('txt')
+  })
+
+  it('is the only type routed to the text editor', () => {
+    const text = creatableDocumentTypes().filter((t) => t.editor === 'text')
+    expect(text.map((t) => t.ext)).toEqual(['txt'])
   })
 })
