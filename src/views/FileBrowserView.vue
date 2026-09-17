@@ -66,6 +66,18 @@
           @click="files.clearClipboard()"
         >✕</button>
         <button v-if="canModify" class="btn" @click="newFolder">New folder</button>
+        <!--
+          New document here. Needs WRITE on this folder AND a deployment with
+          in-browser editing — a new empty .docx is only useful if something can
+          open it, so without the Document Server this offers nothing and is
+          hidden rather than failing at the last step.
+        -->
+        <KebabMenu
+          v-if="canModify && features.editing && newDocumentItems.length"
+          label="New document"
+          :items="newDocumentItems"
+          @select="newDocument"
+        />
         <button v-if="canModify" class="btn btn-primary" @click="fileInput?.click()">Upload</button>
         <input ref="fileInput" type="file" multiple hidden @change="onPick" />
         <!--
@@ -278,6 +290,7 @@ import AppNav from '@/components/AppNav.vue'
 import FileThumbnail from '@/components/FileThumbnail.vue'
 import HelpIcon from '@/components/HelpIcon.vue'
 import { sortFiles, type SortKey, type SortDir } from '@/utils/sortFiles'
+import { creatableDocumentTypes, NEW_DOCUMENT_TYPES } from '@/utils/office'
 import { useModel3dStore } from '@/stores/model3d'
 import { useCommentsStore } from '@/stores/comments'
 import { usePreviewStore } from '@/stores/preview'
@@ -683,6 +696,31 @@ const onAction = (action: string, item: FileItem) => {
 const newFolder = async () => {
   const name = prompt('Folder name:')
   if (name) await files.createDirectory(name)
+}
+
+// "New document here": pick a type, name it, create it, open it.
+//
+// The file is created with ZERO BYTES and no template — the Document Server
+// makes a blank document of whatever the extension says and writes real content
+// on its first save, through the callback → new-version path the editor already
+// uses. So this costs one touch, and needs no upload and no server-side
+// template to keep in step with the formats.
+const newDocumentItems = computed<KebabItem[]>(() =>
+  creatableDocumentTypes(features.editingExtensions as string[]).map((t) => ({
+    action: t.ext,
+    label: t.label,
+  })),
+)
+
+const newDocument = async (ext: string) => {
+  const type = NEW_DOCUMENT_TYPES.find((t) => t.ext === ext)
+  if (!type) return
+  const base = prompt(`Name for the new ${type.label.toLowerCase()}:`, type.defaultName)
+  if (base === null) return // cancelled — create nothing
+  const uid = await files.createDocument(base, type.ext)
+  // createDocument reports its own failure into files.error; only navigate on a
+  // real uid, or a failed create would send the user to an editor for nothing.
+  if (uid) router.push({ name: 'Edit', params: { uid } })
 }
 
 const rename = async (item: FileItem) => {

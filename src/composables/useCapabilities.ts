@@ -31,6 +31,11 @@ import { capabilitiesService, type DeploymentCapabilities } from '@/services/cap
 const state = reactive({
   loaded: false,
   editing: true,
+  // Extensions the Document Server reports it will open. Empty until the probe
+  // answers, and empty for a deployment too old to be asked — callers must read
+  // that as "offer everything" (see utils/office.creatableDocumentTypes), for
+  // the same unknown-is-not-off reason the booleans start true.
+  editingExtensions: [] as string[],
   chat: true,
   webSearch: true,
   search: true,
@@ -46,6 +51,7 @@ let started = false
 
 function apply(c: DeploymentCapabilities) {
   state.editing = c.editing.available
+  state.editingExtensions = c.editing.extensions || []
   state.chat = c.chat.available
   state.webSearch = c.webSearch.available
   state.search = c.search.available
@@ -78,8 +84,11 @@ export function useCapabilities() {
 export function resetCapabilities() {
   started = false
   state.loaded = false
-  for (const k of Object.keys(state) as Array<keyof typeof state>) {
-    if (k !== 'loaded') (state as Record<string, boolean>)[k] = true
+  const flags = state as unknown as Record<string, boolean>
+  for (const k of Object.keys(state)) {
+    if (k === 'loaded' || k === 'editingExtensions') continue
+    flags[k] = true
   }
+  state.editingExtensions = []
   capabilitiesService.reset()
 }

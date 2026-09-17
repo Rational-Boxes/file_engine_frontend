@@ -39,6 +39,8 @@ vi.mock('@/services/fileService', () => ({
     downloadUrl: vi.fn(),
     stat: vi.fn(),
     checkPermission: vi.fn(),
+    touch: vi.fn(),
+    createEmptyFile: vi.fn(),
   },
 }))
 
@@ -432,5 +434,55 @@ describe('files store — background rescan keeps the drawer open', () => {
     await store.refresh() // same two rows
     expect(store.items).toBe(before)
     expect(store.drawerOpen).toBe(true)
+  })
+})
+
+describe('createDocument', () => {
+  const doc = (name: string) => ({ ...file, uid: `u-${name}`, name, size: 0 })
+
+  beforeEach(() => {
+    vi.mocked(fileService.createEmptyFile).mockReset()
+    vi.mocked(fileService.listDirectory).mockReset()
+  })
+
+  it('creates the chosen name in the CURRENT directory and returns the uid', async () => {
+    const store = useFileStore()
+    store.currentUid = 'd1'
+    store.items = []
+    vi.mocked(fileService.createEmptyFile).mockResolvedValue('new-uid')
+    vi.mocked(fileService.listDirectory).mockResolvedValue([])
+    vi.mocked(fileService.checkPermission).mockResolvedValue(true)
+
+    const uid = await store.createDocument('Document', 'docx')
+
+    expect(uid).toBe('new-uid')
+    expect(fileService.createEmptyFile).toHaveBeenCalledWith('d1', 'Document.docx')
+  })
+
+  it('de-duplicates against the listing already in hand, with no extra request', async () => {
+    const store = useFileStore()
+    store.currentUid = 'd1'
+    store.items = [doc('Document.docx'), doc('Document (2).docx')]
+    vi.mocked(fileService.createEmptyFile).mockResolvedValue('new-uid')
+    vi.mocked(fileService.listDirectory).mockResolvedValue([])
+    vi.mocked(fileService.checkPermission).mockResolvedValue(true)
+
+    await store.createDocument('Document', 'docx')
+
+    // The name must not collide: an upload versions onto a same-named file, and
+    // "new document" must never do that to someone else's document.
+    expect(fileService.createEmptyFile).toHaveBeenCalledWith('d1', 'Document (3).docx')
+  })
+
+  it('reports the failure and returns null rather than a uid to open', async () => {
+    const store = useFileStore()
+    store.currentUid = 'd1'
+    store.items = []
+    vi.mocked(fileService.createEmptyFile).mockRejectedValue(new Error('denied'))
+
+    const uid = await store.createDocument('Document', 'docx')
+
+    expect(uid).toBeNull()
+    expect(store.error).toContain('denied')
   })
 })

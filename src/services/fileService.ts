@@ -217,6 +217,24 @@ export const fileService = {
     return data.uid
   },
 
+  // Create an EMPTY file that actually has content — i.e. a zero-byte first
+  // version, not just a node.
+  //
+  // `touch` alone creates the node and no version: its bytes endpoint 404s,
+  // because there is nothing to serve. That is invisible in the file browser
+  // (the row appears, size 0) and fatal to anything that fetches the content —
+  // the ONLYOFFICE Document Server asks for the bytes before it opens the
+  // editor, and a 404 there is a failed open with no useful message. Writing an
+  // empty body costs one request and makes "empty" mean a real zero-byte
+  // version, which is what creating an empty file over WebDAV does too.
+  async createEmptyFile(parentUid: string, name: string): Promise<string> {
+    const uid = await this.touch(parentUid, name)
+    await apiClient.put(`/v1/files/${uid}/content`, new Blob([]), {
+      headers: { 'Content-Type': 'application/octet-stream' },
+    })
+    return uid
+  },
+
   async removeFile(uid: string): Promise<void> {
     await apiClient.delete(`/v1/files/${uid}`)
   },

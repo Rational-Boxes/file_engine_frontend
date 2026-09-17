@@ -17,6 +17,10 @@ Open a file's details drawer and click **✎ Edit in browser** (or **✎ Edit** 
 file preview). The document opens in a full-page editor; use **← Back** to return to
 where you were.
 
+To start from a blank page instead, use **New document** in the file browser
+toolbar: pick the type, name it, and the empty document opens in the editor
+immediately. See [uploading & organizing files](#files).
+
 The button appears for document types the editor understands, including:
 
 - **Documents** — Word files (`.docx` and friends), OpenDocument text (`.odt`), rich
