@@ -171,10 +171,41 @@ async function detect(): Promise<DeploymentCapabilities> {
   return { ...ASSUME_AVAILABLE, ...detected, ...csai } as DeploymentCapabilities
 }
 
+// Re-ask the given probed services. Only names in PROBES are asked: csai's
+// sections describe its configuration, and a "no" there is not a blip.
+//
+// Recoveries are folded into the shared answer, so anything that calls load()
+// later sees the service as present. A service still absent is left as it was —
+// and nothing here ever turns a present service off: a verdict of "available" is
+// kept for the session exactly as before.
+async function recheck(names: string[]): Promise<Record<string, boolean>> {
+  const known = names.filter((n) => n in PROBES)
+  if (!known.length) return {}
+  const results = await Promise.all(known.map((n) => probe(PROBES[n].base, PROBES[n].path)))
+  const out: Record<string, boolean> = {}
+  known.forEach((n, i) => {
+    out[n] = results[i]
+  })
+  const recovered = known.filter((n) => out[n])
+  if (recovered.length && cached) {
+    const prev = await cached.catch(() => ASSUME_AVAILABLE)
+    const next = { ...prev } as unknown as Record<string, FeatureCapability>
+    for (const n of recovered) next[n] = { ...(next[n] ?? {}), available: true }
+    cached = Promise.resolve(next as unknown as DeploymentCapabilities)
+  }
+  return out
+}
+
 export const capabilitiesService = {
+  /** The services detected by probing — the only ones a re-check revisits. */
+  recheckable(): string[] {
+    return Object.keys(PROBES)
+  },
+  recheck,
   // Asked once per session and shared: this describes the deployment, so
   // re-asking per view would be a request each time to learn something that
-  // cannot have changed. The promise itself is the cache, so callers racing at
+  // rarely changes. The exception is a service found ABSENT, which may have been
+  // a blip — useCapabilities re-asks those on a backing-off timer (recheck). The promise itself is the cache, so callers racing at
   // startup share one round rather than issuing several.
   load(): Promise<DeploymentCapabilities> {
     if (!cached) cached = detect().catch(() => ASSUME_AVAILABLE)

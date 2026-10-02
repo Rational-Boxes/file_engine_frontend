@@ -49,6 +49,46 @@ const state = reactive({
 
 let started = false
 
+// ── re-checking a service found absent ───────────────────────────────────────
+//
+// Production 2026-10-01: one failed probe hid the comment sidebar for a whole
+// session on a discussion service that was up throughout, and only signing out
+// brought it back. "Absent" is now re-asked — after a minute, then backing off
+// to a ceiling so a deployment that genuinely lacks a service costs one small
+// request per tab per RECHECK_MAX_MS. "Present" is never re-asked and never
+// switched off: a verdict of available is kept for the session, as before.
+export const RECHECK_FIRST_MS = 60_000
+export const RECHECK_MAX_MS = 15 * 60_000
+let recheckTimer: ReturnType<typeof setTimeout> | null = null
+let recheckDelay = RECHECK_FIRST_MS
+
+function absentProbed(): string[] {
+  const names = capabilitiesService.recheckable?.() ?? []
+  const flags = state as unknown as Record<string, boolean>
+  return names.filter((n) => flags[n] === false)
+}
+
+function scheduleRecheck() {
+  // Optional on the service so every test that mocks it with load/reset alone
+  // keeps working; a service without it simply never re-checks.
+  if (recheckTimer || typeof capabilitiesService.recheck !== 'function') return
+  if (!absentProbed().length) return
+  recheckTimer = setTimeout(async () => {
+    recheckTimer = null
+    try {
+      const got = await capabilitiesService.recheck(absentProbed())
+      const flags = state as unknown as Record<string, boolean>
+      for (const [name, ok] of Object.entries(got)) {
+        if (ok) flags[name] = true // only ever upgrades
+      }
+    } catch {
+      // A failed re-check is just another "not yet"; try again later.
+    }
+    recheckDelay = Math.min(recheckDelay * 2, RECHECK_MAX_MS)
+    scheduleRecheck()
+  }, recheckDelay)
+}
+
 function apply(c: DeploymentCapabilities) {
   state.editing = c.editing.available
   state.editingExtensions = c.editing.extensions || []
@@ -68,7 +108,10 @@ export function useCapabilities() {
   if (!started) {
     started = true
     // Not awaited: the UI renders now and settles when the answer arrives.
-    void capabilitiesService.load().then(apply).catch(() => {
+    void capabilitiesService.load().then((c) => {
+      apply(c)
+      scheduleRecheck()
+    }).catch(() => {
       state.loaded = true // leave everything optimistic
     })
   }
@@ -83,6 +126,9 @@ export function useCapabilities() {
 /** Test seam. */
 export function resetCapabilities() {
   started = false
+  if (recheckTimer) clearTimeout(recheckTimer)
+  recheckTimer = null
+  recheckDelay = RECHECK_FIRST_MS
   state.loaded = false
   const flags = state as unknown as Record<string, boolean>
   for (const k of Object.keys(state)) {

@@ -163,3 +163,41 @@ describe('capabilitiesService — detecting optional services', () => {
     expect((await capabilitiesService.load()).editing.available).toBe(false)
   })
 })
+
+// A "not available" verdict is re-asked; an "available" one is not. Production
+// 2026-10-01: one probe failure hid the comment sidebar for a whole session, on a
+// discussion service that was up throughout — signing out was the only cure.
+describe('capabilitiesService — re-checking what was found absent', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    capabilitiesService.reset()
+    get.mockResolvedValue(reply({ available: true, reason: '', extensions: [] }))
+  })
+
+  it('names only the services it detects by probing', () => {
+    expect(capabilitiesService.recheckable().sort()).toEqual(
+      ['audit', 'bcf', 'difference', 'discussion', 'folderActions', 'sharing'])
+  })
+
+  it('re-probes only what it is asked about', async () => {
+    axiosGet.mockResolvedValue(present)
+    const got = await capabilitiesService.recheck(['discussion'])
+    expect(got).toEqual({ discussion: true })
+    expect(axiosGet).toHaveBeenCalledTimes(1)
+    expect(String(axiosGet.mock.calls[0][0])).toContain('/whoami')
+  })
+
+  it('ignores names that are not probed (csai reports its own configuration)', async () => {
+    const got = await capabilitiesService.recheck(['chat', 'editing'])
+    expect(got).toEqual({})
+    expect(axiosGet).not.toHaveBeenCalled()
+  })
+
+  it('folds a recovery into the shared answer, so later callers see it', async () => {
+    axiosGet.mockResolvedValue({ status: 502, headers: {}, data: '' })
+    expect((await capabilitiesService.load()).discussion.available).toBe(false)
+    axiosGet.mockResolvedValue(present)
+    await capabilitiesService.recheck(['discussion'])
+    expect((await capabilitiesService.load()).discussion.available).toBe(true)
+  })
+})
