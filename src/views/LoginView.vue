@@ -324,15 +324,17 @@ async function handOffToWorkspace(nextPath?: string) {
     }
   }
 
-  // Fallback: stay put and run the app as this tenant. Not a degraded mode —
-  // the tenant travels as X-Tenant, which the bridge honours regardless of
-  // host, so every request is scoped exactly as it would be on the subdomain.
+  // Fallback: stay put and run the app as this tenant. The tenant travels as
+  // X-Tenant, so every request is scoped exactly as it would be on the
+  // subdomain — but it is NOT invisible: LoginOriginNotice tells the user the
+  // workspace address could not be reached and offers to try it again. Two
+  // silent fallbacks caused by a network filter read as a broken deployment.
   // We are already authenticated on this origin, so no hand-off is needed at
   // all; the session we just created is the one being used.
   // Say so before navigating: the router sends an authenticated visitor on this
   // origin back here to be handed off, and this navigation is exactly the one it
   // would bounce. The flag is what ends that loop.
-  markServingFromLoginOrigin()
+  markServingFromLoginOrigin(tenantOrigin(target))
   auth.switchTenant(target)
   await router.replace(next || '/dashboard')
 }

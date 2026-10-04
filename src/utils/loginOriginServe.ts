@@ -33,18 +33,36 @@
  * again now, starts forwarding without anyone having to clear anything. The
  * cost of forgetting is one extra hop through the login view, which the probe's
  * own short-lived negative cache makes cheap.
+ *
+ * Reactive, and it records WHICH workspace address could not be used, because
+ * the fallback must not be silent: on 2026-10-01 and again on 2026-10-04 a
+ * router-level web filter blocked the tenant subdomain, the app quietly ran
+ * from here, and the only symptoms were a 1 MB upload limit and the Share tab
+ * (and every other optional service) missing — which read as a broken deploy.
+ * LoginOriginNotice reads this to say what happened and to offer a retry.
  */
 
-let servingHere = false
+import { reactive, readonly } from 'vue'
 
-/** The hand-off fell back: this origin is serving the workspace. */
-export function markServingFromLoginOrigin(): void {
-  servingHere = true
+const state = reactive({ serving: false, origin: '' })
+
+/** Read-only view for the notice: are we serving here, and instead of where? */
+export const loginOriginServing = readonly(state)
+
+/**
+ * The hand-off fell back: this origin is serving the workspace.
+ *
+ * @param origin the tenant origin that could not be used, e.g.
+ *               `https://default.example.com` — shown to the user.
+ */
+export function markServingFromLoginOrigin(origin = ''): void {
+  state.serving = true
+  state.origin = origin
 }
 
 /** Has the fallback already been taken in this page lifetime? */
 export function servingFromLoginOrigin(): boolean {
-  return servingHere
+  return state.serving
 }
 
 /**
@@ -59,5 +77,6 @@ export function servingFromLoginOrigin(): boolean {
  * only then fall back.
  */
 export function resetServingFromLoginOrigin(): void {
-  servingHere = false
+  state.serving = false
+  state.origin = ''
 }
