@@ -189,6 +189,13 @@
               ↺ Back to 10-second preview
             </button>
           </template>
+          <!-- No Publish button (MEDIA_SHARE.md §4.3): a full-length copy is
+               made because a share was configured. The pointer says where,
+               and only where this deployment can actually encode. -->
+          <span v-else-if="features.media" class="dp-muted" data-test="share-to-publish">
+            Share this video (Share tab) to make it playable outside — that
+            prepares a full-length copy.
+          </span>
           <button class="link" @click="downloadOriginal">⬇ Download original</button>
           <button v-if="showLocation" class="link" @click="openLocation">📂 Open file location</button>
         </div>

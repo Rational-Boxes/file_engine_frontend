@@ -90,6 +90,26 @@ describe('capabilitiesService', () => {
     )
     expect((await capabilitiesService.load()).webSearch.available).toBe(false)
   })
+
+  it('reads media publishing from csai\'s own field name, `publish`', async () => {
+    // The SPA once read media.available, which csai never sends — so the media
+    // share could never have been offered on a real deployment, while every
+    // mocked test passed. This is the wire shape, verbatim.
+    get.mockResolvedValue(reply({ available: true, reason: '', extensions: [] },
+      { media: { publish: true, reason: '', profiles: ['video-720p-vp9'], fmts: ['media'] } }))
+    expect((await capabilitiesService.load()).media.available).toBe(true)
+  })
+
+  it('treats media as OFF when csai does not say it can publish', async () => {
+    // Not optimistic like the rest: a media share where nothing encodes mints a
+    // link that never plays.
+    get.mockResolvedValue(reply({ available: true, reason: '', extensions: [] },
+      { media: { publish: false, reason: 'no media worker is running' } }))
+    expect((await capabilitiesService.load()).media.available).toBe(false)
+    capabilitiesService.reset()
+    get.mockResolvedValue({ data: { editing: { available: true, reason: '', extensions: [] } } })
+    expect((await capabilitiesService.load()).media.available).toBe(false)
+  })
 })
 
 

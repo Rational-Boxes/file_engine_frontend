@@ -45,6 +45,9 @@ const state = reactive({
   folderActions: true,
   bcf: true,
   audit: true,
+  // NOT optimistic, unlike the rest: offering a media share on a deployment
+  // that cannot encode mints a link that never plays (MEDIA_SHARE.md §10).
+  media: false,
 })
 
 let started = false
@@ -101,6 +104,7 @@ function apply(c: DeploymentCapabilities) {
   state.folderActions = c.folderActions.available
   state.bcf = c.bcf.available
   state.audit = c.audit.available
+  state.media = c.media?.available === true
   state.loaded = true
 }
 

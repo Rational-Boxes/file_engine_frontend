@@ -61,6 +61,9 @@ export interface DeploymentCapabilities {
   chat: FeatureCapability
   webSearch: FeatureCapability
   search: FeatureCapability
+  /** Media publishing (MEDIA_SHARE.md §4.6): FFmpeg, an encoder, a running
+   *  media worker. Absent => the UI offers no media share and no pointer. */
+  media: FeatureCapability
   // Optional services, each detected by asking it something cheap.
   discussion: FeatureCapability
   sharing: FeatureCapability
@@ -78,6 +81,9 @@ const ASSUME_AVAILABLE: DeploymentCapabilities = {
   chat: { available: true },
   webSearch: { available: true },
   search: { available: true },
+  // NOT assumed: a media share on a deployment that cannot encode would mint a
+  // link that never plays. Off until csai says otherwise.
+  media: { available: false },
   discussion: { available: true },
   sharing: { available: true },
   difference: { available: true },
@@ -153,6 +159,11 @@ async function fetchCsaiCapabilities(): Promise<Partial<DeploymentCapabilities>>
     chat: { ...(data?.chat ?? {}), available: data?.chat?.available !== false },
     webSearch: { ...(data?.web_search ?? {}), available: data?.web_search?.available !== false },
     search: { ...(data?.search ?? {}), available: data?.search?.available !== false },
+    // csai names it `publish` (can this deployment encode, with a worker
+    // running?) — `available` is accepted too so a renamed field cannot
+    // silently hide the feature again; the E2E asserts the live shape.
+    media: { ...(data?.media ?? {}),
+             available: data?.media?.publish === true || data?.media?.available === true },
   }
 }
 
