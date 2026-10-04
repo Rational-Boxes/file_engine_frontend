@@ -25,6 +25,12 @@
       <ul class="share-list">
         <li v-for="l in links" :key="l.link_uid" class="share-item">
           <span class="share-kind">{{ kindLabel(l.kind) }}</span>
+          <span v-if="l.kind === ShareKind.MEDIA && l.access_mode" class="share-mode">
+            {{ MODE_SHORT[l.access_mode] }}
+          </span>
+          <span v-if="l.media_state === 'pending_media'" class="share-badge" data-st="blocked">
+            Preparing
+          </span>
           <span class="share-badge" :data-st="l.status">{{ statusLabel(l.status) }}</span>
           <span class="share-uses">{{ usesLabel(l) }}</span>
           <span class="share-exp">{{ expiryLabel(l) }}</span>
@@ -53,8 +59,14 @@
           <p v-if="l.status === 'not_working'" class="share-warn">
             {{ l.not_working_message || 'This link is no longer working.' }}
           </p>
+          <MediaLinkDetail
+            v-if="expanded === l.link_uid && l.kind === ShareKind.MEDIA"
+            :link="l"
+            class="share-detail"
+            @changed="load"
+          />
           <ShareLinkDetail
-            v-if="expanded === l.link_uid"
+            v-else-if="expanded === l.link_uid"
             :link-uid="l.link_uid"
             :status="l.status"
             class="share-detail"
@@ -87,6 +99,39 @@
         <button class="share-btn" @click="copy(messageText)">Copy message</button>
       </details>
 
+      <!--
+        For a media link the email is where it is going (§2.1), so the email
+        block comes first: a still that links to the page, with a plain-text
+        fallback for clients that block images. The Web Component and iframe
+        snippets arrive with the embed kit (MS8).
+      -->
+      <details v-if="created.kind === ShareKind.MEDIA && emailHtml" class="share-msg" open data-test="email-snippet">
+        <summary>For an email</summary>
+        <textarea :value="emailHtml" readonly rows="5" @focus="selectAll" />
+        <button class="share-btn" @click="copy(emailHtml)">Copy email HTML</button>
+      </details>
+      <!-- Embeds (§9): the Web Component, a plain iframe, and the oEmbed URL —
+           offered only where the link lists sites that may embed it (§9.3);
+           otherwise framing is refused, so a snippet would only fail. -->
+      <details v-if="created.kind === ShareKind.MEDIA && embed" class="share-msg" data-test="embed-snippets">
+        <summary>Embed on a website</summary>
+        <small class="muted">Web component (one script, one tag):</small>
+        <textarea :value="embed.component" readonly rows="3" @focus="selectAll" />
+        <button class="share-btn" @click="copy(embed.component)">Copy</button>
+        <small class="muted">Or a plain iframe:</small>
+        <textarea :value="embed.iframe" readonly rows="3" @focus="selectAll" />
+        <button class="share-btn" @click="copy(embed.iframe)">Copy</button>
+        <small class="muted">Or paste this oEmbed URL into WordPress, Notion and similar:</small>
+        <input :value="embed.oembed" readonly @focus="selectAll" />
+      </details>
+      <p v-else-if="created.kind === ShareKind.MEDIA && created.media_url" class="muted" data-test="no-embed">
+        To put this on a website, create the link with the sites that may embed it.
+      </p>
+      <p v-if="created.kind === ShareKind.MEDIA && created.media_state === 'pending_media'" class="muted" data-test="created-preparing">
+        A web-playable copy is being prepared. The link works now — send it; it
+        plays as soon as the copy is ready (usually a minute or two).
+      </p>
+
       <p v-if="created.member_count != null" class="muted">
         {{ created.member_count }} files · about {{ human(created.archive_bytes) }}
         <template v-if="created.worst_case_egress_bytes">
@@ -110,7 +155,104 @@
         </select>
       </label>
 
-      <label class="share-field">
+      <label v-if="mediaOffered" class="share-field">
+        <span>What to share</span>
+        <select v-model.number="form.kind" data-test="kind">
+          <option :value="ShareKind.FILE">Let someone download this file</option>
+          <option :value="ShareKind.MEDIA">Let someone {{ isAudio ? 'listen to' : 'watch' }} this</option>
+        </select>
+      </label>
+
+      <!-- ── media (MEDIA_SHARE.md §10) ──────────────────────────────── -->
+      <template v-if="isMedia">
+        <!-- Radios, never a dropdown: the difference between these IS the
+             security posture of the link, and a collapsed control hides it. -->
+        <fieldset class="share-modes" data-test="modes">
+          <legend>Who can {{ isAudio ? 'listen' : 'watch' }}</legend>
+          <label class="share-check">
+            <input v-model="accessMode" type="radio" value="verified" />
+            <span>
+              <strong>Only people I name.</strong>
+              They confirm with a one-time code emailed to them.
+            </span>
+          </label>
+          <label class="share-check">
+            <input v-model="accessMode" type="radio" value="claimed" />
+            <span>
+              <strong>Anyone with the link who gives an email address.</strong>
+              The address is not checked — you see what they typed.
+            </span>
+          </label>
+          <label class="share-check" :class="{ off: !mediaCaps?.open_mode }">
+            <input v-model="accessMode" type="radio" value="open" :disabled="!mediaCaps?.open_mode" />
+            <span>
+              <strong>Anyone with the link.</strong> No sign-in.
+              <small v-if="!mediaCaps?.open_mode" class="muted">(not enabled on this deployment)</small>
+            </span>
+          </label>
+        </fieldset>
+
+        <label v-if="accessMode !== 'open'" class="share-field">
+          <span>{{ accessMode === 'verified' ? 'Who may watch' : 'Who you expect (optional)' }}</span>
+          <input v-model="recipientInput" type="text" placeholder="name@example.com, another@example.com" />
+          <small class="muted">
+            <template v-if="accessMode === 'verified'">
+              Addresses are who is <em>allowed</em> to watch — we don't email them.
+              Send the link yourself.
+            </template>
+            <template v-else>
+              Only marks who you expected in the viewer list. Anyone with the link can still watch.
+            </template>
+          </small>
+        </label>
+
+        <label class="share-field">
+          <span>Title viewers see{{ accessMode === 'open' ? '' : ' (optional)' }}</span>
+          <input v-model="displayName" type="text" :placeholder="accessMode === 'open' ? 'Required for a public link' : name" data-test="display-name" />
+          <small v-if="accessMode === 'open'" class="muted">
+            Not the file name by default: a public title should not publish your internal naming.
+          </small>
+        </label>
+
+        <!-- Any mode may be embedded; a gated one is framed with its gate (§9.2). -->
+        <label class="share-field">
+          <span>Sites that may embed it (optional)</span>
+          <input v-model="embedInput" type="text" data-test="embed-origins"
+                 :placeholder="accessMode === 'open' ? 'https://www.example.com, or * for anywhere' : 'https://www.example.com'" />
+        </label>
+        <template v-if="accessMode === 'open'">
+          <label class="share-check share-confirm" data-test="confirm-public">
+            <input v-model="confirmPublic" type="checkbox" />
+            <span>I understand: <strong>anyone with this link, and anyone they forward it to, can watch this.</strong></span>
+          </label>
+        </template>
+
+        <label class="share-field">
+          <span>At most this many {{ accessMode === 'open' ? 'viewers' : 'people' }} (optional)</span>
+          <input v-model.number="maxViewers" type="number" min="0" placeholder="no limit" />
+        </label>
+
+        <!-- The worst case, in the same plain block a folder link states its
+             archive size in — the egress budget is the bound that matters. -->
+        <p class="share-summary muted" data-test="worst-case">
+          This link stops serving after {{ human(mediaCaps?.default_max_bytes) }} in total<template v-if="viewEstimate">
+          — about {{ viewEstimate }} full viewings</template>. For a bigger
+          audience, publish on PeerTube, YouTube or Vimeo instead.
+        </p>
+
+        <!-- The trigger is explicit, not something the user discovers from a
+             progress bar (§10). -->
+        <p v-if="!published" class="share-summary" data-test="will-prepare">
+          <template v-if="publishFailure">{{ publishFailure }}</template>
+          <template v-else>
+            Creating this link will prepare a web-playable copy first (usually a
+            minute or two, stored alongside this file). The link works straight
+            away and plays once the copy is ready.
+          </template>
+        </p>
+      </template>
+
+      <label v-if="!isMedia" class="share-field">
         <span>Who may use it</span>
         <input
           v-model="recipientInput"
@@ -135,7 +277,7 @@
         </select>
       </label>
 
-      <label class="share-field">
+      <label v-if="!isMedia" class="share-field">
         <span>{{ form.kind === ShareKind.UPLOAD ? 'How many files' : 'How many downloads' }}</span>
         <input
           v-model.number="budgetField"
@@ -165,7 +307,7 @@
         <input v-model="form.note" type="text" placeholder="What is this for?" />
       </label>
 
-      <button class="share-btn primary" :disabled="busy || !recipientList.length" @click="create">
+      <button class="share-btn primary" :disabled="busy || !canCreate" data-test="create" @click="create">
         {{ busy ? 'Creating…' : 'Create link' }}
       </button>
     </div>
@@ -206,7 +348,11 @@ import {
 } from '@/services/shareService'
 import { errorMessage } from '@/services/apiClient'
 import ShareLinkDetail from '@/components/ShareLinkDetail.vue'
+import MediaLinkDetail from '@/components/MediaLinkDetail.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import { useCapabilities } from '@/composables/useCapabilities'
+import { failureDetail, isPublished, mediaService, primaryJob, type MediaState } from '@/services/mediaService'
+import type { AccessMode, ShareCapabilities } from '@/services/shareService'
 
 const props = defineProps<{ resourceUid: string; isFolder: boolean; name: string }>()
 defineEmits<{ (e: 'go-access'): void }>()
@@ -230,6 +376,93 @@ const form = ref({
 })
 const budgetField = ref(5)
 
+// ── media (MEDIA_SHARE.md §10) ────────────────────────────────────────────
+const VIDEO_RE = /\.(mp4|m4v|mov|webm|mkv|avi|wmv|mpg|mpeg|3gp|ogv)$/i
+const AUDIO_RE = /\.(mp3|m4a|wav|ogg|oga|opus|flac|aac|wma)$/i
+const MODE_SHORT: Record<AccessMode, string> = {
+  verified: 'named people', claimed: 'email given', open: 'public',
+}
+const { features } = useCapabilities()
+const mediaCaps = ref<ShareCapabilities['media'] | null>(null)
+const mediaState = ref<MediaState | null>(null)
+const accessMode = ref<AccessMode>('verified')
+const displayName = ref('')
+const confirmPublic = ref(false)
+const embedInput = ref('')
+const maxViewers = ref<number | null>(null)
+
+const isAudio = computed(() => AUDIO_RE.test(props.name))
+const isMediaFile = computed(() => !props.isFolder && (VIDEO_RE.test(props.name) || isAudio.value))
+/** Offered only where it will work: csai can encode AND share_service has media links on. */
+const mediaOffered = computed(() =>
+  isMediaFile.value && features.media && !!mediaCaps.value?.available)
+const isMedia = computed(() => form.value.kind === ShareKind.MEDIA)
+const published = computed(() => isPublished(mediaState.value))
+const publishFailure = computed(() => failureDetail(mediaState.value))
+const viewEstimate = computed(() => {
+  const size = primaryJob(mediaState.value)?.output_bytes
+  const budget = mediaCaps.value?.default_max_bytes
+  return size && budget ? Math.floor(budget / size).toLocaleString() : ''
+})
+
+const canCreate = computed(() => {
+  if (!isMedia.value) return recipientList.value.length > 0
+  if (accessMode.value === 'verified') return recipientList.value.length > 0
+  if (accessMode.value === 'open') return confirmPublic.value && !!displayName.value.trim()
+  return true
+})
+
+/** For an email: a still linking to the page, plus a plain-text fallback. */
+const emailHtml = computed(() => {
+  const c = created.value
+  if (!c || c.kind !== ShareKind.MEDIA || !c.media_url) return ''
+  let poster = ''
+  try {
+    const u = new URL(c.media_url)
+    poster = `${u.origin}/media/v1/${c.link_uid}/poster?${u.searchParams.toString()}`
+  } catch {
+    return ''
+  }
+  const title = (c.display_name || props.name).replace(/[<>&"]/g, '')
+  return `<a href="${c.url}"><img src="${poster}" alt="▶ Watch: ${title}" width="280" style="border:0;display:block"></a>\n`
+    + `<p><a href="${c.url}">▶ Watch “${title}”</a></p>`
+})
+
+/** The three embed snippets, when the link may be embedded somewhere. */
+const embed = computed(() => {
+  const c = created.value
+  if (!c || c.kind !== ShareKind.MEDIA || !c.media_url || !c.allowed_embed_origins?.length) return null
+  let u: URL
+  try { u = new URL(c.media_url) } catch { return null }
+  const k = u.searchParams.get('k') || ''
+  const title = (c.display_name || props.name).replace(/[<>&"]/g, '')
+  const player = `${u.origin}/media/v1/player/${c.link_uid}?k=${encodeURIComponent(k)}`
+  return {
+    component: `<script type="module" src="${u.origin}/media/v1/embed/fe-media-share.js"><\/script>\n`
+      + `<fe-media-share src="${c.media_url}" width="720"></fe-media-share>`,
+    iframe: `<iframe src="${player}" width="720" height="405" style="border:0" `
+      + `allow="autoplay; fullscreen; picture-in-picture" title="${title}"></iframe>`,
+    oembed: `${u.origin}/media/v1/oembed?url=${encodeURIComponent(c.media_url)}`,
+  }
+})
+
+async function loadMedia() {
+  mediaCaps.value = null
+  mediaState.value = null
+  if (!isMediaFile.value) return
+  try {
+    mediaCaps.value = (await shareService.capabilities()).media
+  } catch {
+    mediaCaps.value = null          // share_service unreachable or older: no media branch
+  }
+  if (!mediaCaps.value?.available) return
+  try {
+    mediaState.value = await mediaService.state(props.resourceUid)
+  } catch {
+    mediaState.value = null         // unknown: say it will be prepared, which is safe
+  }
+}
+
 const recipientList = computed(() =>
   recipientInput.value.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean),
 )
@@ -238,6 +471,15 @@ const recipientList = computed(() =>
 const messageText = computed(() => {
   if (!created.value) return ''
   const c = created.value
+  if (c.kind === ShareKind.MEDIA) {
+    const when = new Date(c.expires_at).toLocaleDateString()
+    const how = c.access_mode === 'verified'
+      ? " You'll be emailed a one-time code when you open it — that's expected, it's how we check it's you."
+      : c.access_mode === 'claimed'
+        ? ' You will be asked for your email address before it plays.'
+        : ''
+    return `${c.display_name || props.name}\n${c.url}\nAvailable until ${when}.${how}`
+  }
   const size = c.member_count != null
     ? `\n${c.member_count} files, about ${human(c.archive_bytes)}`
     : ''
@@ -248,6 +490,7 @@ const messageText = computed(() => {
 })
 
 function kindLabel(k: ShareKindValue): string {
+  if (k === ShareKind.MEDIA) return isAudio.value ? 'Audio' : 'Video'
   return k === ShareKind.UPLOAD ? 'Drop box' : k === ShareKind.FOLDER ? 'Folder' : 'File'
 }
 
@@ -259,6 +502,7 @@ function statusLabel(s: ShareStatus): string {
 }
 
 function usesLabel(l: ShareLink): string {
+  if (l.kind === ShareKind.MEDIA) return `${human(l.bytes_consumed)} served`
   if (l.kind === ShareKind.UPLOAD) {
     return l.max_files ? `${l.files_consumed} / ${l.max_files} files` : `${l.files_consumed} files`
   }
@@ -307,7 +551,18 @@ async function create() {
   busy.value = true
   error.value = ''
   try {
-    const body = {
+    const origins = embedInput.value.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean)
+    const body = isMedia.value ? {
+      kind: ShareKind.MEDIA,
+      access_mode: accessMode.value,
+      recipients: accessMode.value === 'open' ? [] : recipientList.value,
+      ttl_days: form.value.ttl_days,
+      note: form.value.note || undefined,
+      display_name: displayName.value.trim() || undefined,
+      ...(accessMode.value === 'open' ? { confirm_public: confirmPublic.value } : {}),
+      ...(origins.length ? { allowed_embed_origins: origins } : {}),
+      ...(maxViewers.value ? { max_viewers: maxViewers.value } : {}),
+    } : {
       kind: form.value.kind,
       recipients: recipientList.value,
       ttl_days: form.value.ttl_days,
@@ -324,6 +579,7 @@ async function create() {
     }
     created.value = await shareService.create(props.resourceUid, body)
     recipientInput.value = ''
+    confirmPublic.value = false
     await load()
   } catch (e) {
     error.value = errorMessage(e, 'Could not create the link')
@@ -378,6 +634,8 @@ async function confirmRevoke() {
 
 watch(() => props.resourceUid, () => {
   created.value = null
+  form.value.kind = (props.isFolder ? ShareKind.FOLDER : ShareKind.FILE) as ShareKindValue
+  void loadMedia()
   // Or the dialog would still be open over a different file, aimed at a link
   // that is no longer on screen.
   revokeTarget.value = null
@@ -395,6 +653,12 @@ watch(() => props.resourceUid, () => {
   flex-wrap: wrap;
 }
 .share-kind { font-weight: 600; }
+.share-mode { font-size: .75rem; color: var(--muted); }
+.share-modes { border: 1px solid var(--border); border-radius: .3rem; padding: .4rem .6rem; margin: 0 0 .6rem; }
+.share-modes legend { font-size: .8rem; font-weight: 600; padding: 0 .2rem; }
+.share-modes .off { opacity: .6; }
+.share-confirm { padding: .4rem; border: 1px solid var(--danger); border-radius: .3rem; }
+.share-summary { font-size: .8rem; margin: 0 0 .6rem; }
 /* Tinted by INK, not by fill. A fill light enough to read against dark ink is
    too light to read against light ink — so the state colour goes on the text
    and the border, and the fill stays a theme surface in both. */

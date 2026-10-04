@@ -51,6 +51,9 @@ vi.mock('@/utils/tenantHost', async () => ({
   activeTenantFromHost,
 }))
 
+const { refreshCapabilities } = vi.hoisted(() => ({ refreshCapabilities: vi.fn(async () => {}) }))
+vi.mock('@/composables/useCapabilities', () => ({ refreshCapabilities }))
+
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
 
@@ -87,6 +90,23 @@ describe('auth store', () => {
     expect(authService.ldapLogin).toHaveBeenCalledWith('alice', 'pw', 'acme')
     expect(tokenStorage.setActiveTenant).toHaveBeenCalledWith('acme')
     expect(store.tenant).toBe('acme')
+  })
+
+  it('a new session re-detects what the deployment offers', async () => {
+    // The first detection may have run signed out and been answered 401 by csai;
+    // media (the one flag that starts OFF) then stayed hidden for the session.
+    ;(authService.ldapLogin as any).mockResolvedValue({ kind: 'session' })
+    ;(authService.whoami as any).mockResolvedValue({ user: 'alice', tenant: 'default', roles: [] })
+    await useAuthStore().ldapLogin('alice', 'pw')
+    await vi.dynamicImportSettled()
+    expect(refreshCapabilities).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed sign-in does not re-detect', async () => {
+    ;(authService.ldapLogin as any).mockRejectedValue(new Error('bad'))
+    await useAuthStore().ldapLogin('alice', 'bad')
+    await vi.dynamicImportSettled()
+    expect(refreshCapabilities).not.toHaveBeenCalled()
   })
 
   it('ldapLogin reports an error on failure', async () => {

@@ -153,6 +153,8 @@
       <div v-else-if="videoUrl" class="dp-pdf">
         <video
           :src="videoUrl"
+          @error="onVideoError"
+          @loadedmetadata="onVideoMetadata"
           :poster="previewUrl || undefined"
           class="dp-frame dp-video"
           :class="{ 'dp-frame-full': fullWidth }"
@@ -160,6 +162,40 @@
           autoplay
         ></video>
         <div class="dp-actions">
+          <!-- Full-length copies, where published: offered, never switched to.
+               The 10-second silent preview stays the default (MEDIA_SHARE.md §10). -->
+          <template v-if="fullVideos.length">
+            <span v-if="playing !== 'preview'" class="dp-muted">
+              Full video · {{ playingLabel }}
+            </span>
+            <button
+              v-for="v in fullVideos"
+              v-show="playing !== v.key"
+              :key="v.key"
+              class="link"
+              data-test="watch-full"
+              :disabled="opening"
+              @click="watchFull(v.key)"
+            >
+              ▶ {{ playing === 'preview' ? 'Watch full video' : 'Switch to' }} · {{ v.label }}
+            </button>
+            <button
+              v-if="playing !== 'preview'"
+              class="link"
+              data-test="back-to-preview"
+              :disabled="opening"
+              @click="backToPreview"
+            >
+              ↺ Back to 10-second preview
+            </button>
+          </template>
+          <!-- No Publish button (MEDIA_SHARE.md §4.3): a full-length copy is
+               made because a share was configured. The pointer says where,
+               and only where this deployment can actually encode. -->
+          <span v-else-if="features.media" class="dp-muted" data-test="share-to-publish">
+            Share this video (Share tab) to make it playable outside — that
+            prepares a full-length copy.
+          </span>
           <button class="link" @click="downloadOriginal">⬇ Download original</button>
           <button v-if="showLocation" class="link" @click="openLocation">📂 Open file location</button>
         </div>
@@ -411,12 +447,8 @@ const { features } = useCapabilities()
 
 // VIDEO_EXTS now lives beside the rendition helpers, so the rule that decides a
 // row has a video preview and the player that renders it share one list.
-const VIDEO_MIME: Record<string, string> = {
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  ogg: 'video/ogg',
-  mov: 'video/mp4',
-}
+// Video is streamed through a playback ticket, so its type is the bridge's to
+// declare (from an allowlist, at mint) rather than ours to stamp on a blob.
 
 const set = ref<RenditionSet>({})
 const previewUrl = ref('') // object URL for the still preview/poster image
@@ -509,6 +541,84 @@ const isNativePdf = computed(() => (props.name || '').toLowerCase().endsWith('.p
 const canOpenPdf = computed(() => !!set.value.pdf || isNativePdf.value)
 // Videos expose a web-optimized `preview` MP4 clip (the `poster` is the still).
 const videoRef = computed(() => (isVideoRef(set.value.preview) ? set.value.preview : undefined))
+
+// Full-length published copies (MEDIA_SHARE.md §10), where they exist. OFFERED,
+// never defaulted: the 10-second silent preview stays what plays first — a quick
+// idea of the video without distracting sound — and a full copy is fetched only
+// when someone asks for it.
+type FullKey = 'media' | 'media_sd'
+const fullVideos = computed(() =>
+  ([['media', '720p'], ['media_sd', '480p']] as const)
+    .map(([key, label]) => ({ key: key as FullKey, label, ref: set.value[key] }))
+    .filter((v) => isVideoRef(v.ref)),
+)
+const playing = ref<'preview' | FullKey>('preview')
+const playingLabel = computed(() =>
+  fullVideos.value.find((v) => v.key === playing.value)?.label ?? '',
+)
+
+// A full video is STREAMED through a playback ticket — as the 10-second clip is
+// too: it starts at once, seeks by Range, and never sits in this tab's memory.
+async function watchFull(key: FullKey) {
+  const target = fullVideos.value.find((v) => v.key === key)?.ref
+  if (!target || (playing.value === key && videoUrl.value)) return
+  opening.value = true
+  error.value = ''
+  try {
+    const url = await fileService.playbackUrl(target.uid)
+    if (videoUrl.value) revokeRenditionUrl(videoUrl.value)
+    videoUrl.value = url
+    playing.value = key
+    lastRenewal = 0
+  } catch (e) {
+    error.value = errorMessage(e, 'Failed to open the full video')
+  } finally {
+    opening.value = false
+  }
+}
+
+// A playback ticket lives at most 30 minutes; a viewing that outlasts it gets a
+// failed Range request. Renew once and resume where the viewer was. A second
+// failure within a minute is not a lapsed ticket — it is a video that will not
+// play — so it stops with a message rather than looping on the server.
+const RENEW_WINDOW_MS = 60_000
+let lastRenewal = 0
+let resumeAt: number | null = null
+async function onVideoError(e: Event) {
+  const target = playing.value === 'preview'
+    ? videoRef.value
+    : fullVideos.value.find((v) => v.key === playing.value)?.ref
+  if (!target || !videoUrl.value) return
+  const now = Date.now()
+  if (lastRenewal && now - lastRenewal < RENEW_WINDOW_MS) {
+    error.value = playing.value === 'preview'
+      ? 'The video preview could not be played.'
+      : 'The full video could not be played.'
+    return
+  }
+  lastRenewal = now
+  resumeAt = (e.target as HTMLVideoElement | null)?.currentTime || 0
+  try {
+    videoUrl.value = await fileService.playbackUrl(target.uid)
+  } catch (err) {
+    error.value = errorMessage(err, 'The full video could not be played.')
+  }
+}
+function onVideoMetadata(e: Event) {
+  if (resumeAt !== null) {
+    const el = e.target as HTMLVideoElement
+    el.currentTime = resumeAt
+    resumeAt = null
+  }
+}
+
+async function backToPreview() {
+  if (playing.value === 'preview') return
+  if (videoUrl.value) revokeRenditionUrl(videoUrl.value)   // a no-op for a ticket URL
+  videoUrl.value = ''
+  playing.value = 'preview'
+  await openMedia()
+}
 
 // What clicking the still opens: an inline PDF, an inline video, or nothing.
 const mediaKind = computed<'pdf' | 'video' | null>(() =>
@@ -700,7 +810,10 @@ async function openMedia() {
     opening.value = true
     error.value = ''
     try {
-      videoUrl.value = await renditionObjectUrl(ref_.uid, VIDEO_MIME[ref_.ext.toLowerCase()] || 'video/mp4')
+      // Streamed through a playback ticket like the full video — never downloaded
+      // whole into a blob first. It starts sooner and holds nothing in memory.
+      videoUrl.value = await fileService.playbackUrl(ref_.uid)
+      lastRenewal = 0
     } catch (e) {
       error.value = errorMessage(e, 'Failed to open video')
     } finally {

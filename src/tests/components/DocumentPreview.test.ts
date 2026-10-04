@@ -41,12 +41,15 @@ vi.mock('@/services/renditions', () => ({
   },
 }))
 vi.mock('@/services/searchService', () => ({ searchService: { generatePreview } }))
-const { downloadFile, downloadUrl, checkPermission } = vi.hoisted(() => ({
+const { downloadFile, downloadUrl, checkPermission, playbackUrl } = vi.hoisted(() => ({
   downloadFile: vi.fn(),
   downloadUrl: vi.fn(),
   checkPermission: vi.fn(),
+  playbackUrl: vi.fn(),
 }))
-vi.mock('@/services/fileService', () => ({ fileService: { downloadFile, downloadUrl, checkPermission } }))
+vi.mock('@/services/fileService', () => ({
+  fileService: { downloadFile, downloadUrl, checkPermission, playbackUrl },
+}))
 const { open, close } = vi.hoisted(() => ({ open: vi.fn(), close: vi.fn() }))
 vi.mock('@/stores/preview', () => ({ usePreviewStore: () => ({ open, close }) }))
 // A comparison requested elsewhere reaches this surface through the difference
@@ -97,6 +100,7 @@ describe('DocumentPreview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     renditionObjectUrl.mockImplementation((uid: string) => Promise.resolve('blob:' + uid))
+    playbackUrl.mockImplementation((uid: string) => Promise.resolve(`ticket:${uid}`))
     checkPermission.mockResolvedValue(false) // no WRITE by default → no Annotate affordance
   })
 
@@ -484,11 +488,140 @@ describe('DocumentPreview', () => {
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'clip.mp4', fullWidth: true } })
     await flushPromises()
 
-    expect(renditionObjectUrl).toHaveBeenCalledWith('clip', 'video/mp4')
+    // Streamed through a playback ticket, never downloaded whole into a blob.
+    expect(playbackUrl).toHaveBeenCalledWith('clip')
+    expect(renditionObjectUrl).not.toHaveBeenCalledWith('clip', expect.anything())
     const video = w.find('video.dp-video')
     expect(video.exists()).toBe(true)
-    expect(video.attributes('src')).toBe('blob:clip')
+    expect(video.attributes('src')).toBe('ticket:clip')
     expect(video.attributes('poster')).toBe('blob:pf')
+  })
+
+  // ── full-length media (MEDIA_SHARE.md §10, 2026-10-03) ─────────────────────
+  //
+  // The default stays the 10-second silent preview: a quick idea of the video
+  // without distracting sound. Where a published 720p / 480p rendition exists the
+  // player OFFERS it — it never switches to it, and never fetches it, by itself.
+
+  it('keeps the silent preview as the default even when a full video exists', async () => {
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+      media: ref_('full', 'media', 'webm'),
+      media_sd: ref_('sd', 'media_sd', 'webm'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    expect(w.find('video.dp-video').attributes('src')).toBe('ticket:clip')
+    expect(renditionObjectUrl).not.toHaveBeenCalledWith('full', expect.anything())
+    expect(renditionObjectUrl).not.toHaveBeenCalledWith('sd', expect.anything())
+    const offers = w.findAll('[data-test="watch-full"]').map((b) => b.text())
+    expect(offers).toEqual([expect.stringContaining('720p'), expect.stringContaining('480p')])
+  })
+
+  it('plays the chosen full video, frees the clip, and offers the way back', async () => {
+    let n = 0
+    playbackUrl.mockImplementation((uid: string) => Promise.resolve(`/api/v1/files/${uid}/content?ticket=t${++n}`))
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+      media: ref_('full', 'media', 'webm'),
+      media_sd: ref_('sd', 'media_sd', 'webm'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    await w.findAll('[data-test="watch-full"]')[0].trigger('click')
+    await flushPromises()
+    // STREAMED through a playback ticket — never downloaded whole into a blob.
+    expect(playbackUrl).toHaveBeenCalledWith('full')
+    expect(renditionObjectUrl).not.toHaveBeenCalledWith('full', expect.anything())
+    // Ticket 1 went to the preview clip; the full video gets its own.
+    expect(w.find('video.dp-video').attributes('src')).toBe('/api/v1/files/full/content?ticket=t2')
+    expect(w.text()).toContain('720p')
+
+    await w.find('[data-test="back-to-preview"]').trigger('click')
+    await flushPromises()
+    expect(w.find('video.dp-video').attributes('src')).toBe('/api/v1/files/clip/content?ticket=t3')
+  })
+
+  it('a lapsed playback ticket is renewed and playback resumes where it was', async () => {
+    let n = 0
+    playbackUrl.mockImplementation((uid: string) => Promise.resolve(`/api/v1/files/${uid}/content?ticket=t${++n}`))
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+      media: ref_('full', 'media', 'webm'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    await w.find('[data-test="watch-full"]').trigger('click')
+    await flushPromises()
+    const el = w.find('video.dp-video').element as HTMLVideoElement
+    Object.defineProperty(el, 'currentTime', { value: 754, writable: true, configurable: true })
+    await w.find('video.dp-video').trigger('error')          // the ticket lapsed mid-viewing
+    await flushPromises()
+    expect(playbackUrl).toHaveBeenCalledTimes(3)          // clip, full, the renewal
+    expect(w.find('video.dp-video').attributes('src')).toBe('/api/v1/files/full/content?ticket=t3')
+    await w.find('video.dp-video').trigger('loadedmetadata')
+    expect(el.currentTime).toBe(754)
+  })
+
+  it('does not loop renewing a ticket for a video that keeps failing', async () => {
+    playbackUrl.mockResolvedValue('/api/v1/files/full/content?ticket=x')
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+      media: ref_('full', 'media', 'webm'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    await w.find('[data-test="watch-full"]').trigger('click')
+    await flushPromises()
+    for (let i = 0; i < 5; i++) {
+      const v = w.find('video.dp-video')
+      if (!v.exists()) break                    // gave up: the message replaced the player
+      await v.trigger('error')
+      await flushPromises()
+    }
+    expect(playbackUrl.mock.calls.length).toBeLessThanOrEqual(3)   // clip, full, ONE renewal
+    expect(w.text()).toContain('could not be played')
+  })
+
+  it('a lapsed ticket on the PREVIEW clip is renewed too', async () => {
+    let n = 0
+    playbackUrl.mockImplementation((uid: string) => Promise.resolve(`/api/v1/files/${uid}/content?ticket=p${++n}`))
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    await w.find('video.dp-video').trigger('error')
+    await flushPromises()
+    expect(w.find('video.dp-video').attributes('src')).toBe('/api/v1/files/clip/content?ticket=p2')
+  })
+
+  it('offers only the sizes that exist', async () => {
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+      media: ref_('full', 'media', 'webm'),          // an SD source: no media_sd
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    const offers = w.findAll('[data-test="watch-full"]')
+    expect(offers).toHaveLength(1)
+    expect(offers[0].text()).toContain('720p')
+  })
+
+  it('offers nothing when no full video has been published', async () => {
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    expect(w.find('[data-test="watch-full"]').exists()).toBe(false)
   })
 
   it('shows a "not yet" message + Generate button when there are no renditions', async () => {

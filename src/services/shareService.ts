@@ -15,8 +15,9 @@
 
 import shareClient from '@/services/shareClient'
 
-/** 0 = download a file, 1 = drop box, 2 = download a folder as a zip. */
-export const ShareKind = { FILE: 0, UPLOAD: 1, FOLDER: 2 } as const
+/** 0 = download a file, 1 = drop box, 2 = download a folder as a zip,
+ *  3 = let someone watch a video or listen to audio (MEDIA_SHARE.md §6.1). */
+export const ShareKind = { FILE: 0, UPLOAD: 1, FOLDER: 2, MEDIA: 3 } as const
 export type ShareKindValue = (typeof ShareKind)[keyof typeof ShareKind]
 
 /**
@@ -47,6 +48,14 @@ export function canWidenLink(status?: ShareStatus): boolean {
   return !status || !DEAD_STATUSES.includes(status)
 }
 
+/**
+ * Who may watch a media link (MEDIA_SHARE.md §5). The difference between these
+ * IS the security posture of the link, so the UI shows all three, never a
+ * collapsed dropdown. Fixed at creation — the database refuses a change.
+ */
+export type AccessMode = 'verified' | 'claimed' | 'open'
+export type MediaState = 'pending_media' | 'ready' | 'failed'
+
 export interface ShareLink {
   link_uid: string
   kind: ShareKindValue
@@ -70,6 +79,17 @@ export interface ShareLink {
   include_subdirs: boolean
   archive_bytes: number | null
   note: string | null
+  access_mode?: AccessMode
+  // Media links only (kind 3).
+  max_viewers?: number
+  allowed_embed_origins?: string[] | null
+  display_name?: string | null
+  media_state?: MediaState | null
+  /** The source version the link currently plays (the newest PUBLISHED one). */
+  media_version?: string | null
+  duration_ms?: number | null
+  output_bytes?: number | null
+  poster_uid?: string | null
   /** Only ever present on the creation response — see `CreatedShareLink`. */
   not_working_reason?: string
   not_working_message?: string
@@ -88,6 +108,9 @@ export interface CreatedShareLink extends ShareLink {
   member_count?: number
   worst_case_egress_bytes?: number | null
   skipped?: string[]
+  /** Media links: the door on the media origin, for embeds (absent when no
+   *  media origin is configured). Carries the secret, like `url`. */
+  media_url?: string
 }
 
 /** One address on the link's allowlist, with how far it has got. */
@@ -137,6 +160,74 @@ export interface CreateShareLinkRequest {
   landing_prefix?: string
   ext_allowlist?: string[]
   note?: string
+  // Media links (kind 3).
+  access_mode?: AccessMode
+  /** The creator typed/ticked that anyone with the URL can watch. Open only. */
+  confirm_public?: boolean
+  /** Ask for the transcode when nothing is published yet (the default). */
+  publish?: boolean
+  max_viewers?: number
+  allowed_embed_origins?: string[]
+  /** The public title. Required for an open link: the file name would publish
+   *  whatever the internal naming convention says. */
+  display_name?: string
+}
+
+/** What this deployment's share links can do (share_service /capabilities). */
+export interface ShareCapabilities {
+  enabled: boolean
+  media: {
+    available: boolean
+    open_mode: boolean
+    playback_tracking: boolean
+    max_bytes: number
+    default_max_bytes: number
+  }
+}
+
+/** One viewer of a media link (MEDIA_SHARE.md §7). */
+export interface AudienceRow {
+  /** Empty for an open link. For `claimed` it was TYPED, never checked. */
+  email: string
+  verified: boolean
+  on_allowlist: boolean
+  first_seen_utc: string
+  last_seen_utc: string
+  sessions: number
+  plays: number
+  bytes_served: number
+  /** Distinct content played — the headline. */
+  coverage_pct: number
+  /** Furthest point reached — secondary: scrubbing to the end is 100% here. */
+  furthest_pct: number
+  completed: boolean
+  completed_utc: string
+  completion_basis: '' | 'beacon+bytes' | 'beacon' | 'bytes-floor'
+  dropoff_seconds: number | null
+  device_class: '' | 'desktop' | 'mobile' | 'tablet'
+  referer_host: string
+  link_uid: string
+  mode: AccessMode
+  /** '0'/'1' per bucket — what a coverage bar draws. */
+  coverage_bits: string
+  /** False = no beacon ever arrived. NOT the same as watching 0%. */
+  has_playback: boolean
+}
+
+export interface LinkAudience {
+  link_uid: string
+  mode: AccessMode
+  tracking: boolean
+  unverified_note: string | null
+  audience: AudienceRow[]
+  totals: {
+    viewers: number
+    completed: number
+    bytes_served: number
+    referers: string[]
+    /** % of viewers still watching at each bucket (open links). */
+    retention: number[]
+  }
 }
 
 /**
@@ -311,6 +402,29 @@ export const shareService = {
    * Returns how many were actually revoked, which is the number worth showing:
    * a second run legitimately reports 0.
    */
+  async capabilities(): Promise<ShareCapabilities> {
+    const { data } = await shareClient.get('/v1/capabilities')
+    return data
+  },
+
+  /** Who watched this media link, and how much (the creator's own links only). */
+  async audience(linkUid: string): Promise<LinkAudience> {
+    const { data } = await shareClient.get(`/v1/links/${linkUid}/audience`)
+    return data
+  },
+
+  /** The same data as the audience sidecar, as a download. */
+  async audienceCsv(linkUid: string): Promise<Blob> {
+    const { data } = await shareClient.get(`/v1/links/${linkUid}/audience.csv`,
+                                           { responseType: 'blob' })
+    return data
+  },
+
+  /** Regenerate the sidecar now rather than at the next debounce. */
+  async flushAudience(linkUid: string): Promise<void> {
+    await shareClient.post(`/v1/links/${linkUid}/audience/flush`)
+  },
+
   async revokeAllFor(creator: string): Promise<number> {
     const { data } = await shareClient.post('/v1/admin/revoke-all', { creator })
     return data.revoked ?? 0

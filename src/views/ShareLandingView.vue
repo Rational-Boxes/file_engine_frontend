@@ -25,10 +25,18 @@
   no auth interceptor at all).
 -->
 <template>
-  <main class="sl">
-    <div class="sl-card">
+  <main class="sl" :class="{ 'sl--media': state === 'media' }">
+    <div class="sl-card" :class="{ 'sl-card--media': state === 'media' }" data-test="landing-card">
+      <!-- ── media: played through the media door, on its own origin ─── -->
+      <MediaLanding
+        v-if="state === 'media' && peek"
+        :link-uid="linkUid"
+        :secret="secret"
+        :media-base="peek.media_base || ''"
+      />
+
       <!-- ── dead link ────────────────────────────────────────────────── -->
-      <template v-if="state === 'gone'">
+      <template v-else-if="state === 'gone'">
         <h1>This link isn't available</h1>
         <!--
           Every failure looks the same from here by design: expired, revoked,
@@ -162,6 +170,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import MediaLanding from '@/components/MediaLanding.vue'
 import {
   sharePublicService, splitToken,
   type SharePeek, type ShareManifestEntry, type ShareSession,
@@ -170,7 +179,7 @@ import {
 const route = useRoute()
 const { linkUid, secret } = splitToken(String(route.params.token ?? ''))
 
-type State = 'loading' | 'gone' | 'identify' | 'code' | 'ready'
+type State = 'loading' | 'gone' | 'identify' | 'code' | 'ready' | 'media'
 const state = ref<State>('loading')
 const peek = ref<SharePeek | null>(null)
 const session = ref<ShareSession | null>(null)
@@ -242,6 +251,11 @@ async function load() {
   }
   // A live recipient token from earlier in this tab skips straight past the
   // challenge — a re-download inside the window should not need a fresh code.
+  if (peek.value.kind === 3) {
+    // A media link: the door takes it from here (MEDIA_SHARE.md §10).
+    state.value = peek.value.media_enabled === false ? 'gone' : 'media'
+    return
+  }
   if (storedToken()) {
     await openSession()
   } else {
@@ -362,6 +376,11 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   background: var(--card);
 }
 .sl-card h1 { font-size: 1.15rem; margin: 0 0 .5rem; }
+/* A media link is a video page, not a form: the card that suits an email-and-
+   code gate made a 720p stream a ~430px postage stamp. It takes the window's
+   width instead; the gate forms inside keep their own narrow measure. */
+.sl--media { align-items: flex-start; }
+.sl-card--media { width: 100%; }
 .sl-lead { font-size: .9rem; color: var(--fg); }
 .sl-sent { font-size: .85rem; }
 .sl-field { display: flex; flex-direction: column; gap: .2rem; margin: .6rem 0; }
