@@ -25,8 +25,8 @@
   no auth interceptor at all).
 -->
 <template>
-  <main class="sl">
-    <div class="sl-card">
+  <main class="sl" :class="{ 'sl--media': state === 'media' }">
+    <div class="sl-card" :class="{ 'sl-card--media': state === 'media' }" data-test="landing-card">
       <!-- ── media: played through the media door, on its own origin ─── -->
       <MediaLanding
         v-if="state === 'media' && peek"
@@ -376,6 +376,11 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   background: var(--card);
 }
 .sl-card h1 { font-size: 1.15rem; margin: 0 0 .5rem; }
+/* A media link is a video page, not a form: the card that suits an email-and-
+   code gate made a 720p stream a ~430px postage stamp. It takes the window's
+   width instead; the gate forms inside keep their own narrow measure. */
+.sl--media { align-items: flex-start; }
+.sl-card--media { width: 100%; }
 .sl-lead { font-size: .9rem; color: var(--fg); }
 .sl-sent { font-size: .85rem; }
 .sl-field { display: flex; flex-direction: column; gap: .2rem; margin: .6rem 0; }

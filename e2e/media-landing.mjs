@@ -134,21 +134,42 @@ async function main() {
                                           display_name: 'Landing E2E', allow_download: true })
     minted.push(claimed.link_uid)
     assert(claimed.ready, 'published')
-    const page = await browser.newPage()
+    // A fixed, wide window: the media page must FILL it (production 2026-10-04 drew
+    // a 720p stream as a ~430px stamp in a form-sized card).
+    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
     const leaks = guard(page)
     await page.goto(APP + claimed.path)
-    await page.waitForSelector('[data-test="claim"]', { timeout: 30000 })
+    await page.waitForSelector('[data-test="claim"]', { timeout: 30000 }).catch(async (e) => {
+      // Say what the page DID show — a bare selector timeout names nothing.
+      const shot = join(tmpdir(), `media-landing-${process.pid}.png`)
+      await page.screenshot({ path: shot, fullPage: true }).catch(() => {})
+      console.error(`  page at failure (${page.url()}), screenshot ${shot}:\n`,
+        (await page.locator('body').innerText().catch(() => '')).slice(0, 600))
+      throw e
+    })
     assert(await page.locator('h1', { hasText: 'Landing E2E' }).count() === 1, 'the creator’s title, not the file name')
     assert(await page.locator('[data-test="player"]').count() === 0, 'no player before the gate')
     const before = await json(await fetch(`${SHARE}/share/v1/links/${claimed.link_uid}/audience`, { headers: H() }))
     assert(before.audience.length === 0, 'opening the page is not a view')
     assert(/sender can see whether and how much/.test(await page.textContent('[data-test="claim"]')),
       'the consent wording is shown')
+    const gateW = await page.evaluate(() => document.querySelector('[data-test="claim"]').getBoundingClientRect().width)
+    assert(gateW <= 481, `the email gate keeps a form's measure (${Math.round(gateW)}px)`)
     await page.fill('[data-test="claim"] input[type="email"]', 'landing-viewer@example.com')
     await page.check('[data-test="consent"]')
     await page.click('[data-test="claim"] button')
     const reached = await plays(page, 4)
     assert(reached >= 4, `the video played in the page (${reached.toFixed(1)} s)`)
+    const box = await page.evaluate(() => {
+      const v = document.querySelector('[data-test="media"]')
+      const r = v.getBoundingClientRect()
+      // The picture actually drawn: the element letterboxes when height binds.
+      const drawn = Math.min(r.width, r.height * (v.videoWidth / v.videoHeight))
+      return { w: r.width, h: r.height, drawn, bottom: r.bottom, vh: innerHeight }
+    })
+    assert(box.w >= 1500, `the player spans the page (${Math.round(box.w)}px of 1600)`)
+    assert(box.drawn >= 1400, `and the picture fills it, not a stamp (${Math.round(box.drawn)}px drawn)`)
+    assert(box.bottom <= box.vh, `without running off the bottom of the window (${Math.round(box.bottom)} <= ${box.vh})`)
     await sleep(1500)                                       // the pause beacon
     const aud = await json(await fetch(`${SHARE}/share/v1/links/${claimed.link_uid}/audience`, { headers: H() }))
     const row = aud.audience[0]

@@ -174,7 +174,10 @@ defineExpose({ el, current })
 
 <style scoped>
 .mp { display: flex; flex-direction: column; gap: .4rem; }
-.mp-media { width: 100%; max-height: 70vh; background: #000; border-radius: .3rem; }
+/* Fills the page's width at any rendition — 720p and 480p draw the same size —
+   and never taller than the window less the title and the quality bar, so the
+   controls stay on screen. Letterboxed (black) when the height is what binds. */
+.mp-media { width: 100%; max-height: calc(100vh - 11rem); background: #000; border-radius: .3rem; }
 audio.mp-media { background: transparent; }
 .mp-bar { display: flex; gap: .8rem; justify-content: flex-end; font-size: .8rem; }
 .mp-q { display: flex; gap: .3rem; align-items: center; }

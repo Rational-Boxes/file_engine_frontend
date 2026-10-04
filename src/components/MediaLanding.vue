@@ -226,14 +226,18 @@ onBeforeUnmount(() => { if (poll) clearTimeout(poll) })
 .ml { display: flex; flex-direction: column; gap: .7rem; }
 .ml h1 { margin: 0; font-size: 1.3rem; }
 .ml-lead { margin: 0; }
-.ml-poster { position: relative; }
-.ml-poster img { width: 100%; border-radius: .3rem; display: block; }
+/* The poster stays at its own size, centred (the card is page-wide for media);
+   only the playing video stretches to fill. It still shrinks on a narrow screen. */
+.ml-poster { position: relative; align-self: center; max-width: 100%; }
+.ml-poster img { max-width: 100%; height: auto; border-radius: .3rem; display: block; }
 .ml-play {
   position: absolute; inset: 0; margin: auto; width: 4rem; height: 4rem;
   border-radius: 50%; border: 0; font-size: 1.6rem; cursor: pointer;
   background: rgba(0, 0, 0, .6); color: #fff;
 }
-.ml-gate { display: flex; flex-direction: column; gap: .5rem; }
+/* The card is page-wide for media; a form that wide is a row of long thin
+   boxes, so the gate keeps the measure the card used to have. */
+.ml-gate { display: flex; flex-direction: column; gap: .5rem; max-width: 30rem; }
 .ml-field { display: flex; flex-direction: column; gap: .2rem; }
 .ml-check { display: flex; gap: .4rem; align-items: flex-start; font-size: .85rem; }
 .ml-btn {
