@@ -267,6 +267,11 @@ export const useAuthStore = defineStore('auth', {
       this.applyIdentity(await this.whoamiHere())
       await this.loadTenants()
       this.scheduleRefresh()
+      // What the deployment offers is asked once per page, and the first ask may
+      // have been made signed out — csai answers that with 401, and media (the one
+      // capability that starts OFF) then stayed hidden for the whole session.
+      // Not awaited: a slow probe must not hold up the sign-in.
+      void import('@/composables/useCapabilities').then((m) => m.refreshCapabilities())
     },
 
     // Returns true when a full session is established, false on error. When the

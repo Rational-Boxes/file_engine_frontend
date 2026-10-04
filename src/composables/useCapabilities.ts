@@ -71,13 +71,25 @@ function absentProbed(): string[] {
   return names.filter((n) => flags[n] === false)
 }
 
+function csaiPending(): boolean {
+  return capabilitiesService.csaiUnknown?.() === true
+}
+
 function scheduleRecheck() {
   // Optional on the service so every test that mocks it with load/reset alone
   // keeps working; a service without it simply never re-checks.
   if (recheckTimer || typeof capabilitiesService.recheck !== 'function') return
-  if (!absentProbed().length) return
+  if (!absentProbed().length && !csaiPending()) return
   recheckTimer = setTimeout(async () => {
     recheckTimer = null
+    if (csaiPending() && typeof capabilitiesService.recheckCsai === 'function') {
+      try {
+        const c = await capabilitiesService.recheckCsai()
+        if (c) applyCsai(c)
+      } catch {
+        // still unknown; asked again on the next tick
+      }
+    }
     try {
       const got = await capabilitiesService.recheck(absentProbed())
       const flags = state as unknown as Record<string, boolean>
@@ -90,6 +102,18 @@ function scheduleRecheck() {
     recheckDelay = Math.min(recheckDelay * 2, RECHECK_MAX_MS)
     scheduleRecheck()
   }, recheckDelay)
+}
+
+// csai's sections only — what a late csai answer can settle.
+function applyCsai(c: Partial<DeploymentCapabilities>) {
+  if (c.editing) {
+    state.editing = c.editing.available
+    state.editingExtensions = c.editing.extensions || []
+  }
+  if (c.chat) state.chat = c.chat.available
+  if (c.webSearch) state.webSearch = c.webSearch.available
+  if (c.search) state.search = c.search.available
+  if (c.media) state.media = c.media.available === true
 }
 
 function apply(c: DeploymentCapabilities) {
@@ -125,6 +149,23 @@ export function useCapabilities() {
      *  rather wait than flicker. */
     ready: computed(() => state.loaded),
   }
+}
+
+/** Re-detect from scratch, as a page reload would. Called when a session is
+ *  established: the first detection may have run signed out (or on an expired
+ *  token) and been answered 401, which must not outlive the sign-in. */
+export async function refreshCapabilities(): Promise<void> {
+  if (recheckTimer) clearTimeout(recheckTimer)
+  recheckTimer = null
+  recheckDelay = RECHECK_FIRST_MS
+  started = true
+  capabilitiesService.reset()
+  try {
+    apply(await capabilitiesService.load())
+  } catch {
+    state.loaded = true
+  }
+  scheduleRecheck()
 }
 
 /** Test seam. */

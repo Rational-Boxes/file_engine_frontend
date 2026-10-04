@@ -147,6 +147,13 @@ async function probe(base: string, path: string): Promise<boolean> {
 
 let cached: Promise<DeploymentCapabilities> | null = null
 
+// Whether csai's own answer is MISSING (401, timeout, network) rather than a
+// "no". Production 2026-10-04: a page opened with an expired token got 401 here,
+// signed in without reloading, and kept that failure for the session — every
+// optimistic flag hid it, but media starts OFF, so the media share never
+// appeared. Unknown is re-asked (recheckCsai); a real "no" from csai is not.
+let csaiUnknown = false
+
 async function fetchCsaiCapabilities(): Promise<Partial<DeploymentCapabilities>> {
   const { data } = await csaiClient.get('/v1/capabilities')
   const ed = data?.editing ?? {}
@@ -172,7 +179,8 @@ async function detect(): Promise<DeploymentCapabilities> {
   // Everything at once and nothing allowed to fail the set: one absent service
   // must not stop the others being detected.
   const [csai, ...probes] = await Promise.all([
-    fetchCsaiCapabilities().catch(() => ({}) as Partial<DeploymentCapabilities>),
+    fetchCsaiCapabilities().then((c) => { csaiUnknown = false; return c })
+      .catch(() => { csaiUnknown = true; return {} as Partial<DeploymentCapabilities> }),
     ...names.map((n) => probe(PROBES[n].base, PROBES[n].path)),
   ])
   const detected: Record<string, FeatureCapability> = {}
@@ -207,7 +215,29 @@ async function recheck(names: string[]): Promise<Record<string, boolean>> {
   return out
 }
 
+/** Ask csai again after its answer was missing. Folded into the shared answer on
+ *  success, so later load() callers see it; null while it is still unanswered. */
+async function recheckCsai(): Promise<Partial<DeploymentCapabilities> | null> {
+  let got: Partial<DeploymentCapabilities>
+  try {
+    got = await fetchCsaiCapabilities()
+  } catch {
+    return null
+  }
+  csaiUnknown = false
+  if (cached) {
+    const prev = await cached.catch(() => ASSUME_AVAILABLE)
+    cached = Promise.resolve({ ...prev, ...got } as DeploymentCapabilities)
+  }
+  return got
+}
+
 export const capabilitiesService = {
+  /** True while csai's own capability answer has not been received. */
+  csaiUnknown(): boolean {
+    return csaiUnknown
+  },
+  recheckCsai,
   /** The services detected by probing — the only ones a re-check revisits. */
   recheckable(): string[] {
     return Object.keys(PROBES)
@@ -227,5 +257,6 @@ export const capabilitiesService = {
    *  live session. */
   reset() {
     cached = null
+    csaiUnknown = false
   },
 }

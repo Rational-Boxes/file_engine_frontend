@@ -113,6 +113,41 @@ describe('capabilitiesService', () => {
 })
 
 
+describe('capabilitiesService — a csai answer that never arrived', () => {
+  // Production 2026-10-04: the page opened on an expired token, csai answered 401,
+  // the user signed in without reloading, and the media share never appeared —
+  // media is the one capability that starts OFF, so the failure was visible only there.
+  beforeEach(() => {
+    capabilitiesService.reset()
+    vi.clearAllMocks()
+    axiosGet.mockResolvedValue(present)
+  })
+
+  it('marks a failed csai answer as unknown, not as "no"', async () => {
+    get.mockRejectedValue(Object.assign(new Error('401'), { response: { status: 401 } }))
+    expect((await capabilitiesService.load()).media.available).toBe(false)
+    expect(capabilitiesService.csaiUnknown()).toBe(true)
+  })
+
+  it('asks csai again, and folds the answer into the shared one', async () => {
+    get.mockRejectedValueOnce(new Error('401'))
+    await capabilitiesService.load()
+    get.mockResolvedValue(reply({ available: true, reason: '', extensions: [] },
+      { media: { publish: true, reason: '' } }))
+    const got = await capabilitiesService.recheckCsai()
+    expect(got?.media?.available).toBe(true)
+    expect(capabilitiesService.csaiUnknown()).toBe(false)
+    expect((await capabilitiesService.load()).media.available).toBe(true)
+  })
+
+  it('a real "no" from csai is an answer, not unknown', async () => {
+    get.mockResolvedValue(reply({ available: true, reason: '', extensions: [] },
+      { media: { publish: false, reason: 'no media worker is running' } }))
+    await capabilitiesService.load()
+    expect(capabilitiesService.csaiUnknown()).toBe(false)
+  })
+})
+
 describe('capabilitiesService — detecting optional services', () => {
   beforeEach(() => {
     vi.clearAllMocks()
