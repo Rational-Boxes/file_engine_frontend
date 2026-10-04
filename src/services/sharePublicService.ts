@@ -37,7 +37,10 @@ const publicClient = axios.create({
 })
 
 export interface SharePeek {
-  kind: 0 | 1 | 2
+  /** 3 = a media link: played through the media door, at `media_base`. */
+  kind: 0 | 1 | 2 | 3
+  media_base?: string
+  media_enabled?: boolean
   expires_at: string
   uses_remaining: number | null
   verification_required: boolean

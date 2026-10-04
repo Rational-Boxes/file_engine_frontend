@@ -88,6 +88,15 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/folder-actions/, ''),
       },
+      // DEV ONLY: the media door (MEDIA_SHARE.md §6.5) on the SPA's origin, for a
+      // dev stack with no <tenant>-media host. In production it is ALWAYS its own
+      // origin — the one place that answers with a real media type must not
+      // share an origin with anything holding a credential — and the landing
+      // page uses the media_base the service reports.
+      '/media/v1': {
+        target: 'http://localhost:8101',
+        changeOrigin: true,
+      },
       '/share': {
         target: 'http://localhost:8101', // share_service (outside share links)
         changeOrigin: true,

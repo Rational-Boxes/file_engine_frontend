@@ -27,8 +27,16 @@
 <template>
   <main class="sl">
     <div class="sl-card">
+      <!-- ── media: played through the media door, on its own origin ─── -->
+      <MediaLanding
+        v-if="state === 'media' && peek"
+        :link-uid="linkUid"
+        :secret="secret"
+        :media-base="peek.media_base || ''"
+      />
+
       <!-- ── dead link ────────────────────────────────────────────────── -->
-      <template v-if="state === 'gone'">
+      <template v-else-if="state === 'gone'">
         <h1>This link isn't available</h1>
         <!--
           Every failure looks the same from here by design: expired, revoked,
@@ -162,6 +170,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import MediaLanding from '@/components/MediaLanding.vue'
 import {
   sharePublicService, splitToken,
   type SharePeek, type ShareManifestEntry, type ShareSession,
@@ -170,7 +179,7 @@ import {
 const route = useRoute()
 const { linkUid, secret } = splitToken(String(route.params.token ?? ''))
 
-type State = 'loading' | 'gone' | 'identify' | 'code' | 'ready'
+type State = 'loading' | 'gone' | 'identify' | 'code' | 'ready' | 'media'
 const state = ref<State>('loading')
 const peek = ref<SharePeek | null>(null)
 const session = ref<ShareSession | null>(null)
@@ -242,6 +251,11 @@ async function load() {
   }
   // A live recipient token from earlier in this tab skips straight past the
   // challenge — a re-download inside the window should not need a fresh code.
+  if (peek.value.kind === 3) {
+    // A media link: the door takes it from here (MEDIA_SHARE.md §10).
+    state.value = peek.value.media_enabled === false ? 'gone' : 'media'
+    return
+  }
   if (storedToken()) {
     await openSession()
   } else {

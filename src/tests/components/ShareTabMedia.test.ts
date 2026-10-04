@@ -182,6 +182,13 @@ describe('ShareTab — media', () => {
     expect(html).toContain('src="https://acme-media.example.com/media/v1/L1/poster?k=sec"')
     expect(html).toContain('href="https://acme.example.com/s/L1.sec"')
     expect(html).toMatch(/alt="▶ Watch: Intro"/)
+    // Email clients: no external CSS (only an inline style), and with images
+    // blocked the alt text and a VISIBLE text link still carry it (§9.4).
+    expect(html).not.toMatch(/<link|<style|class=/i)
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    doc.querySelectorAll('img').forEach((i) => i.remove())          // images blocked
+    expect(doc.body.textContent).toMatch(/Watch “Intro”/)
+    expect([...doc.querySelectorAll('a')].some((a) => a.textContent?.trim() && a.getAttribute('href'))).toBe(true)
     expect(w.find('[data-test="created-preparing"]').exists()).toBe(true)
     // The message for a claimed link does not promise a code that never comes.
     const msg = (w.findAll('.share-msg textarea')[0].element as HTMLTextAreaElement).value
