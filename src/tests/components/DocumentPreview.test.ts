@@ -491,6 +491,73 @@ describe('DocumentPreview', () => {
     expect(video.attributes('poster')).toBe('blob:pf')
   })
 
+  // ── full-length media (MEDIA_SHARE.md §10, 2026-10-03) ─────────────────────
+  //
+  // The default stays the 10-second silent preview: a quick idea of the video
+  // without distracting sound. Where a published 720p / 480p rendition exists the
+  // player OFFERS it — it never switches to it, and never fetches it, by itself.
+
+  it('keeps the silent preview as the default even when a full video exists', async () => {
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+      media: ref_('full', 'media', 'webm'),
+      media_sd: ref_('sd', 'media_sd', 'webm'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    expect(w.find('video.dp-video').attributes('src')).toBe('blob:clip')
+    expect(renditionObjectUrl).not.toHaveBeenCalledWith('full', expect.anything())
+    expect(renditionObjectUrl).not.toHaveBeenCalledWith('sd', expect.anything())
+    const offers = w.findAll('[data-test="watch-full"]').map((b) => b.text())
+    expect(offers).toEqual([expect.stringContaining('720p'), expect.stringContaining('480p')])
+  })
+
+  it('plays the chosen full video, frees the clip, and offers the way back', async () => {
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+      media: ref_('full', 'media', 'webm'),
+      media_sd: ref_('sd', 'media_sd', 'webm'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    await w.findAll('[data-test="watch-full"]')[0].trigger('click')
+    await flushPromises()
+    expect(renditionObjectUrl).toHaveBeenCalledWith('full', 'video/webm')
+    expect(w.find('video.dp-video').attributes('src')).toBe('blob:full')
+    expect(revokeRenditionUrl).toHaveBeenCalledWith('blob:clip')
+    expect(w.text()).toContain('720p')
+
+    await w.find('[data-test="back-to-preview"]').trigger('click')
+    await flushPromises()
+    expect(w.find('video.dp-video').attributes('src')).toBe('blob:clip')
+    expect(revokeRenditionUrl).toHaveBeenCalledWith('blob:full')
+  })
+
+  it('offers only the sizes that exist', async () => {
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+      media: ref_('full', 'media', 'webm'),          // an SD source: no media_sd
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    const offers = w.findAll('[data-test="watch-full"]')
+    expect(offers).toHaveLength(1)
+    expect(offers[0].text()).toContain('720p')
+  })
+
+  it('offers nothing when no full video has been published', async () => {
+    loadRenditionSet.mockResolvedValue({
+      poster: ref_('pf', 'poster', 'png'),
+      preview: ref_('clip', 'preview', 'webm'),
+    })
+    const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'intro.mp4', fullWidth: true } })
+    await flushPromises()
+    expect(w.find('[data-test="watch-full"]').exists()).toBe(false)
+  })
+
   it('shows a "not yet" message + Generate button when there are no renditions', async () => {
     loadRenditionSet.mockResolvedValue({})
     const w = mount(DocumentPreview, { props: { uid: 'f1', name: 'todo.txt', hasRenditions: false } })

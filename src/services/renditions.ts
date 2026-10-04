@@ -35,9 +35,19 @@ import { fileService, type FileItem } from '@/services/fileService'
 //              one-per-fmt RenditionSet (toRenditionSet keeps only the latest). It is
 //              deliberately NOT in convert_search_ai's _KNOWN_FMTS, so the conversion
 //              pipeline's version-pruner leaves markups alone across re-conversions.
-export type RenditionFmt = 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model' | 'metamodel' | 'chatlog' | 'markup'
+//   media / media_sd / audio / audio_opus / emailposter — publish-grade media
+//              (MEDIA_SHARE.md §4.1), produced on request to publish, never on
+//              ingest. Must match convert_search_ai's _KNOWN_FMTS: a fmt this
+//              list does not know is invisible here. No fmt ever contains '-'
+//              (names split on the LAST one), hence media_sd, not media-sd.
+export type RenditionFmt =
+  | 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model' | 'metamodel' | 'chatlog' | 'markup'
+  | 'media' | 'media_sd' | 'audio' | 'audio_opus' | 'emailposter'
 
-const KNOWN: readonly RenditionFmt[] = ['thumbnail', 'preview', 'pdf', 'poster', 'model', 'metamodel', 'chatlog', 'markup']
+const KNOWN: readonly RenditionFmt[] = [
+  'thumbnail', 'preview', 'pdf', 'poster', 'model', 'metamodel', 'chatlog', 'markup',
+  'media', 'media_sd', 'audio', 'audio_opus', 'emailposter',
+]
 
 export interface RenditionRef {
   uid: string

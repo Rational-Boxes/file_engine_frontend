@@ -160,6 +160,33 @@
           autoplay
         ></video>
         <div class="dp-actions">
+          <!-- Full-length copies, where published: offered, never switched to.
+               The 10-second silent preview stays the default (MEDIA_SHARE.md §10). -->
+          <template v-if="fullVideos.length">
+            <span v-if="playing !== 'preview'" class="dp-muted">
+              Full video · {{ playingLabel }}
+            </span>
+            <button
+              v-for="v in fullVideos"
+              v-show="playing !== v.key"
+              :key="v.key"
+              class="link"
+              data-test="watch-full"
+              :disabled="opening"
+              @click="watchFull(v.key)"
+            >
+              ▶ {{ playing === 'preview' ? 'Watch full video' : 'Switch to' }} · {{ v.label }}
+            </button>
+            <button
+              v-if="playing !== 'preview'"
+              class="link"
+              data-test="back-to-preview"
+              :disabled="opening"
+              @click="backToPreview"
+            >
+              ↺ Back to 10-second preview
+            </button>
+          </template>
           <button class="link" @click="downloadOriginal">⬇ Download original</button>
           <button v-if="showLocation" class="link" @click="openLocation">📂 Open file location</button>
         </div>
@@ -509,6 +536,48 @@ const isNativePdf = computed(() => (props.name || '').toLowerCase().endsWith('.p
 const canOpenPdf = computed(() => !!set.value.pdf || isNativePdf.value)
 // Videos expose a web-optimized `preview` MP4 clip (the `poster` is the still).
 const videoRef = computed(() => (isVideoRef(set.value.preview) ? set.value.preview : undefined))
+
+// Full-length published copies (MEDIA_SHARE.md §10), where they exist. OFFERED,
+// never defaulted: the 10-second silent preview stays what plays first — a quick
+// idea of the video without distracting sound — and a full copy is fetched only
+// when someone asks for it.
+type FullKey = 'media' | 'media_sd'
+const fullVideos = computed(() =>
+  ([['media', '720p'], ['media_sd', '480p']] as const)
+    .map(([key, label]) => ({ key: key as FullKey, label, ref: set.value[key] }))
+    .filter((v) => isVideoRef(v.ref)),
+)
+const playing = ref<'preview' | FullKey>('preview')
+const playingLabel = computed(() =>
+  fullVideos.value.find((v) => v.key === playing.value)?.label ?? '',
+)
+
+// Swap what the inline player shows. The previous object URL is released first:
+// a full video is tens of megabytes, and two held at once is a leak, not a cache.
+async function watchFull(key: FullKey) {
+  const target = fullVideos.value.find((v) => v.key === key)?.ref
+  if (!target || (playing.value === key && videoUrl.value)) return
+  opening.value = true
+  error.value = ''
+  try {
+    const url = await renditionObjectUrl(target.uid, VIDEO_MIME[target.ext.toLowerCase()] || 'video/webm')
+    if (videoUrl.value) revokeRenditionUrl(videoUrl.value)
+    videoUrl.value = url
+    playing.value = key
+  } catch (e) {
+    error.value = errorMessage(e, 'Failed to open the full video')
+  } finally {
+    opening.value = false
+  }
+}
+
+async function backToPreview() {
+  if (playing.value === 'preview') return
+  if (videoUrl.value) revokeRenditionUrl(videoUrl.value)
+  videoUrl.value = ''
+  playing.value = 'preview'
+  await openMedia()
+}
 
 // What clicking the still opens: an inline PDF, an inline video, or nothing.
 const mediaKind = computed<'pdf' | 'video' | null>(() =>
