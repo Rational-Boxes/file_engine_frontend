@@ -349,6 +349,22 @@ export const fileService = {
     return `${API_BASE}/v1/files/${uid}/content?${q.toString()}`
   },
 
+  /**
+   * A URL a <video>/<audio> element can stream from, Range requests and all.
+   *
+   * Like `downloadUrl` the credential has to travel in the URL — a media element
+   * cannot set an Authorization header — but a player keeps fetching for the
+   * whole viewing, so this asks for a PLAYBACK ticket: the same one-file scope,
+   * refused as a session, revoked with the session, but valid for up to 30
+   * minutes rather than seconds. A viewing that outlasts it asks again.
+   */
+  async playbackUrl(uid: string): Promise<string> {
+    const { data } = await apiClient.post<{ ticket: string }>(
+      `/v1/files/${uid}/playback-ticket`)
+    const q = new URLSearchParams({ ticket: data.ticket })
+    return `${API_BASE}/v1/files/${uid}/content?${q.toString()}`
+  },
+
   // --- versions ---
   async listVersions(uid: string): Promise<string[]> {
     const { data } = await apiClient.get<{ versions: string[] }>(`/v1/files/${uid}/versions`)

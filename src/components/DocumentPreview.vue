@@ -153,6 +153,8 @@
       <div v-else-if="videoUrl" class="dp-pdf">
         <video
           :src="videoUrl"
+          @error="onVideoError"
+          @loadedmetadata="onVideoMetadata"
           :poster="previewUrl || undefined"
           class="dp-frame dp-video"
           :class="{ 'dp-frame-full': fullWidth }"
@@ -438,12 +440,8 @@ const { features } = useCapabilities()
 
 // VIDEO_EXTS now lives beside the rendition helpers, so the rule that decides a
 // row has a video preview and the player that renders it share one list.
-const VIDEO_MIME: Record<string, string> = {
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  ogg: 'video/ogg',
-  mov: 'video/mp4',
-}
+// Video is streamed through a playback ticket, so its type is the bridge's to
+// declare (from an allowlist, at mint) rather than ours to stamp on a blob.
 
 const set = ref<RenditionSet>({})
 const previewUrl = ref('') // object URL for the still preview/poster image
@@ -552,18 +550,19 @@ const playingLabel = computed(() =>
   fullVideos.value.find((v) => v.key === playing.value)?.label ?? '',
 )
 
-// Swap what the inline player shows. The previous object URL is released first:
-// a full video is tens of megabytes, and two held at once is a leak, not a cache.
+// A full video is STREAMED through a playback ticket — as the 10-second clip is
+// too: it starts at once, seeks by Range, and never sits in this tab's memory.
 async function watchFull(key: FullKey) {
   const target = fullVideos.value.find((v) => v.key === key)?.ref
   if (!target || (playing.value === key && videoUrl.value)) return
   opening.value = true
   error.value = ''
   try {
-    const url = await renditionObjectUrl(target.uid, VIDEO_MIME[target.ext.toLowerCase()] || 'video/webm')
+    const url = await fileService.playbackUrl(target.uid)
     if (videoUrl.value) revokeRenditionUrl(videoUrl.value)
     videoUrl.value = url
     playing.value = key
+    lastRenewal = 0
   } catch (e) {
     error.value = errorMessage(e, 'Failed to open the full video')
   } finally {
@@ -571,9 +570,44 @@ async function watchFull(key: FullKey) {
   }
 }
 
+// A playback ticket lives at most 30 minutes; a viewing that outlasts it gets a
+// failed Range request. Renew once and resume where the viewer was. A second
+// failure within a minute is not a lapsed ticket — it is a video that will not
+// play — so it stops with a message rather than looping on the server.
+const RENEW_WINDOW_MS = 60_000
+let lastRenewal = 0
+let resumeAt: number | null = null
+async function onVideoError(e: Event) {
+  const target = playing.value === 'preview'
+    ? videoRef.value
+    : fullVideos.value.find((v) => v.key === playing.value)?.ref
+  if (!target || !videoUrl.value) return
+  const now = Date.now()
+  if (lastRenewal && now - lastRenewal < RENEW_WINDOW_MS) {
+    error.value = playing.value === 'preview'
+      ? 'The video preview could not be played.'
+      : 'The full video could not be played.'
+    return
+  }
+  lastRenewal = now
+  resumeAt = (e.target as HTMLVideoElement | null)?.currentTime || 0
+  try {
+    videoUrl.value = await fileService.playbackUrl(target.uid)
+  } catch (err) {
+    error.value = errorMessage(err, 'The full video could not be played.')
+  }
+}
+function onVideoMetadata(e: Event) {
+  if (resumeAt !== null) {
+    const el = e.target as HTMLVideoElement
+    el.currentTime = resumeAt
+    resumeAt = null
+  }
+}
+
 async function backToPreview() {
   if (playing.value === 'preview') return
-  if (videoUrl.value) revokeRenditionUrl(videoUrl.value)
+  if (videoUrl.value) revokeRenditionUrl(videoUrl.value)   // a no-op for a ticket URL
   videoUrl.value = ''
   playing.value = 'preview'
   await openMedia()
@@ -769,7 +803,10 @@ async function openMedia() {
     opening.value = true
     error.value = ''
     try {
-      videoUrl.value = await renditionObjectUrl(ref_.uid, VIDEO_MIME[ref_.ext.toLowerCase()] || 'video/mp4')
+      // Streamed through a playback ticket like the full video — never downloaded
+      // whole into a blob first. It starts sooner and holds nothing in memory.
+      videoUrl.value = await fileService.playbackUrl(ref_.uid)
+      lastRenewal = 0
     } catch (e) {
       error.value = errorMessage(e, 'Failed to open video')
     } finally {
