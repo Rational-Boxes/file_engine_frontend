@@ -77,19 +77,23 @@ describe('MediaLanding', () => {
     }
   })
 
-  it('claimed: asks for an address and the consent, and records which wording', async () => {
+  it('claimed: asks for an address, states the consent above Watch, and records which wording', async () => {
     replies.peek = respond(200, { ...PEEK, mode: 'claimed', requires: 'email' })
     const w = await mountIt()
     expect(w.find('[data-test="play"]').exists()).toBe(false)
     const form = w.get('[data-test="claim"]')
-    expect(form.text()).toMatch(/sender can see whether and how much of this you watch/)
+    // A notice, not a box: a pre-ticked checkbox is not consent, and an unticked
+    // one was an extra click the owner did not want. The click on Watch is it.
+    expect(form.get('[data-test="consent"]').text())
+      .toMatch(/^By clicking Watch, you agree that the sender can see whether and how much of this you watch\.$/)
+    expect(form.find('input[type="checkbox"]').exists()).toBe(false)
+    expect(form.get('button').attributes('disabled')).toBeDefined()     // an address first
     await form.get('input[type="email"]').setValue('viewer@example.com')
-    expect(form.get('button').attributes('disabled')).toBeDefined()     // consent first
-    await form.get('[data-test="consent"]').setValue(true)
+    expect(form.get('button').attributes('disabled')).toBeUndefined()   // and nothing else
     await form.trigger('submit')
     await flushPromises()
     const body = JSON.parse(String(calls[1].init?.body))
-    expect(body).toEqual({ email: 'viewer@example.com', consent: true, consent_text_id: 'media-v1' })
+    expect(body).toEqual({ email: 'viewer@example.com', consent: true, consent_text_id: 'media-v2' })
     expect(w.find('[data-test="player"]').exists()).toBe(true)
   })
 

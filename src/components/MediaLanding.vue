@@ -71,11 +71,10 @@
           <span>Your email address</span>
           <input v-model="email" type="email" required autocomplete="email" />
         </label>
-        <label class="ml-check">
-          <input v-model="consent" type="checkbox" required data-test="consent" />
-          <span>{{ consentText }}</span>
-        </label>
-        <button class="ml-btn primary" :disabled="busy || !email || !consent">
+        <!-- The consent is the click, made with this line in view: a notice, not
+             a pre-ticked box (which is not consent). media-v2 records it. -->
+        <p class="ml-small ml-consent" data-test="consent">{{ claimNotice }}</p>
+        <button class="ml-btn primary" :disabled="busy || !email">
           {{ busy ? 'Opening…' : `Watch` }}
         </button>
       </form>
@@ -136,7 +135,9 @@ import {
 const props = defineProps<{ linkUid: string; secret: string; mediaBase: string }>()
 
 /** The wording a viewer saw is recorded with their address (§7.3). */
-const CONSENT_ID = 'media-v1'
+// Which wording the viewer agreed to, recorded with their address (MEDIA_SHARE.md
+// §7.3). v1 was a checkbox beside consentText; v2 is the notice above Watch.
+const CONSENT_ID = 'media-v2'
 
 const door = mediaDoor(props.mediaBase, props.linkUid, props.secret)
 const state = ref<'loading' | 'gone' | 'popular' | 'preparing' | 'ready'>('loading')
@@ -144,7 +145,6 @@ const peek = ref<MediaPeek | null>(null)
 const session = ref<MediaSession | null>(null)
 const email = ref('')
 const code = ref('')
-const consent = ref(false)
 const codeSent = ref(false)
 const codeError = ref('')
 const error = ref('')
@@ -159,6 +159,10 @@ const posterQuery = computed(() => `?k=${encodeURIComponent(props.secret)}`)
 const consentText = computed(() => (peek.value?.tracking
   ? `The sender can see whether and how much of this you ${peek.value?.kind === 'audio' ? 'listen to' : 'watch'}.`
   : `Your address is shared with the sender.`))
+const claimNotice = computed(() => (peek.value?.tracking
+  ? `By clicking Watch, you agree that the sender can see whether and how much of this you ${
+    peek.value?.kind === 'audio' ? 'listen to' : 'watch'}.`
+  : 'By clicking Watch, you agree that your address is shared with the sender.'))
 const absSources = computed(() => (session.value?.sources ?? []).map((s) => ({ ...s, url: door.abs(s.url) })))
 
 async function load() {
@@ -237,9 +241,12 @@ onBeforeUnmount(() => { if (poll) clearTimeout(poll) })
 }
 /* The card is page-wide for media; a form that wide is a row of long thin
    boxes, so the gate keeps the measure the card used to have. */
-.ml-gate { display: flex; flex-direction: column; gap: .5rem; max-width: 30rem; }
+.ml-gate {
+  display: flex; flex-direction: column; gap: .5rem;
+  width: 100%; max-width: 30rem; align-self: center;
+}
 .ml-field { display: flex; flex-direction: column; gap: .2rem; }
-.ml-check { display: flex; gap: .4rem; align-items: flex-start; font-size: .85rem; }
+.ml-consent { margin: 0; }
 .ml-btn {
   padding: .4rem .8rem; border: 1px solid var(--border); border-radius: 6px;
   background: var(--card); color: var(--fg); cursor: pointer; text-decoration: none;

@@ -151,12 +151,20 @@ async function main() {
     assert(await page.locator('[data-test="player"]').count() === 0, 'no player before the gate')
     const before = await json(await fetch(`${SHARE}/share/v1/links/${claimed.link_uid}/audience`, { headers: H() }))
     assert(before.audience.length === 0, 'opening the page is not a view')
-    assert(/sender can see whether and how much/.test(await page.textContent('[data-test="claim"]')),
-      'the consent wording is shown')
+    assert(/^By clicking Watch, you agree that the sender can see whether and how much/
+      .test((await page.textContent('[data-test="consent"]')).trim()),
+      'the consent wording is shown above Watch')
+    assert(await page.locator('[data-test="claim"] input[type="checkbox"]').count() === 0,
+      'no checkbox to tick — the click on Watch is the consent')
+    const gate = await page.evaluate(() => {
+      const f = document.querySelector('[data-test="claim"]').getBoundingClientRect()
+      return { left: f.left, right: innerWidth - f.right }
+    })
+    assert(Math.abs(gate.left - gate.right) <= 2,
+      `the email gate is centred (${Math.round(gate.left)}px | ${Math.round(gate.right)}px)`)
     const gateW = await page.evaluate(() => document.querySelector('[data-test="claim"]').getBoundingClientRect().width)
     assert(gateW <= 481, `the email gate keeps a form's measure (${Math.round(gateW)}px)`)
     await page.fill('[data-test="claim"] input[type="email"]', 'landing-viewer@example.com')
-    await page.check('[data-test="consent"]')
     await page.click('[data-test="claim"] button')
     const reached = await plays(page, 4)
     assert(reached >= 4, `the video played in the page (${reached.toFixed(1)} s)`)
