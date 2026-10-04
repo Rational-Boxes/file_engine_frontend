@@ -110,6 +110,23 @@
         <textarea :value="emailHtml" readonly rows="5" @focus="selectAll" />
         <button class="share-btn" @click="copy(emailHtml)">Copy email HTML</button>
       </details>
+      <!-- Embeds (§9): the Web Component, a plain iframe, and the oEmbed URL —
+           offered only where the link lists sites that may embed it (§9.3);
+           otherwise framing is refused, so a snippet would only fail. -->
+      <details v-if="created.kind === ShareKind.MEDIA && embed" class="share-msg" data-test="embed-snippets">
+        <summary>Embed on a website</summary>
+        <small class="muted">Web component (one script, one tag):</small>
+        <textarea :value="embed.component" readonly rows="3" @focus="selectAll" />
+        <button class="share-btn" @click="copy(embed.component)">Copy</button>
+        <small class="muted">Or a plain iframe:</small>
+        <textarea :value="embed.iframe" readonly rows="3" @focus="selectAll" />
+        <button class="share-btn" @click="copy(embed.iframe)">Copy</button>
+        <small class="muted">Or paste this oEmbed URL into WordPress, Notion and similar:</small>
+        <input :value="embed.oembed" readonly @focus="selectAll" />
+      </details>
+      <p v-else-if="created.kind === ShareKind.MEDIA && created.media_url" class="muted" data-test="no-embed">
+        To put this on a website, create the link with the sites that may embed it.
+      </p>
       <p v-if="created.kind === ShareKind.MEDIA && created.media_state === 'pending_media'" class="muted" data-test="created-preparing">
         A web-playable copy is being prepared. The link works now — send it; it
         plays as soon as the copy is ready (usually a minute or two).
@@ -197,11 +214,13 @@
           </small>
         </label>
 
+        <!-- Any mode may be embedded; a gated one is framed with its gate (§9.2). -->
+        <label class="share-field">
+          <span>Sites that may embed it (optional)</span>
+          <input v-model="embedInput" type="text" data-test="embed-origins"
+                 :placeholder="accessMode === 'open' ? 'https://www.example.com, or * for anywhere' : 'https://www.example.com'" />
+        </label>
         <template v-if="accessMode === 'open'">
-          <label class="share-field">
-            <span>Sites that may embed it (optional)</span>
-            <input v-model="embedInput" type="text" placeholder="https://www.example.com" />
-          </label>
           <label class="share-check share-confirm" data-test="confirm-public">
             <input v-model="confirmPublic" type="checkbox" />
             <span>I understand: <strong>anyone with this link, and anyone they forward it to, can watch this.</strong></span>
@@ -409,6 +428,24 @@ const emailHtml = computed(() => {
     + `<p><a href="${c.url}">▶ Watch “${title}”</a></p>`
 })
 
+/** The three embed snippets, when the link may be embedded somewhere. */
+const embed = computed(() => {
+  const c = created.value
+  if (!c || c.kind !== ShareKind.MEDIA || !c.media_url || !c.allowed_embed_origins?.length) return null
+  let u: URL
+  try { u = new URL(c.media_url) } catch { return null }
+  const k = u.searchParams.get('k') || ''
+  const title = (c.display_name || props.name).replace(/[<>&"]/g, '')
+  const player = `${u.origin}/media/v1/player/${c.link_uid}?k=${encodeURIComponent(k)}`
+  return {
+    component: `<script type="module" src="${u.origin}/media/v1/embed/fe-media-share.js"><\/script>\n`
+      + `<fe-media-share src="${c.media_url}" width="720"></fe-media-share>`,
+    iframe: `<iframe src="${player}" width="720" height="405" style="border:0" `
+      + `allow="autoplay; fullscreen; picture-in-picture" title="${title}"></iframe>`,
+    oembed: `${u.origin}/media/v1/oembed?url=${encodeURIComponent(c.media_url)}`,
+  }
+})
+
 async function loadMedia() {
   mediaCaps.value = null
   mediaState.value = null
@@ -522,10 +559,8 @@ async function create() {
       ttl_days: form.value.ttl_days,
       note: form.value.note || undefined,
       display_name: displayName.value.trim() || undefined,
-      ...(accessMode.value === 'open'
-        ? { confirm_public: confirmPublic.value,
-            ...(origins.length ? { allowed_embed_origins: origins } : {}) }
-        : {}),
+      ...(accessMode.value === 'open' ? { confirm_public: confirmPublic.value } : {}),
+      ...(origins.length ? { allowed_embed_origins: origins } : {}),
       ...(maxViewers.value ? { max_viewers: maxViewers.value } : {}),
     } : {
       kind: form.value.kind,

@@ -195,4 +195,53 @@ describe('ShareTab — media', () => {
     expect(msg).toMatch(/asked for your email address/)
     expect(msg).not.toMatch(/one-time code/)
   })
+
+  it('lets a gated link be embedded too, sending the origins', async () => {
+    create.mockResolvedValue({ link_uid: 'L1', kind: 3, url: 'https://a/s/L1.s',
+                               expires_at: '2026-10-11T00:00:00Z', secret_shown_once: true })
+    const w = mountTab()
+    await flushPromises()
+    await chooseWatch(w)
+    await w.get('[data-test="modes"] input[value="claimed"]').setValue(true)
+    await w.get('[data-test="embed-origins"]').setValue('https://client.example')
+    await w.get('[data-test="create"]').trigger('click')
+    await flushPromises()
+    expect(create.mock.calls[0][1].allowed_embed_origins).toEqual(['https://client.example'])
+  })
+
+  it('offers the three embed snippets only for an embeddable link', async () => {
+    create.mockResolvedValue({
+      link_uid: 'L1', kind: 3, access_mode: 'claimed', display_name: 'Intro',
+      url: 'https://acme.example.com/s/L1.sec', media_state: 'ready',
+      media_url: 'https://acme-media.example.com/media/v1/L1?k=sec',
+      allowed_embed_origins: ['https://client.example'],
+      expires_at: '2026-10-11T00:00:00Z', secret_shown_once: true })
+    const w = mountTab()
+    await flushPromises()
+    await chooseWatch(w)
+    await w.get('[data-test="modes"] input[value="claimed"]').setValue(true)
+    await w.get('[data-test="create"]').trigger('click')
+    await flushPromises()
+    const areas = w.findAll('[data-test="embed-snippets"] textarea').map((t) => (t.element as HTMLTextAreaElement).value)
+    expect(areas[0]).toContain('src="https://acme-media.example.com/media/v1/embed/fe-media-share.js"')
+    expect(areas[0]).toContain('<fe-media-share src="https://acme-media.example.com/media/v1/L1?k=sec"')
+    expect(areas[1]).toContain('src="https://acme-media.example.com/media/v1/player/L1?k=sec"')
+    const oembed = (w.get('[data-test="embed-snippets"] input').element as HTMLInputElement).value
+    expect(oembed).toBe('https://acme-media.example.com/media/v1/oembed?url=' + encodeURIComponent('https://acme-media.example.com/media/v1/L1?k=sec'))
+  })
+
+  it('explains, rather than offering a snippet that would be refused, when nothing may embed it', async () => {
+    create.mockResolvedValue({
+      link_uid: 'L1', kind: 3, access_mode: 'claimed', url: 'https://a/s/L1.s', media_state: 'ready',
+      media_url: 'https://m/media/v1/L1?k=s', allowed_embed_origins: null,
+      expires_at: '2026-10-11T00:00:00Z', secret_shown_once: true })
+    const w = mountTab()
+    await flushPromises()
+    await chooseWatch(w)
+    await w.get('[data-test="modes"] input[value="claimed"]').setValue(true)
+    await w.get('[data-test="create"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="embed-snippets"]').exists()).toBe(false)
+    expect(w.find('[data-test="no-embed"]').exists()).toBe(true)
+  })
 })
