@@ -216,6 +216,38 @@ async function main() {
     assert(vaud.audience[0]?.verified === true, 'and the roster shows them verified')
     assert(leaks2.length === 0, 'no bearer or cookie left the page')
     await p2.close()
+
+    // Production 2026-10-04: the landing page (tenant origin) calls the door on
+    // <tenant>-media, and identify/verify carried no CORS — the browser withheld a
+    // 200 the server had acted on. Dev proxies the door onto the SPA's origin, so
+    // the steps above cannot see that; here the page calls the door DIRECTLY on
+    // its own origin, and the browser enforces CORS for real.
+    console.log('== the verified path, cross-origin as in production')
+    const xo = await mint(fileUid, { access_mode: 'verified', allowed_embed_origins: [APP],
+                                     recipients: ['landing-xo@example.com'] })
+    minted.push(xo.link_uid)
+    const p3 = await browser.newPage()
+    await p3.goto(APP + '/')
+    const door = `${SHARE}/media/v1/${xo.link_uid}`
+    // The URL is <origin>/s/<link_uid>.<secret>.
+    const tail = new URL(xo.url).pathname.split('/').pop() || ''
+    const k = encodeURIComponent(tail.slice(tail.indexOf('.') + 1))
+    const xr = await p3.evaluate(async ({ door, k }) => {
+      const post = async (route, body) => {
+        try {
+          const r = await fetch(`${door}/${route}?k=${k}`, { method: 'POST', credentials: 'omit',
+            headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) })
+          return { status: r.status, body: await r.json() }
+        } catch (e) { return { threw: String(e) } }
+      }
+      return { identify: await post('identify', { email: 'landing-xo@example.com' }),
+               verify: await post('verify', { email: 'landing-xo@example.com', code: '000000' }) }
+    }, { door, k })
+    assert(xr.identify.status === 200 && xr.identify.body?.status === 'sent_if_authorized',
+      `identify is readable cross-origin (${JSON.stringify(xr.identify)})`)
+    assert(xr.verify.status === 401,
+      `a wrong code is readable cross-origin, so the page can say so (${JSON.stringify(xr.verify)})`)
+    await p3.close()
   } finally {
     await browser.close()
     for (const l of minted) await fetch(`${SHARE}/share/v1/links/${l}`, { method: 'DELETE', headers: H() })

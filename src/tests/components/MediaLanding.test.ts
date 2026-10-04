@@ -113,6 +113,34 @@ describe('MediaLanding', () => {
     expect(w.find('[data-test="player"]').exists()).toBe(true)
   })
 
+  it('verified: the code form follows the address', async () => {
+    replies.peek = respond(200, { ...PEEK, mode: 'verified', requires: 'code' })
+    replies.identify = respond(200, { status: 'sent_if_authorized', expires_in_seconds: 600 })
+    const w = await mountIt()
+    await w.get('[data-test="identify"] input').setValue('v@example.com')
+    await w.get('[data-test="identify"]').trigger('submit')
+    await flushPromises()
+    expect(w.find('[data-test="code"]').exists()).toBe(true)
+    expect(w.find('[data-test="identify"]').exists()).toBe(false)
+    expect(w.text()).not.toMatch(/isn.t available/)
+  })
+
+  it('a reply the browser withholds is "try again", not a dead link', async () => {
+    // Production 2026-10-04: the door's identify lacked CORS, so fetch threw
+    // TypeError though the server had emailed the code — and the page said the
+    // link was not available. The server is fixed; the page must not lie either.
+    replies.peek = respond(200, { ...PEEK, mode: 'verified', requires: 'code' })
+    replies.identify = () => { throw new TypeError('Failed to fetch') }
+    const w = await mountIt()
+    await w.get('[data-test="identify"] input').setValue('v@example.com')
+    await w.get('[data-test="identify"]').trigger('submit')
+    await flushPromises()
+    expect(w.text()).toMatch(/could not reach the video service/)
+    expect(w.text()).not.toMatch(/isn.t available/)
+    expect(w.find('[data-test="identify"]').exists()).toBe(true)     // still on the form, can retry
+    expect(w.find('[data-test="code"]').exists()).toBe(false)        // and not told a code was sent
+  })
+
   it('a wrong code says so and plays nothing', async () => {
     replies.peek = respond(200, { ...PEEK, mode: 'verified', requires: 'code' })
     replies.identify = respond(200, { expires_in_seconds: 600 })

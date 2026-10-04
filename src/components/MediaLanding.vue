@@ -187,6 +187,10 @@ async function handle<T>(fn: () => Promise<T>): Promise<T | null> {
     else if (e instanceof Popular) { popularMessage.value = e.message; state.value = 'popular' }
     else if ((e as { status?: number }).status === 400) error.value = 'Please check the address and try again.'
     else if ((e as { status?: number }).status === 429) error.value = 'Too many tries from here. Please wait a few minutes.'
+    // No answer at all (offline, or a response the browser would not hand over)
+    // is not a dead link. Saying "not available" here sent a viewer away from a
+    // working link whose code had just been emailed (production 2026-10-04).
+    else if (e instanceof TypeError) error.value = 'We could not reach the video service. Please try again.'
     else state.value = 'gone'
     return null
   } finally {
@@ -205,8 +209,9 @@ async function claim() {
 }
 
 async function requestCode() {
-  await handle(() => door.identify(email.value.trim().toLowerCase()))
-  codeSent.value = true
+  // The code form follows an ANSWER: the reply is uniform ("sent if authorized"),
+  // so any answer means "now enter the code".
+  if (await handle(() => door.identify(email.value.trim().toLowerCase()))) codeSent.value = true
 }
 
 async function submitCode() {
