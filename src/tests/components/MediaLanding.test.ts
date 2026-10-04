@@ -109,7 +109,11 @@ describe('MediaLanding', () => {
     await w.get('[data-test="code"]').trigger('submit')
     await flushPromises()
     const s = calls.find((c) => c.url.includes('/session'))!
-    expect((s.init?.headers as Record<string, string>)['X-Recipient-Token']).toBe('RT')
+    // The token is in the BODY and the call stays a simple text/plain POST: a
+    // custom header is a CORS preflight the door does not answer (production
+    // 2026-10-04: a correct code ended in "could not reach the video service").
+    expect(JSON.parse(String(s.init?.body))).toEqual({ email: 'v@example.com', recipient_token: 'RT' })
+    expect(s.init?.headers).toEqual({ 'Content-Type': 'text/plain' })
     expect(w.find('[data-test="player"]').exists()).toBe(true)
   })
 

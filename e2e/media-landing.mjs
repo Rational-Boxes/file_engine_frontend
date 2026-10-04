@@ -232,21 +232,39 @@ async function main() {
     // The URL is <origin>/s/<link_uid>.<secret>.
     const tail = new URL(xo.url).pathname.split('/').pop() || ''
     const k = encodeURIComponent(tail.slice(tail.indexOf('.') + 1))
-    const xr = await p3.evaluate(async ({ door, k }) => {
-      const post = async (route, body) => {
-        try {
-          const r = await fetch(`${door}/${route}?k=${k}`, { method: 'POST', credentials: 'omit',
-            headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) })
-          return { status: r.status, body: await r.json() }
-        } catch (e) { return { threw: String(e) } }
-      }
-      return { identify: await post('identify', { email: 'landing-xo@example.com' }),
-               verify: await post('verify', { email: 'landing-xo@example.com', code: '000000' }) }
-    }, { door, k })
-    assert(xr.identify.status === 200 && xr.identify.body?.status === 'sent_if_authorized',
-      `identify is readable cross-origin (${JSON.stringify(xr.identify)})`)
-    assert(xr.verify.status === 401,
-      `a wrong code is readable cross-origin, so the page can say so (${JSON.stringify(xr.verify)})`)
+    const xpost = (route, body, headers = {}) => p3.evaluate(async ({ door, k, route, body, headers }) => {
+      try {
+        const r = await fetch(`${door}/${route}?k=${k}`, { method: 'POST', credentials: 'omit',
+          headers: { 'Content-Type': 'text/plain', ...headers }, body: JSON.stringify(body) })
+        return { status: r.status, body: await r.json() }
+      } catch (e) { return { threw: String(e) } }
+    }, { door, k, route, body, headers })
+    await fetch(`${MAILHOG}/api/v1/messages`, { method: 'DELETE' }).catch(() => {})
+    const idr = await xpost('identify', { email: 'landing-xo@example.com' })
+    assert(idr.status === 200 && idr.body?.status === 'sent_if_authorized',
+      `identify is readable cross-origin (${JSON.stringify(idr)})`)
+    // Paced like a person: ldap_manager's rung 0 charges an attempt made sooner
+    // than a code could be read (5 s after send, 1.5 s between tries) at 5x —
+    // one scripted wrong code would otherwise spend the whole budget and lock
+    // the address, and the right code would then be refused too.
+    await sleep(6000)
+    const wrong = await xpost('verify', { email: 'landing-xo@example.com', code: '000000' })
+    assert(wrong.status === 401,
+      `a wrong code is readable cross-origin, so the page can say so (${JSON.stringify(wrong)})`)
+    const xcode = await mailhogCode()
+    await sleep(2000)
+    const vr = await xpost('verify', { email: 'landing-xo@example.com', code: xcode })
+    assert(vr.status === 200 && vr.body?.ok && vr.body?.recipient_token,
+      `the right code is readable cross-origin and yields a recipient token (${JSON.stringify(vr).slice(0, 160)})`)
+    // The step production failed next: as a header the token forced a preflight
+    // the door answers 405, so the browser never sent the request at all.
+    const viaHeader = await xpost('session', { email: 'landing-xo@example.com' },
+                                  { 'X-Recipient-Token': vr.body?.recipient_token })
+    assert(!!viaHeader.threw, `a custom header is preflighted and blocked (${JSON.stringify(viaHeader).slice(0, 80)})`)
+    const sr = await xpost('session', { email: 'landing-xo@example.com',
+                                        recipient_token: vr.body?.recipient_token })
+    assert(sr.status === 200 && !!sr.body?.session,
+      `with the token in the body the session opens cross-origin (${sr.status ?? sr.threw})`)
     await p3.close()
   } finally {
     await browser.close()

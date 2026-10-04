@@ -99,10 +99,14 @@ export function mediaDoor(mediaBase: string, linkUid: string, secret: string) {
       call(`${base}/claim?k=${k}`, { method: 'POST', headers: TEXT,
         body: JSON.stringify({ email, consent: true, consent_text_id: consentTextId }) }) as Promise<MediaSession>,
     /** `open`, or `verified` with the recipient token from verify(). */
+    // The recipient token goes in the BODY, never a header: a custom header makes
+    // the call non-simple, the browser preflights it, and the door (on its own
+    // origin) answers no OPTIONS — production 2026-10-04, a correct code then
+    // failed as "could not reach the video service".
     session: (email?: string, recipientToken?: string) =>
-      call(`${base}/session?k=${k}`, { method: 'POST',
-        headers: { ...TEXT, ...(recipientToken ? { 'X-Recipient-Token': recipientToken } : {}) },
-        body: JSON.stringify(email ? { email } : {}) }) as Promise<MediaSession>,
+      call(`${base}/session?k=${k}`, { method: 'POST', headers: TEXT,
+        body: JSON.stringify({ ...(email ? { email } : {}),
+                               ...(recipientToken ? { recipient_token: recipientToken } : {}) }) }) as Promise<MediaSession>,
     identify: (email: string) =>
       call(`${base}/identify?k=${k}`, { method: 'POST', headers: TEXT,
         body: JSON.stringify({ email }) }) as Promise<{ expires_in_seconds: number }>,
