@@ -177,6 +177,12 @@ export interface Notification {
    * means the user can no longer read it.
    */
   detailText: string | null
+  /**
+   * Non-share items: the document's name, resolved by discussion as the user when
+   * it assembles the feed (a mention named only who). Absent/null when the core
+   * would not give it.
+   */
+  fileName?: string | null
 }
 
 export interface Activity {
@@ -292,6 +298,7 @@ function toNotification(n: Record<string, unknown>): Notification {
     source: (n.source as string) || 'other',
     shareLinkUid: (n.share_link_uid as string) ?? null,
     detailText: (n.detail_text as string) ?? null,
+    fileName: (n.file_name as string | null | undefined) ?? null,
   }
 }
 

@@ -171,4 +171,19 @@ describe('discussionService', () => {
     const [t] = await discussionService.listThreads('f1')
     expect(t.anchor).toBeNull()
   })
+
+  it('attention carries the file name the server resolved (and only there)', async () => {
+    client.get.mockResolvedValue({ data: { items: [
+      { id: 1, kind: 'mention', file_uid: 'f1', thread_id: 't1', review_id: null,
+        actor: 'carol@example.com', created_at: 't', read_at: null, source: 'comments',
+        share_link_uid: null, detail_text: null, file_name: 'Site plan rev C.pdf' },
+      { id: 2, kind: 'share_link_dead', file_uid: 'f2', thread_id: null, review_id: null,
+        actor: 'system:share', created_at: 't', read_at: null, source: 'sharing',
+        share_link_uid: 'l1', detail_text: 'Q3 drawings' },
+    ] } })
+    const [mention, share] = await discussionService.attention()
+    expect(mention.fileName).toBe('Site plan rev C.pdf')
+    expect(mention.actor).toBe('carol@example.com')
+    expect(share.fileName).toBeNull()
+  })
 })

@@ -67,6 +67,14 @@
                   <!-- Share rows carry their own text precisely so they can be
                        rendered without resolving the resource. -->
                   <span class="who">{{ n.detailText || n.actor }}</span>
+                  <!-- Which document: a mention named only who. Share rows say
+                       it in their own text. -->
+                  <span
+                    v-if="!n.shareLinkUid && n.fileName"
+                    class="doc"
+                    :title="n.fileName"
+                    data-test="attention-file"
+                  >{{ truncateMiddle(n.fileName) }}</span>
                   <time :title="n.createdAt">{{ ago(n.createdAt) }}</time>
                 </router-link>
               </li>
@@ -286,6 +294,14 @@ onBeforeUnmount(() => d.stopPolling())
   letter-spacing: 0.03em;
   color: var(--muted);
   flex: 0 0 auto;
+}
+.doc {
+  flex: 0 1 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
 }
 .who {
   flex: 1 1 auto;

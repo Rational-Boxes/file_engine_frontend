@@ -179,6 +179,34 @@ describe('Dashboard attention divisions', () => {
     }
   })
 
+  // Owner's request 2026-10-05: a mention named only who; it must name which
+  // document too. discussion resolves the name while assembling the feed.
+  it('shows the file name beside the person on a mention', async () => {
+    attention.mockResolvedValue([
+      note({ id: 9, kind: 'mention', source: 'comments', actor: 'carol@example.com',
+             fileUid: 'f1', threadId: 't1', fileName: 'Site plan rev C.pdf' }),
+      note({ id: 10, kind: 'share_link_dead', source: 'sharing', shareLinkUid: 'l1',
+             detailText: 'Q3 drawings', fileName: 'never shown.pdf' }),
+    ])
+    const w = mountDash()
+    await flushPromises()
+    const rows = w.findAll('li.item')
+    expect(rows[0].text()).toContain('carol@example.com')
+    expect(rows[0].get('[data-test="attention-file"]').text()).toBe('Site plan rev C.pdf')
+    expect(rows[0].get('[data-test="attention-file"]').attributes('title')).toBe('Site plan rev C.pdf')
+    // A share row says it in its own text and is never given a resolved name.
+    expect(w.text()).not.toContain('never shown.pdf')
+  })
+
+  it('a mention whose name the server could not give shows just the person', async () => {
+    attention.mockResolvedValue([note({ id: 11, kind: 'mention', actor: 'carol@example.com',
+                                        fileUid: 'f2', fileName: null })])
+    const w = mountDash()
+    await flushPromises()
+    expect(w.find('[data-test="attention-file"]').exists()).toBe(false)
+    expect(w.text()).toContain('carol@example.com')
+  })
+
   it('still deep-links a comment item to its thread', async () => {
     // Guard on the guard: the share branch must not have changed the old path.
     attention.mockResolvedValue([note({ id: 6, threadId: 't9', fileUid: 'f9' })])
