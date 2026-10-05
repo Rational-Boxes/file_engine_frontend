@@ -156,6 +156,29 @@ describe('Dashboard attention divisions', () => {
     expect(to).toEqual({ path: '/files', query: { folder: 'folder-9', tab: 'share' } })
   })
 
+  // Owner's request 2026-10-04: the creator should see that the recipient
+  // accessed the video. These items were published but dropped by discussion;
+  // here they must read as what they are and open the VIDEO's Share tab.
+  it('shows a video share being opened and watched, under Sharing', async () => {
+    attention.mockResolvedValue([
+      note({ id: 7, kind: 'share_media_opened', source: 'sharing', shareLinkUid: 'm1',
+             fileUid: 'video-1', actor: 'share:m1|pat@example.com',
+             detailText: 'pat@example.com opened \u201cIntro\u201d' }),
+      note({ id: 8, kind: 'share_media_completed', source: 'sharing', shareLinkUid: 'm1',
+             fileUid: 'video-1', detailText: 'pat@example.com finished \u201cIntro\u201d' }),
+    ])
+    const w = mountDash()
+    await flushPromises()
+    expect(w.text()).toContain('▶ Video opened')
+    expect(w.text()).toContain('pat@example.com opened \u201cIntro\u201d')
+    expect(w.text()).toContain('✓ Video watched')
+    expect(w.text()).not.toContain('share_media_')                 // no raw kinds
+    const tos = w.findAllComponents({ name: 'RouterLink' }).map((c) => c.props('to'))
+    for (const to of tos) {
+      expect(to).toEqual({ path: '/files', query: { file: 'video-1', tab: 'share' } })
+    }
+  })
+
   it('still deep-links a comment item to its thread', async () => {
     // Guard on the guard: the share branch must not have changed the old path.
     attention.mockResolvedValue([note({ id: 6, threadId: 't9', fileUid: 'f9' })])

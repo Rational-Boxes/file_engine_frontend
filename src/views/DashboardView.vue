@@ -128,6 +128,11 @@ const KIND_LABELS: Record<string, string> = {
   share_link_dead: '⚠ Link stopped working',
   share_otp_send_failed: '⚠ Code could not be sent',
   share_first_redemption: 'Link opened',
+  // Media links: the creator learns the recipient opened and watched the video.
+  share_media_opened: '▶ Video opened',
+  share_media_completed: '✓ Video watched',
+  share_media_popular: '⚠ Video very popular',
+  share_media_parked: '⚠ Video paused — too popular',
 }
 
 // Fixed order, so the feed does not reshuffle as items arrive. An unrecognised
@@ -165,7 +170,11 @@ function attentionLink(n: Notification) {
   // existing deep-link is doubly wrong for a folder-download link, since
   // folders have no preview route at all.
   if (n.shareLinkUid) {
-    return { path: '/files', query: { folder: n.fileUid, tab: 'share' } }
+    // A media item's resource is the VIDEO, a file: the folder route has no such
+    // folder (the same trap the Sharing panel's media rows had).
+    return n.kind.startsWith('share_media_')
+      ? { path: '/files', query: { file: n.fileUid, tab: 'share' } }
+      : { path: '/files', query: { folder: n.fileUid, tab: 'share' } }
   }
   const query: Record<string, string> = {}
   if (n.threadId) query.thread = n.threadId
