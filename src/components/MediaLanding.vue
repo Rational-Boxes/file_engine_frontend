@@ -121,16 +121,14 @@
       <p v-if="!peek.tracking" class="ml-small">The sender does not see how much of this you watch.</p>
     </template>
 
-    <p v-else class="ml-small">Loading…</p>
+    <p v-else class="ml-small" data-test="loading">{{ error || 'Loading…' }}</p>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import MediaPlayer from '@/components/MediaPlayer.vue'
-import {
-  mediaDoor, Popular, Preparing, type MediaPeek, type MediaSession,
-} from '@/services/mediaDoorService'
+import { mediaDoor, Popular, Preparing, type MediaPeek, type MediaSession, Unavailable } from '@/services/mediaDoorService'
 
 const props = defineProps<{ linkUid: string; secret: string; mediaBase: string }>()
 
@@ -165,13 +163,29 @@ const claimNotice = computed(() => (peek.value?.tracking
   : 'By clicking Watch, you agree that your address is shared with the sender.'))
 const absSources = computed(() => (session.value?.sources ?? []).map((s) => ({ ...s, url: door.abs(s.url) })))
 
+// Only the door's own refusal means the link is dead. Everything else — a 429
+// from the edge (which carries no CORS, so the browser reports it as a network
+// error), a 5xx, a dropped connection — is a busy moment: say so and ask again.
+// Production 2026-10-04: a viewer reopening a link while the last tab still
+// streamed got 429 on this call and was told the link had expired.
+const RETRY_MS = [2000, 4000, 8000, 15000, 30000]
+let retries = 0
+
 async function load() {
   try {
     peek.value = await door.peek()
     state.value = peek.value.state === 'ready' ? 'ready' : 'preparing'
+    retries = 0
+    error.value = ''
   } catch (e) {
     if (e instanceof Popular) { popularMessage.value = e.message; state.value = 'popular'; return }
-    state.value = 'gone'
+    if (e instanceof Unavailable && /^(404|410)$/.test(e.message)) { state.value = 'gone'; return }
+    if (retries < RETRY_MS.length) {
+      error.value = 'The video service is busy — trying again…'
+      poll = setTimeout(() => void load(), RETRY_MS[retries++])
+    } else {
+      error.value = 'We could not reach the video service. Please reload the page in a moment.'
+    }
     return
   }
   if (state.value === 'preparing') poll = setTimeout(() => void load(), 5000)

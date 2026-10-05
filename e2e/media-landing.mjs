@@ -39,6 +39,7 @@ const APP = process.env.APP_URL || 'http://localhost:3000'
 const BRIDGE = process.env.BRIDGE_URL || 'http://localhost:8090'
 const SHARE = process.env.SHARE_URL || 'http://localhost:8101'
 const MAILHOG = process.env.MAILHOG_URL || 'http://localhost:8025'
+const DISCUSS = process.env.DISCUSS_URL || 'http://localhost:8094'
 const USER = process.env.FE_USER || 'testuser@rationalboxes.com'
 const PASS = process.env.FE_PASS
 const TENANT = process.env.FE_TENANT || 'default'
@@ -168,6 +169,19 @@ async function main() {
     await page.click('[data-test="claim"] button')
     const reached = await plays(page, 4)
     assert(reached >= 4, `the video played in the page (${reached.toFixed(1)} s)`)
+    // The creator's Dashboard learns the recipient opened it (owner's request
+    // 2026-10-04): share -> event stream -> discussion consumer -> the feed. The
+    // media kinds used to be dropped by discussion as unknown.
+    let opened = null
+    for (let i = 0; i < 40 && !opened; i++) {
+      const feed = await json(await fetch(`${DISCUSS}/dashboard/attention?limit=50`, { headers: H() }))
+      const items = Array.isArray(feed) ? feed : (feed?.items ?? feed?.attention ?? [])
+      opened = items.find((n) => (n.kind === 'share_media_opened')
+        && (n.share_link_uid === claimed.link_uid || n.shareLinkUid === claimed.link_uid))
+      if (!opened) await sleep(500)
+    }
+    assert(!!opened && /landing-viewer@example\.com opened/.test(opened.detail_text || opened.detailText || ''),
+      `the creator's attention feed says the recipient opened it (${opened ? opened.kind : 'nothing arrived'})`)
     const box = await page.evaluate(() => {
       const v = document.querySelector('[data-test="media"]')
       const r = v.getBoundingClientRect()

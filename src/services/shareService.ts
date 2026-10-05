@@ -255,8 +255,18 @@ export interface DropProvenance {
   stored_name: string | null
 }
 
+/** Who has watched a media link — the Dashboard's line for a video share. */
+export interface MediaAudienceSummary {
+  viewers: number
+  watched: number
+  completed: number
+  last_seen_at: string | null
+}
+
 export interface InboxShareLink extends ShareLink {
   recipient_count: number
+  /** Media links only (kind 3). */
+  audience?: MediaAudienceSummary
 }
 
 export interface SharingInbox {
