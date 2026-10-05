@@ -142,4 +142,46 @@ describe('SharingInbox', () => {
     expect(w.findComponent({ name: 'RouterLink' }).props('to'))
       .toEqual({ path: '/files', query: { file: 'res-1', tab: 'share' } })
   })
+
+  // Owner's request 2026-10-04: video shares belong on the Dashboard beside the
+  // regular ones, with their information — who has watched — not as an
+  // anonymous "Shared file · 0 used" that clicked through to a folder that
+  // does not exist.
+  it('shows a video share by its title, with who has watched', async () => {
+    inbox.mockResolvedValue({ needsAttention: [], dropBoxes: [], active: [
+      link({ link_uid: 'f1', kind: 0, note: 'Contract' }),
+      link({ link_uid: 'm1', kind: 3, note: null, display_name: 'Intro video', max_uses: 0,
+             uses_consumed: 0, media_state: 'ready',
+             audience: { viewers: 3, watched: 2, completed: 1, last_seen_at: '2026-10-04T23:00:00Z' } }),
+    ] })
+    const w = mountInbox()
+    await flushPromises()
+    const rows = w.findAll('.si-row')
+    expect(rows).toHaveLength(2)                                   // beside the regular share
+    expect(rows[1].text()).toMatch(/▶ Intro video/)
+    expect(rows[1].get('[data-test="media-summary"]').text()).toMatch(/^3 viewers · 1 finished · 3d left$/)
+    expect(rows[1].text()).not.toMatch(/used/)
+    expect(rows[0].text()).toMatch(/2 \/ 5 used/)                 // the file share is unchanged
+  })
+
+  it('a video share nobody has watched says so, and a preparing one says that', async () => {
+    inbox.mockResolvedValue({ needsAttention: [], dropBoxes: [], active: [
+      link({ kind: 3, note: null, display_name: 'Demo', media_state: 'pending_media', max_uses: 0,
+             uses_consumed: 0, audience: { viewers: 0, watched: 0, completed: 0, last_seen_at: null } }),
+    ] })
+    const w = mountInbox()
+    await flushPromises()
+    expect(w.text()).toMatch(/Preparing/)
+    expect(w.get('[data-test="media-summary"]').text()).toMatch(/^Not watched yet/)
+  })
+
+  it("a video share opens the video's own Share tab, not a folder", async () => {
+    inbox.mockResolvedValue({ needsAttention: [], dropBoxes: [], active: [
+      link({ kind: 3, resource_uid: 'video-1', display_name: 'Demo' }),
+    ] })
+    const w = mountInbox()
+    await flushPromises()
+    expect(w.findComponent({ name: 'RouterLink' }).props('to'))
+      .toEqual({ path: '/files', query: { file: 'video-1', tab: 'share' } })
+  })
 })

@@ -64,8 +64,14 @@
       <ul class="si-list">
         <li v-for="l in inbox.active" :key="l.link_uid" class="si-row">
           <RouterLink :to="shareTab(l)" class="si-what">{{ label(l) }}</RouterLink>
-          <span class="si-st" :data-st="l.status">{{ statusWord(l) }}</span>
-          <span class="muted">{{ usesLabel(l) }} · {{ until(l.expires_at) }} left</span>
+          <span class="si-st" :data-st="isMedia(l) && l.media_state === 'pending_media' ? 'preparing' : l.status">
+            {{ statusWord(l) }}
+          </span>
+          <!-- A video share is about who watched; it consumes no uses, so the
+               use count a file share shows would always read 0 here. -->
+          <span class="muted" :data-test="isMedia(l) ? 'media-summary' : undefined">
+            {{ isMedia(l) ? audienceLabel(l) : usesLabel(l) }} · {{ until(l.expires_at) }} left
+          </span>
         </li>
       </ul>
     </template>
@@ -75,7 +81,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { shareService, type InboxShareLink, type SharingInbox } from '@/services/shareService'
+import { shareService, ShareKind, type InboxShareLink, type SharingInbox } from '@/services/shareService'
 
 const inbox = ref<SharingInbox>({ needsAttention: [], dropBoxes: [], active: [] })
 const error = ref('')
@@ -87,12 +93,25 @@ const show = computed(() =>
   !!error.value || inbox.value.needsAttention.length
     || inbox.value.dropBoxes.length || inbox.value.active.length)
 
+const isMedia = (l: InboxShareLink) => l.kind === ShareKind.MEDIA
+
 function label(l: InboxShareLink): string {
+  // A video share is named by the title its creator gave it (the recipient
+  // sees the same one); "Shared file" said nothing about what was shared.
+  if (isMedia(l)) return `▶ ${l.display_name || l.note || 'Video link'}`
   if (l.note) return l.note
   return l.kind === 1 ? 'Drop box' : l.kind === 2 ? 'Shared folder' : 'Shared file'
 }
 
+function audienceLabel(l: InboxShareLink): string {
+  const a = l.audience
+  if (!a || !a.viewers) return 'Not watched yet'
+  const viewers = `${a.viewers} viewer${a.viewers === 1 ? '' : 's'}`
+  return a.completed ? `${viewers} · ${a.completed} finished` : `${viewers} · ${a.watched} watched`
+}
+
 function statusWord(l: InboxShareLink): string {
+  if (isMedia(l) && l.media_state === 'pending_media' && l.status === 'active') return 'Preparing'
   return l.status === 'not_working' ? 'Not working'
     : l.status === 'blocked' ? 'Locked out'
     : l.status === 'exhausted' ? 'Used up'
@@ -122,7 +141,9 @@ function until(iso: string): string {
 /** Every row goes to the resource's Share tab — never a preview route, which
  *  does not exist for a folder at all. */
 function shareTab(l: InboxShareLink) {
-  return l.kind === 0
+  // A media link's resource is a FILE (the video), like a file share — it was
+  // sent to the folder route, which has no such folder.
+  return l.kind === 0 || isMedia(l)
     ? { path: '/files', query: { file: l.resource_uid, tab: 'share' } }
     : { path: '/files', query: { folder: l.resource_uid, tab: 'share' } }
 }
