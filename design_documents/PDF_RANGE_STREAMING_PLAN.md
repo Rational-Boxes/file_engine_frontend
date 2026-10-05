@@ -182,7 +182,27 @@ After a successful Office → PDF conversion, run `qpdf --linearize` (fall back 
 the unlinearized file if it fails). Applies only to renditions CSAI writes;
 user-uploaded PDFs are left untouched (rewriting a user's file is not ours to do).
 
-### 3.4 Markup view
+### 3.4 Drawer preview: page 1 only
+
+Decided 2026-10-05. The quick preview in the file drawer is a **page-1 poster**,
+not a viewer:
+
+- `getDocument` with the range source and `disableAutoFetch: true`; render page 1
+  into a single canvas; never call `getPage(n > 1)`.
+- No thumbnail strip, page navigation, find, print or markup in the drawer — each
+  of those would pull the whole document and defeat the point.
+- "Open" (the full viewer) creates its own loading task with the normal fetch
+  policy (§2.4); it does not inherit the drawer's partial data.
+- For a linearized PDF this is one or two range requests; for a non-linearized one
+  it is the trailer/xref plus page 1's objects. Either way the bytes fetched are
+  bounded by page 1, not the document size — the measurement in §5 records bytes
+  at first render to prove it.
+- On the v1 fallback (§2.2) the drawer still downloads the whole file today; stage
+  0 should record whether that makes a page-1 preview of a large v1 PDF worth
+  serving from the existing `poster` rendition (a PNG of page 1 produced at
+  ingest) instead.
+
+### 3.5 Markup view
 
 The markup rendition (`-markup.pdf`) is loaded with the same source. Entering
 markup mode on the base PDF switches PDF.js to fetch the remaining data before
@@ -195,7 +215,7 @@ editing is enabled (`saveDocument()` needs the complete document).
 | Stage | Change | Repos | Gate |
 |---|---|---|---|
 | 0 | **Measure** (§5) on dev and on a production-shaped corpus: first-page and total time, v1 vs v2, linearized vs not, 2 / 20 / 200 MiB | frontend (bench script) | Numbers recorded here before any code ships |
-| 1 | Range source + PdfViewer `source`; whole-download fallback; `disableAutoFetch`; full fetch on markup/search/print | frontend | First page faster on v2 large files, no regression on v1, markup round-trip unchanged |
+| 1 | Range source + PdfViewer `source`; whole-download fallback; drawer preview page 1 only (§3.4); full fetch on open/markup/search/print | frontend | First page faster on v2 large files; drawer fetches only page 1's bytes; no regression on v1; markup round-trip unchanged |
 | 2 | `X-Range-Method` header; SPA picks mode from it | http_bridge, frontend | v1 files never take the range path |
 | 3 | `qpdf --linearize` on CSAI PDF output | convert_search_ai | New Office renditions report linearized; first paint after first chunk |
 | 4 (optional) | Re-write hot v1 PDFs to v2 | core / ops | Only if stage 0 shows v1 PDFs are common in active use |
@@ -232,9 +252,11 @@ editing is enabled (`saveDocument()` needs the complete document).
 - **Encrypted v1 whole-buffer fallback** holds the whole decrypted version in
   core memory per request. Stage 2's fallback is what prevents concurrent viewers
   of a large v1 PDF from multiplying that.
-- **Open question:** should the drawer's quick preview (first page only) use
-  `disableAutoFetch` permanently and never pull the rest unless the full viewer is
-  opened?
+- **Resolved (owner, 2026-10-05): the drawer's preview is page 1 only.** It
+  renders the first page and never fetches past what page 1 needs
+  (`disableAutoFetch: true`, no thumbnails, no page navigation, no search). The
+  rest of the document is fetched only when the user opens the full viewer. See
+  §3.4.
 - **Open question:** is a `storage_format` field on the version listing
   preferable to the `X-Range-Method` header (lets the SPA decide before the first
   request)?
