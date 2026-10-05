@@ -145,6 +145,41 @@ describe('MediaLanding', () => {
     expect(w.find('[data-test="code"]').exists()).toBe(false)        // and not told a code was sent
   })
 
+  it('a busy edge (429, or a network error) is retried — never "expired"', async () => {
+    // Production 2026-10-04: reopening a link while the previous tab still
+    // streamed got 429 from the edge on this call, and the page said expired.
+    vi.useFakeTimers()
+    try {
+      let n = 0
+      replies.peek = () => {
+        n += 1
+        if (n === 1) return new Response('', { status: 429 })
+        if (n === 2) throw new TypeError('Failed to fetch')       // a 429 without CORS
+        return new Response(JSON.stringify(PEEK), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      const w = mount(MediaLanding, { props: { linkUid: 'L1', secret: 'S', mediaBase: 'https://acme-media.example.com' } })
+      await flushPromises()
+      expect(w.text()).toMatch(/busy — trying again/)
+      expect(w.text()).not.toMatch(/isn.t available/)
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushPromises()
+      expect(w.text()).not.toMatch(/isn.t available/)
+      await vi.advanceTimersByTimeAsync(4000)
+      await flushPromises()
+      expect(n).toBe(3)
+      expect(w.find('[data-test="loading"]').exists()).toBe(false)     // the page loaded
+      expect(w.text()).not.toMatch(/isn.t available/)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("only the door's own 404 means the link is gone", async () => {
+    replies.peek = respond(404, { error: 'not_found' })
+    const w = await mountIt()
+    expect(w.text()).toMatch(/isn.t available/)
+  })
+
   it('a wrong code says so and plays nothing', async () => {
     replies.peek = respond(200, { ...PEEK, mode: 'verified', requires: 'code' })
     replies.identify = respond(200, { expires_in_seconds: 600 })
