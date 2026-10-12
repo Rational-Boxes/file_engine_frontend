@@ -19,11 +19,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const { audience, state } = vi.hoisted(() => ({ audience: vi.fn(), state: vi.fn() }))
+const { audience, state, recipients, addRecipient, removeRecipient } = vi.hoisted(() => ({
+  audience: vi.fn(), state: vi.fn(),
+  recipients: vi.fn(), addRecipient: vi.fn(), removeRecipient: vi.fn(),
+}))
 
 vi.mock('@/services/shareService', async () => {
   const actual = await vi.importActual<object>('@/services/shareService')
-  const svc = { audience, audienceCsv: vi.fn(), flushAudience: vi.fn() }
+  const svc = { audience, audienceCsv: vi.fn(), flushAudience: vi.fn(),
+                recipients, addRecipient, removeRecipient }
   return { ...actual, shareService: svc, default: svc }
 })
 vi.mock('@/services/mediaService', async () => {
@@ -66,6 +70,8 @@ async function mountIt(link: Partial<ShareLink> = {}) {
 
 beforeEach(() => {
   audience.mockReset(); state.mockReset()
+  recipients.mockReset(); addRecipient.mockReset(); removeRecipient.mockReset()
+  recipients.mockResolvedValue([])
   state.mockResolvedValue({ file_uid: 'vid-1', source_version: '20261004_050000.000',
                             mime: 'video/mp4', jobs: [], renditions: [] })
 })
@@ -165,5 +171,81 @@ describe('MediaLinkDetail', () => {
   it('says when tracking is off rather than drawing empty data', async () => {
     audience.mockResolvedValue(aud([row({})], { tracking: false }))
     expect((await mountIt()).find('[data-test="tracking-off"]').exists()).toBe(true)
+  })
+
+  describe('who it is for', () => {
+    const rcpt = (email: string, over: Record<string, unknown> = {}) => ({
+      email, invited_at: '2026-10-04T10:00:00Z', invited_by: 'me', status: 'on_the_list',
+      first_verified_at: null, last_code_sent_at: null, last_used_at: null,
+      uses_consumed: 0, failed_codes: 0, removed_at: null, removed_by: null, ...over,
+    })
+
+    it('lists a verified link\'s addresses with removal, and says removal stops playback', async () => {
+      audience.mockResolvedValue(aud([], { mode: 'verified' }))
+      recipients.mockResolvedValue([
+        rcpt('a@example.com', { first_verified_at: '2026-10-04T10:01:00Z', status: 'verified' }),
+        rcpt('b@example.com', { removed_at: '2026-10-04T11:00:00Z', status: 'removed' }),
+      ])
+      const w = await mountIt({ access_mode: 'verified' })
+      expect(recipients).toHaveBeenCalledWith('L1', true)
+      const rows = w.findAll('[data-test="recipient"]')
+      expect(rows.map((r) => r.text())).toEqual([
+        expect.stringContaining('a@example.com'), expect.stringContaining('b@example.com')])
+      expect(rows[0].text()).toContain('Verified')
+      expect(rows[1].text()).toContain('Removed')
+      expect(rows[1].find('[data-test="remove"]').exists()).toBe(false)
+      expect(w.text()).toContain('Who may watch')
+      expect(w.get('[data-test="roster-note"]').text()).toMatch(/stops their playback/)
+    })
+
+    it('adds and removes through the share service and re-reads the roster', async () => {
+      audience.mockResolvedValue(aud([], { mode: 'verified' }))
+      recipients.mockResolvedValue([rcpt('a@example.com')])
+      const w = await mountIt({ access_mode: 'verified' })
+      await w.get('[data-test="add-email"]').setValue('  New@Example.com ')
+      await w.get('[data-test="add"]').trigger('click')
+      await flushPromises()
+      expect(addRecipient).toHaveBeenCalledWith('L1', 'new@example.com')
+      await w.get('[data-test="remove"]').trigger('click')
+      await flushPromises()
+      expect(removeRecipient).toHaveBeenCalledWith('L1', 'a@example.com')
+      expect(recipients).toHaveBeenCalledTimes(3)
+      expect(w.emitted('changed')).toHaveLength(2)
+    })
+
+    it('tells a claimed link\'s creator the list does not restrict anyone', async () => {
+      audience.mockResolvedValue(aud([]))
+      recipients.mockResolvedValue([rcpt('a@example.com')])
+      const w = await mountIt({ access_mode: 'claimed' })
+      expect(w.text()).toContain('Who you expect')
+      expect(w.get('[data-test="recipient"]').text()).toContain('Expected')
+      expect(w.get('[data-test="roster-note"]').text()).toMatch(/does not stop them watching/)
+    })
+
+    it('drops the add control on a dead link', async () => {
+      audience.mockResolvedValue(aud([], { mode: 'verified' }))
+      const w = await mountIt({ access_mode: 'verified', status: 'revoked' } as Partial<ShareLink>)
+      expect(w.find('[data-test="add-email"]').exists()).toBe(false)
+      expect(w.get('[data-test="roster-dead"]').text()).toContain('revoked')
+    })
+
+    it('has no list on an open link', async () => {
+      audience.mockResolvedValue(aud([], { mode: 'open' }))
+      const w = await mountIt({ access_mode: 'open' })
+      expect(recipients).not.toHaveBeenCalled()
+      expect(w.find('[data-test="recipients"]').exists()).toBe(false)
+    })
+
+    it('reports a failed add without losing the roster', async () => {
+      audience.mockResolvedValue(aud([], { mode: 'verified' }))
+      recipients.mockResolvedValue([rcpt('a@example.com')])
+      addRecipient.mockRejectedValue(new Error('nope'))
+      const w = await mountIt({ access_mode: 'verified' })
+      await w.get('[data-test="add-email"]').setValue('x@example.com')
+      await w.get('[data-test="add"]').trigger('click')
+      await flushPromises()
+      expect(w.get('.mld-err').text()).toBeTruthy()
+      expect(w.findAll('[data-test="recipient"]')).toHaveLength(1)
+    })
   })
 })

@@ -61,6 +61,57 @@
       PeerTube (open source), YouTube or Vimeo and share that link instead.
     </p>
 
+    <!-- ── who it's for ───────────────────────────────────────────────── -->
+    <!--
+      The same roster the outside-share drawer has (ShareLinkDetail), but the two
+      gated modes mean different things by it: on a verified link it IS the
+      access list, and removing someone stops their playback at once; on a
+      claimed link anyone may type any address, so it is only who the creator
+      expects to see — the copy says which. An open link has no list at all.
+    -->
+    <template v-if="gated">
+      <h4 class="mld-h">{{ verified ? 'Who may watch' : 'Who you expect' }}</h4>
+      <ul class="mld-list mld-roster" data-test="recipients">
+        <li v-for="r in recipients" :key="r.email" class="mld-rrow" data-test="recipient">
+          <span class="mld-who">{{ r.email }}</span>
+          <span class="mld-tag" :data-st="r.status">{{ recipientLabel(r) }}</span>
+          <button v-if="!r.removed_at" class="mld-btn" data-test="remove" @click="remove(r.email)">
+            Remove
+          </button>
+        </li>
+        <li v-if="!recipients.length" class="muted" data-test="no-recipients">
+          {{ verified ? 'Nobody is on the list, so nobody can watch.' : 'Nobody named.' }}
+        </li>
+      </ul>
+      <template v-if="canWiden">
+        <div class="mld-add">
+          <input
+            v-model="newEmail"
+            type="email"
+            placeholder="add another address"
+            data-test="add-email"
+            @keyup.enter="add"
+          />
+          <button class="mld-btn" :disabled="!newEmail.trim()" data-test="add" @click="add">Add</button>
+        </div>
+        <small class="muted" data-test="roster-note">
+          <template v-if="verified">
+            Adding an address lets that person watch; they confirm with a code
+            emailed to them, and you still send them the link yourself. Removing
+            someone stops their playback straight away.
+          </template>
+          <template v-else>
+            Anyone with the link can watch by giving an address. This list only
+            marks who you expect, so removing someone does not stop them watching.
+          </template>
+        </small>
+      </template>
+      <small v-else class="muted" data-test="roster-dead">
+        This link is {{ deadLabel }}, so nobody else can be added to it. Create a
+        new link to share this with someone else.
+      </small>
+    </template>
+
     <!-- ── audience ──────────────────────────────────────────────────── -->
     <template v-if="aud">
       <p v-if="!aud.tracking" class="muted" data-test="tracking-off">
@@ -121,7 +172,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import CoverageBar from '@/components/CoverageBar.vue'
-import { shareService, type AudienceRow, type LinkAudience, type ShareLink } from '@/services/shareService'
+import {
+  canWidenLink, shareService,
+  type AudienceRow, type LinkAudience, type ShareLink, type ShareRecipient,
+} from '@/services/shareService'
 import {
   etaSeconds, failureDetail, inProgress, mediaService, progressPct, type MediaState,
 } from '@/services/mediaService'
@@ -135,6 +189,25 @@ const media = ref<MediaState | null>(null)
 const error = ref('')
 const flushing = ref(false)
 let timer: ReturnType<typeof setTimeout> | null = null
+
+const recipients = ref<ShareRecipient[]>([])
+const newEmail = ref('')
+const verified = computed(() => props.link.access_mode === 'verified')
+const gated = computed(() => verified.value || props.link.access_mode === 'claimed')
+const canWiden = computed(() => canWidenLink(props.link.status))
+const deadLabel = computed(() => (
+  props.link.status === 'exhausted' ? 'used up' : props.link.status ?? 'no longer live'))
+
+/** A media session consumes no use, so there is no "Used" rung here — who
+ *  actually watched is the audience below. A claimed link sends no code, so it
+ *  has no ladder at all. */
+function recipientLabel(r: ShareRecipient): string {
+  if (r.removed_at) return 'Removed'
+  if (!verified.value) return 'Expected'
+  if (r.first_verified_at) return 'Verified'
+  if (r.last_code_sent_at) return 'A code was requested'
+  return 'On the list'
+}
 
 const pct = computed(() => progressPct(media.value))
 const eta = computed(() => etaSeconds(media.value))
@@ -209,12 +282,18 @@ function human(bytes?: number | null): string {
   return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${u[i]}`
 }
 
+async function loadRecipients() {
+  if (!gated.value) return
+  recipients.value = await shareService.recipients(props.link.link_uid, true)
+}
+
 async function load() {
   error.value = ''
   try {
     const [a, m] = await Promise.all([
       shareService.audience(props.link.link_uid),
       mediaService.state(props.link.resource_uid).catch(() => null),
+      loadRecipients(),
     ])
     aud.value = a
     media.value = m
@@ -225,6 +304,31 @@ async function load() {
   if (timer) clearTimeout(timer)
   if (props.link.media_state === 'pending_media' || inProgress(media.value)) {
     timer = setTimeout(() => { emit('changed'); void load() }, 5000)
+  }
+}
+
+async function add() {
+  const email = newEmail.value.trim().toLowerCase()
+  if (!email) return
+  error.value = ''
+  try {
+    await shareService.addRecipient(props.link.link_uid, email)
+    newEmail.value = ''
+    await loadRecipients()
+    emit('changed')
+  } catch (e) {
+    error.value = errorMessage(e, 'Could not add that address')
+  }
+}
+
+async function remove(email: string) {
+  error.value = ''
+  try {
+    await shareService.removeRecipient(props.link.link_uid, email)
+    await loadRecipients()
+    emit('changed')
+  } catch (e) {
+    error.value = errorMessage(e, 'Could not remove that address')
   }
 }
 
@@ -275,6 +379,12 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 .mld-tag { font-size: .7rem; padding: 0 .3rem; border: 1px solid var(--border); border-radius: .25rem; color: var(--muted); }
 .mld-tag.ok { color: var(--success); border-color: var(--success); }
 .mld-line { font-size: .75rem; color: var(--muted); }
+.mld-h { margin: .3rem 0 0; font-size: .8rem; text-transform: uppercase; color: var(--muted); }
+.mld-roster { gap: .2rem; }
+.mld-rrow { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .85rem; }
+.mld-tag[data-st='removed'] { text-decoration: line-through; }
+.mld-add { display: flex; gap: .4rem; }
+.mld-add input { flex: 1; min-width: 0; }
 .mld-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
 .mld-btn {
   padding: .1rem .4rem; font-size: .75rem; cursor: pointer;
