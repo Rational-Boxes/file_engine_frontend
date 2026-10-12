@@ -205,7 +205,7 @@
     <!-- Actions (folders only) -->
     <section v-show="tab === 'Actions'" class="pane">
       <FolderActionsPanel
-        v-if="item && item.isDirectory"
+        v-if="item && item.isDirectory && mayConfigureActions"
         :uid="item.uid"
         :can-write="!!effective['w']"
         :can-manage="!!effective['m']"
@@ -341,7 +341,8 @@ const tab = ref<Tab>('Info')
 const provenance = ref<DropProvenance | null>(null)
 
 const item = computed(() => files.detailItem)
-// Folders gain an extra "Actions" tab (folder-actions bindings + run log).
+// Folders gain an extra "Actions" tab (folder-actions bindings + run log) for
+// people who may configure them — see mayConfigureActions.
 // 'Share' is deliberately separate from 'Access': Access is "which of our
 // people", Share is "someone outside". Shown only when the user may actually
 // mint a link, so the tab is not an invitation to a 403.
@@ -357,12 +358,26 @@ const item = computed(() => files.detailItem)
 // with a message that says so.
 const canShare = computed(() =>
   auth.hasRole('share_external') || auth.hasAccessLevel('admin'))
+// Actions are configured by people who can WRITE the folder — that is what
+// folder_actions requires to create, change or delete a binding. A reader used to
+// get the tab anyway: a list they could do nothing with and, from the editor's
+// lookups, an access-denied. Administrators always see it (the core's admin
+// override gives them WRITE regardless).
+//
+// Held apart from `effective`, which loadAll() blanks at the start of every reload:
+// deriving the tab from it would drop the tab mid-reload, and the tab watcher below
+// would throw someone who had just saved an action back to Info. This is replaced
+// only when a fresh answer for THAT folder arrives.
+const actionsAccess = ref<{ uid: string; ok: boolean }>({ uid: '', ok: false })
+const mayConfigureActions = computed(() =>
+  auth.hasAccessLevel('admin')
+  || (actionsAccess.value.uid === item.value?.uid && actionsAccess.value.ok))
 const visibleTabs = computed<Tab[]>(() => {
   const out: Tab[] = [...tabs]
   // A tab whose service is not deployed leads to a pane that can only report an
   // error. Folder actions and sharing are both optional, so the tab goes with
   // the service rather than sitting there to disappoint.
-  if (item.value?.isDirectory && features.folderActions) out.push('Actions')
+  if (item.value?.isDirectory && features.folderActions && mayConfigureActions.value) out.push('Actions')
   if (canShare.value && features.sharing) out.push('Share')
   return out
 })
@@ -498,6 +513,7 @@ async function loadAll(uid: string, { silent = false } = {}) {
     info.value = stat
     metadata.value = meta
     PERMS.forEach((p, i) => (effective.value[p.key] = checks[i] as boolean))
+    actionsAccess.value = { uid, ok: !!effective.value['w'] }
   } catch (e) {
     error.value = errorMessage(e, 'Failed to load details')
   }
