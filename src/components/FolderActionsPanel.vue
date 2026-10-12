@@ -194,11 +194,15 @@ function actionLabel(typeName: string): string {
 // resolved. Until then the uid stands in rather than the row going blank: a
 // missing hint reads as "no destination configured", which is worse than an
 // unreadable one. The resolver caches, so this settles on first render.
+// The config keys that hold a FOLDER. Only these are resolved as paths: other
+// values look like uids too (a sorter's classifier_set_id), and resolving one as a
+// folder was a stray 404 on every render.
+const FOLDER_KEYS = ['destination', 'destination_folder', 'folder', 'on_approved', 'on_rejected']
+
 function configHint(b: ActionBinding): string {
   void hintTick.value   // dependency: the path cache is a plain Map, not reactive
   const c = b.config || {}
-  const dest = c['destination'] ?? c['destination_folder'] ?? c['folder']
-    ?? c['on_approved'] ?? c['on_rejected']
+  const dest = FOLDER_KEYS.map((k) => c[k]).find((v) => v !== undefined && v !== null)
   if (typeof dest === 'string' && dest) {
     return `→ ${looksLikeUid(dest) ? (cachedFolderPath(dest) || dest) : dest}`
   }
@@ -218,7 +222,8 @@ watch(
   () => bindings.value.map((b) => JSON.stringify(b.config || {})).join('|'),
   () => {
     for (const b of bindings.value) {
-      for (const v of Object.values(b.config || {})) {
+      for (const k of FOLDER_KEYS) {
+        const v = (b.config || {})[k]
         if (looksLikeUid(v)) void resolveFolderPath(String(v)).then(() => { hintTick.value++ })
       }
     }

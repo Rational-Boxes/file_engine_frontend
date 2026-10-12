@@ -63,6 +63,9 @@ vi.mock('@/services/shareService', async () => {
   return { ...actual, shareService: svc, default: svc }
 })
 
+vi.mock('@/components/FolderActionsPanel.vue', () => ({
+  default: { name: 'FolderActionsPanel', props: ['uid', 'canWrite', 'canManage'], template: '<div class="fap-stub"/>' },
+}))
 vi.mock('@/components/AclEditor.vue', () => ({
   default: { name: 'AclEditor', props: ['uid', 'canManage'], template: '<div/>' },
 }))
@@ -579,5 +582,74 @@ describe('FileDetailsDrawer — reloads a file that changed underneath it', () =
 
     expect(fns.stat.mock.calls.map((c) => c[0])).toEqual(['f2'])
     expect(fns.versionsReload).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('FileDetailsDrawer — who sees the Actions tab', () => {
+  // Configuring an action needs WRITE on the folder (folder_actions refuses
+  // otherwise). A reader used to get the tab anyway — a list they could do nothing
+  // with — and the editor's lookups answered them with an access-denied.
+  const openFolder = () => {
+    const files = useFileStore()
+    files.detailItem = { uid: 'd1', name: 'Inbox', isDirectory: true, type: 'directory', size: 0,
+      hasRenditions: false, renditionCount: 0, deleted: false, createdAt: 0, modifiedAt: 0,
+      owner: '', createdBy: '', modifiedBy: '' } as never
+    files.drawerOpen = true
+    return mount(FileDetailsDrawer)
+  }
+  const tabsOf = (w: ReturnType<typeof mount>) => w.findAll('.tabs button').map((b) => b.text())
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    fns.stat.mockResolvedValue({ uid: 'd1', name: 'Inbox', type: 'directory', size: 0, owner: 'u', version: '' })
+    fns.getMetadata.mockResolvedValue({})
+    const auth = useAuthStore()
+    auth.roles = ['users']
+    auth.accessLevel = 'editor' as never
+  })
+
+  it('hides it from someone who can only read the folder', async () => {
+    fns.checkPermission.mockImplementation(async (_uid: string, o: { permission: string }) => o.permission === 'r')
+    const w = openFolder()
+    await flushPromises()
+    expect(tabsOf(w)).not.toContain('Actions')
+    expect(w.find('.fap-stub').exists()).toBe(false)   // and nothing loads behind it
+  })
+
+  it('shows it to someone who can write the folder', async () => {
+    fns.checkPermission.mockImplementation(async (_uid: string, o: { permission: string }) => ['r', 'w'].includes(o.permission))
+    const w = openFolder()
+    await flushPromises()
+    expect(tabsOf(w)).toContain('Actions')
+  })
+
+  it('shows it to an administrator', async () => {
+    fns.checkPermission.mockResolvedValue(false)
+    const auth = useAuthStore()
+    auth.roles = ['users', 'administrators']
+    auth.accessLevel = 'admin' as never
+    const w = openFolder()
+    await flushPromises()
+    expect(tabsOf(w)).toContain('Actions')
+  })
+
+  it('stays on Actions while the drawer reloads after a change', async () => {
+    // loadAll() blanks the permission flags while it re-reads them; the tab must
+    // not drop out in between and throw the user back to Info.
+    fns.checkPermission.mockImplementation(async (_uid: string, o: { permission: string }) => ['r', 'w'].includes(o.permission))
+    const w = openFolder()
+    await flushPromises()
+    await w.findAll('.tabs button').find((b) => b.text() === 'Actions')!.trigger('click')
+    expect(w.find('.tabs button.active').text()).toBe('Actions')
+    let release!: () => void
+    fns.stat.mockImplementation(() => new Promise((res) => { release = () => res({ uid: 'd1', name: 'Inbox', type: 'directory', size: 0, owner: 'u', version: '' }) }))
+    w.findComponent({ name: 'FolderActionsPanel' }).vm.$emit('changed')
+    await flushPromises()
+    expect(w.find('.tabs button.active').text()).toBe('Actions')
+    release()
+    await flushPromises()
+    expect(w.find('.tabs button.active').text()).toBe('Actions')
   })
 })
