@@ -70,7 +70,7 @@ describe('FileThumbnail', () => {
     await flushPromises()
     expect(loadRenditionSet).not.toHaveBeenCalled()
     expect(w.find('img').exists()).toBe(false)
-    expect(w.text()).toBe('📄')
+    expect(w.text()).toBe('📕') // a PDF's type glyph
   })
 
   it('shows the folder icon for a directory (no fetch)', async () => {
@@ -87,6 +87,6 @@ describe('FileThumbnail', () => {
     const w = mount(FileThumbnail, { props: { item: item() } })
     await flushPromises()
     expect(w.find('img').exists()).toBe(false)
-    expect(w.text()).toBe('📄')
+    expect(w.text()).toBe('📕') // a PDF's type glyph
   })
 })

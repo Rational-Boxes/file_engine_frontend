@@ -31,7 +31,7 @@ import {
   revokeRenditionUrl,
   thumbnailImage,
 } from '@/services/renditions'
-import { modelIcon } from '@/utils/modelFormat'
+import { fileIcon } from '@/utils/fileKind'
 
 // A file tile's leading glyph: a lazily-loaded icon-sized `thumbnail` rendition
 // when the file has one, else the plain type icon. Fetching is deferred until
@@ -44,10 +44,9 @@ const url = ref('')
 let observer: IntersectionObserver | null = null
 let started = false
 
-const icon = computed(() => {
-  if (props.item.isDirectory) return '📁'
-  return modelIcon(props.item.name) ?? '📄'
-})
+// The type glyph — an executable, an archive, a disk image each say what they
+// are, rather than every file without a thumbnail reading as a document.
+const icon = computed(() => fileIcon(props.item.name, props.item.isDirectory))
 const eligible = computed(() => !props.item.isDirectory && props.item.hasRenditions)
 
 onMounted(() => {

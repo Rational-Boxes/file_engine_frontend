@@ -303,6 +303,7 @@ import { useCommentsStore } from '@/stores/comments'
 import { usePreviewStore } from '@/stores/preview'
 import { useCapabilities } from '@/composables/useCapabilities'
 import { previewVerdictFromRow, canPreviewWithRenditions, canView3DModel } from '@/utils/previewable'
+import { conversionOffer } from '@/utils/fileKind'
 import { loadRenditionSet, toRenditionSet } from '@/services/renditions'
 import { shareService, type DropProvenance } from '@/services/shareService'
 import { discussionService, type FlagCounts } from '@/services/discussionService'
@@ -313,7 +314,7 @@ const upload = useUploadStore()
 const model3d = useModel3dStore()
 const comments = useCommentsStore()
 const preview = usePreviewStore()
-const { features } = useCapabilities()
+const { features, conversionFormats } = useCapabilities()
 
 // A file is viewable in 3D when it's a known model format AND has been converted
 // (its `model` XKT rendition lives among its hidden children).
@@ -581,6 +582,12 @@ const menuFor = (item: FileItem): KebabItem[] => {
   if (!item.isDirectory) m.push({ action: 'comments', label: '💬 Comments' })
   if (!item.isDirectory && item.hasRenditions)
     m.push({ action: 'renditions', label: `Renditions (${item.renditionCount})` })
+  // The conversion option, where an installed plugin can render this format and
+  // nothing has been generated yet. A PDF or an inline image previews on its
+  // own; an executable or archive is never offered (utils/fileKind).
+  if (!item.isDirectory && !item.hasRenditions && previewVerdictFromRow(item) === 'no' &&
+      conversionOffer(item.name, conversionFormats.value) !== 'none')
+    m.push({ action: 'generate', label: '🖼 Generate preview' })
   if (files.canWrite) m.push({ action: 'rename', label: 'Rename' })
   if (canDo('copy', auth.accessLevel)) m.push({ action: 'copy', label: 'Copy' })
   if (files.canWrite) m.push({ action: 'cut', label: 'Cut' })
@@ -694,6 +701,7 @@ const onAction = (action: string, item: FileItem) => {
     case 'comments': return comments.open(item.uid, item.name)
     case 'view3d': return model3d.open(item.uid, item.name)
     case 'renditions': return files.openRenditions(item)
+    case 'generate': return preview.open(item.uid, item.name, { generate: true })
     case 'rename': return rename(item)
     case 'copy': return files.setClipboard('copy', [item])
     case 'cut': return files.setClipboard('cut', [item])

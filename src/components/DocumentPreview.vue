@@ -279,14 +279,29 @@
             @click="canOpen && openMedia()"
           />
         </template>
-        <!-- No rendition yet: ask CSAI to (re)generate the preview on demand. -->
-        <template v-else>
+        <!-- No rendition. Conversion is offered only where an installed plugin
+             can render this format (capabilities.conversion); anything else —
+             an executable, an archive, a format nothing here converts, or a
+             conversion that came back with nothing — gets its type and a
+             download, rather than a button that can only produce this frame
+             again. -->
+        <template v-else-if="canGenerate">
           <p class="dp-muted">{{ generating ? 'Generating preview…' : 'No preview available yet.' }}</p>
-          <button class="btn" :disabled="generating" @click="generate">
+          <button class="btn" :disabled="generating" data-test="generate-preview" @click="generate">
             {{ generating ? 'Generating…' : 'Generate preview' }}
           </button>
           <p v-if="genError" class="dp-err">{{ genError }}</p>
+          <div class="dp-actions">
+            <button class="link" @click="downloadOriginal">⬇ Download original</button>
+            <button v-if="showLocation" class="link" @click="openLocation">📂 Open file location</button>
+          </div>
         </template>
+        <div v-else class="dp-none" data-test="no-preview">
+          <span class="dp-none-icon" aria-hidden="true">{{ noPreviewIcon }}</span>
+          <p class="dp-none-msg">{{ noPreviewMessage }}</p>
+          <button class="btn" data-test="download-original" @click="downloadOriginal">⬇ Download</button>
+          <button v-if="showLocation" class="link" @click="openLocation">📂 Open file location</button>
+        </div>
 
         <!-- Inline embed/play button for a PDF/video only. A plain image has no inline
              view — its thumbnail (above) opens the overlay on click instead. -->
@@ -407,6 +422,9 @@ import { usePreviewStore } from '@/stores/preview'
 import { useAuthStore } from '@/stores/auth'
 import { errorMessage } from '@/services/apiClient'
 import { formatVersionMinute, formatVersionTimestamp } from '@/utils/format'
+import {
+  fileKind, fileIcon, noPreviewReason, conversionOffer, type ConversionOffer,
+} from '@/utils/fileKind'
 
 const router = useRouter()
 const route = useRoute()
@@ -440,10 +458,15 @@ const props = defineProps<{
    * full width.
    */
   showLocation?: boolean
+  /** Start converting at once when there is no preview yet — the file
+   *  browser's "Generate preview" opens the overlay with this set, so progress
+   *  and the outcome appear where the preview will. Ignored where conversion
+   *  is not offered. */
+  autoGenerate?: boolean
 }>()
 
 const preview = usePreviewStore()
-const { features } = useCapabilities()
+const { features, conversionFormats } = useCapabilities()
 
 // VIDEO_EXTS now lives beside the rendition helpers, so the rule that decides a
 // row has a video preview and the player that renders it share one list.
@@ -533,6 +556,22 @@ const loading = ref(false)
 const opening = ref(false)
 const generating = ref(false)
 const genError = ref('')
+// The outcome of a conversion that produced nothing to show. Once set, the
+// empty state stops offering a conversion that has just answered.
+const convertOutcome = ref<'' | 'unsupported' | 'empty'>('')
+
+const kind = computed(() => fileKind(props.name || ''))
+// Until the name is known (the preview page stats it after mounting) nothing is
+// settled, so nothing is withheld.
+const offer = computed<ConversionOffer>(() =>
+  props.name ? conversionOffer(props.name, conversionFormats.value) : 'unknown')
+const canGenerate = computed(() => offer.value !== 'none' && !convertOutcome.value)
+const noPreviewIcon = computed(() => fileIcon(props.name || ''))
+const noPreviewMessage = computed(() => {
+  if (convertOutcome.value === 'unsupported') return 'No converter here supports this file type.'
+  if (convertOutcome.value === 'empty') return 'The conversion produced no preview for this file.'
+  return noPreviewReason(kind.value)
+})
 const error = ref('')
 
 // A native PDF is its own inline document, so it has no `pdf` rendition — open
@@ -730,7 +769,13 @@ const { discussionPos, discLayout, dragging, combinedActive, discStyle, setPos, 
   // panel can otherwise do nothing but report that it cannot reach anything.
   useDiscussionDock(hasPreview, computed(() => !!props.fullWidth && features.discussion))
 
-watch(() => props.uid, reload, { immediate: true })
+watch(() => props.uid, async () => {
+  convertOutcome.value = ''
+  await reload()
+  if (props.autoGenerate && canGenerate.value && !hasPreview.value && mediaKind.value === null) {
+    await generate()
+  }
+}, { immediate: true })
 onBeforeUnmount(cleanup)
 
 // After a zoom change (or a new image), the pane's scrollable size changes once the new
@@ -898,8 +943,12 @@ async function generate() {
   generating.value = true
   genError.value = ''
   try {
-    await searchService.generatePreview(props.uid)
+    const res = await searchService.generatePreview(props.uid)
     await reload()
+    // Still nothing to show: say so, and stop offering the same conversion.
+    if (!hasPreview.value && mediaKind.value === null) {
+      convertOutcome.value = res.status === 'unsupported' ? 'unsupported' : 'empty'
+    }
   } catch (e) {
     genError.value = errorMessage(e, 'Failed to generate preview')
   } finally {
@@ -1624,6 +1673,22 @@ function cleanup() {
   width: 100%;
 }
 
+.dp-none {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 16px;
+  text-align: center;
+}
+.dp-none-icon {
+  font-size: 48px;
+  line-height: 1;
+}
+.dp-none-msg {
+  margin: 0;
+  color: var(--muted);
+}
 .dp-actions {
   display: flex;
   gap: 16px;
