@@ -50,6 +50,24 @@ export interface EditingCapability {
   extensions: string[]
 }
 
+/** One plugin's slice of csai's convertible formats (capabilities.conversion). */
+export interface ConversionFormat {
+  plugin: string
+  /** Renders AND the tools it needs are installed here. */
+  preview: boolean
+  /** Extracts searchable text. */
+  text: boolean
+  /** Lower-case, no dot; `city.json` appears whole. */
+  extensions: string[]
+}
+
+export interface ConversionCapability {
+  /** csai reported its formats. False for a csai too old to say — read as
+   *  unknown, never as "nothing converts". */
+  known: boolean
+  formats: ConversionFormat[]
+}
+
 export interface FeatureCapability {
   available: boolean
   [k: string]: unknown
@@ -64,6 +82,8 @@ export interface DeploymentCapabilities {
   /** Media publishing (MEDIA_SHARE.md §4.6): FFmpeg, an encoder, a running
    *  media worker. Absent => the UI offers no media share and no pointer. */
   media: FeatureCapability
+  /** Which formats the installed conversion plugins can render. */
+  conversion: ConversionCapability
   // Optional services, each detected by asking it something cheap.
   discussion: FeatureCapability
   sharing: FeatureCapability
@@ -84,6 +104,8 @@ const ASSUME_AVAILABLE: DeploymentCapabilities = {
   // NOT assumed: a media share on a deployment that cannot encode would mint a
   // link that never plays. Off until csai says otherwise.
   media: { available: false },
+  // Unknown, not empty: conversion stays offered until csai says otherwise.
+  conversion: { known: false, formats: [] },
   discussion: { available: true },
   sharing: { available: true },
   difference: { available: true },
@@ -171,6 +193,23 @@ async function fetchCsaiCapabilities(): Promise<Partial<DeploymentCapabilities>>
     // silently hide the feature again; the E2E asserts the live shape.
     media: { ...(data?.media ?? {}),
              available: data?.media?.publish === true || data?.media?.available === true },
+    conversion: parseConversion(data?.conversion),
+  }
+}
+
+function parseConversion(raw: unknown): ConversionCapability {
+  const formats = (raw as { formats?: unknown })?.formats
+  if (!Array.isArray(formats)) return { known: false, formats: [] }
+  return {
+    known: true,
+    formats: formats
+      .filter((f) => f && Array.isArray(f.extensions))
+      .map((f) => ({
+        plugin: String(f.plugin ?? ''),
+        preview: f.preview === true,
+        text: f.text === true,
+        extensions: (f.extensions as unknown[]).map((e) => String(e).toLowerCase()),
+      })),
   }
 }
 

@@ -72,6 +72,23 @@ describe('useCapabilities', () => {
     expect(features.search).toBe(true)
   })
 
+  it('passes on only the formats a plugin can render here and now', async () => {
+    load.mockResolvedValue({ ...caps(), conversion: { known: true, formats: [
+      { plugin: 'pdf', preview: true, text: true, extensions: ['pdf'] },
+      { plugin: 'office', preview: false, text: true, extensions: ['docx'] }, // no LibreOffice
+    ] } })
+    const { conversionFormats } = useCapabilities()
+    await flushPromises()
+    expect(conversionFormats.value).toEqual({ known: true, previewExtensions: ['pdf'] })
+  })
+
+  it('keeps conversion unknown when csai does not report formats', async () => {
+    load.mockResolvedValue(caps())
+    const { conversionFormats } = useCapabilities()
+    await flushPromises()
+    expect(conversionFormats.value.known).toBe(false)
+  })
+
   it('asks once however many components use it', async () => {
     load.mockResolvedValue(caps())
     useCapabilities()

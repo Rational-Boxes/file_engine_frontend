@@ -87,7 +87,8 @@ import { usePreviewStore } from '@/stores/preview'
 import { useModel3dStore } from '@/stores/model3d'
 import { useFileNames } from '@/composables/useFileNames'
 import { renderMarkdown } from '@/utils/markdown'
-import { is3DModel, modelIcon } from '@/utils/modelFormat'
+import { is3DModel } from '@/utils/modelFormat'
+import { fileIcon } from '@/utils/fileKind'
 import { errorMessage } from '@/services/csaiClient'
 import type { SearchHit } from '@/types'
 
@@ -95,8 +96,8 @@ const preview = usePreviewStore()
 const model3d = useModel3dStore()
 const { names, resolve: resolveNames } = useFileNames()
 
-// A format icon per result: the 3D glyph for models, else a generic document icon.
-const iconFor = (h: SearchHit) => modelIcon(displayName(h)) ?? '📄'
+// A format icon per result, from the same table as the file listing.
+const iconFor = (h: SearchHit) => fileIcon(displayName(h))
 
 // Open a result: 3D models go to the dedicated viewer (never the document text
 // preview); everything else opens the document preview overlay.

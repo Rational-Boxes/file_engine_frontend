@@ -22,22 +22,27 @@ import { defineStore } from 'pinia'
 interface PreviewState {
   uid: string
   name: string
+  // Convert on open when there is no preview yet (the file browser's
+  // "Generate preview" action). Cleared with the rest on close.
+  generate: boolean
 }
 
 export const usePreviewStore = defineStore('preview', {
-  state: (): PreviewState => ({ uid: '', name: '' }),
+  state: (): PreviewState => ({ uid: '', name: '', generate: false }),
   getters: {
     isOpen: (s): boolean => !!s.uid,
   },
   actions: {
-    open(uid: string, name = '') {
+    open(uid: string, name = '', opts: { generate?: boolean } = {}) {
       if (!uid) return
       this.uid = uid
       this.name = name
+      this.generate = !!opts.generate
     },
     close() {
       this.uid = ''
       this.name = ''
+      this.generate = false
     },
   },
 })

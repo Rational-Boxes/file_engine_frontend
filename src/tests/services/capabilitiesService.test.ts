@@ -256,3 +256,29 @@ describe('capabilitiesService — re-checking what was found absent', () => {
     expect((await capabilitiesService.load()).discussion.available).toBe(true)
   })
 })
+
+describe('capabilitiesService — convertible formats', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    capabilitiesService.reset()
+    axiosGet.mockResolvedValue(present)
+  })
+
+  it('reads the formats csai reports', async () => {
+    get.mockResolvedValue(reply({ available: true, reason: '', extensions: [] }, {
+      conversion: { available: true, formats: [
+        { plugin: 'office', preview: false, text: true, renders: true, extensions: ['DOCX', 'odt'] },
+        { plugin: 'pdf', preview: true, text: true, renders: true, extensions: ['pdf'] },
+      ] },
+    }))
+    const conv = (await capabilitiesService.load()).conversion
+    expect(conv.known).toBe(true)
+    expect(conv.formats.map((f) => f.plugin)).toEqual(['office', 'pdf'])
+    expect(conv.formats[0]).toMatchObject({ preview: false, extensions: ['docx', 'odt'] })
+  })
+
+  it('reads a csai that does not report formats as unknown, not as "nothing converts"', async () => {
+    get.mockResolvedValue(reply({ available: true, reason: '', extensions: [] }))
+    expect((await capabilitiesService.load()).conversion).toEqual({ known: false, formats: [] })
+  })
+})

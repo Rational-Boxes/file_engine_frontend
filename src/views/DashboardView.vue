@@ -98,6 +98,7 @@
           <li v-for="a in d.activityFeed" :key="a.id" class="item">
             <router-link class="item-main" :to="`/preview/${a.fileUid}`">
               <span class="kind" :data-kind="a.eventType">{{ a.eventType }}</span>
+              <span class="ficon" aria-hidden="true">{{ fileIcon(a.name || a.path || '') }}</span>
               <span class="who" :title="a.name || a.path || a.fileUid">{{
                 truncateMiddle(a.name || a.path || a.fileUid)
               }}</span>
@@ -118,6 +119,7 @@ import ReviewsInbox from '@/components/ReviewsInbox.vue'
 import SharingInbox from '@/components/SharingInbox.vue'
 import { useCapabilities } from '@/composables/useCapabilities'
 import { truncateMiddle } from '@/utils/format'
+import { fileIcon } from '@/utils/fileKind'
 import type { Notification } from '@/services/discussionService'
 
 const d = useDiscussionStore()
@@ -302,6 +304,10 @@ onBeforeUnmount(() => d.stopPolling())
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
+}
+.ficon {
+  flex: 0 0 auto;
+  line-height: 1;
 }
 .who {
   flex: 1 1 auto;

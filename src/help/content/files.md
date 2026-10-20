@@ -2,7 +2,7 @@
 id: files
 title: Uploading & organizing files
 category: Working with files
-keywords: [files, upload, folder, browse, move, copy, rename, delete, undelete, trash, drag, drop, download, breadcrumbs, clipboard, thumbnail]
+keywords: [files, upload, folder, browse, move, copy, rename, delete, undelete, trash, drag, drop, download, breadcrumbs, clipboard, thumbnail, preview, generate preview, icon, executable, archive, binary]
 order: 1
 related: [versions, editing, sharing, folder-actions, search, acl-inheritance]
 ---
@@ -84,6 +84,23 @@ in-browser editing. See [editing documents](#editing).
 
 Most of these actions also live on each row's **⋮** menu, and folder-changing actions
 appear only where you have write access.
+
+## Previews, and files that don't have one
+
+Files show a small thumbnail once a preview has been made; until then — and for
+files that never get one — the icon says what kind of file it is: ⚙️ programs and
+installers, 🗜️ archives, 💿 disk images, 🧩 compiled libraries, 🗄️ databases,
+🔤 fonts, 🎵 audio, and so on.
+
+Previews are made by your workspace's converters, and **which formats they cover
+depends on what is installed**. Where a converter can handle a file that has no
+preview yet, its row menu (⋮) offers **🖼 Generate preview**, and the preview window
+offers the same button.
+
+Programs, archives and other binary files can't be previewed — nothing in them is
+meant to be looked at. Opening one (from the Dashboard, a search result, or the
+Files browser) shows its type and a **⬇ Download** button instead. The same happens
+if a conversion finishes without producing anything to show.
 
 ## Deleting is reversible
 

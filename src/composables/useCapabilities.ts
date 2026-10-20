@@ -48,7 +48,20 @@ const state = reactive({
   // NOT optimistic, unlike the rest: offering a media share on a deployment
   // that cannot encode mints a link that never plays (MEDIA_SHARE.md §10).
   media: false,
+  // Formats the installed conversion plugins can render (utils/fileKind reads
+  // these through conversionFormats). Unknown until csai answers — and for a
+  // csai too old to say — which keeps "Generate preview" offered, as before.
+  conversionKnown: false,
+  previewExtensions: [] as string[],
 })
+
+function applyConversion(c: Partial<DeploymentCapabilities>) {
+  if (!c.conversion) return
+  state.conversionKnown = c.conversion.known
+  state.previewExtensions = c.conversion.formats
+    .filter((f) => f.preview)
+    .flatMap((f) => f.extensions)
+}
 
 let started = false
 
@@ -114,6 +127,7 @@ function applyCsai(c: Partial<DeploymentCapabilities>) {
   if (c.webSearch) state.webSearch = c.webSearch.available
   if (c.search) state.search = c.search.available
   if (c.media) state.media = c.media.available === true
+  applyConversion(c)
 }
 
 function apply(c: DeploymentCapabilities) {
@@ -129,6 +143,7 @@ function apply(c: DeploymentCapabilities) {
   state.bcf = c.bcf.available
   state.audit = c.audit.available
   state.media = c.media?.available === true
+  applyConversion(c)
   state.loaded = true
 }
 
@@ -148,6 +163,12 @@ export function useCapabilities() {
     /** True once the deployment has actually answered — for anything that would
      *  rather wait than flicker. */
     ready: computed(() => state.loaded),
+    /** The deployment's convertible formats, in the shape utils/fileKind's
+     *  conversionOffer takes. */
+    conversionFormats: computed(() => ({
+      known: state.conversionKnown,
+      previewExtensions: state.previewExtensions,
+    })),
   }
 }
 
@@ -177,9 +198,11 @@ export function resetCapabilities() {
   state.loaded = false
   const flags = state as unknown as Record<string, boolean>
   for (const k of Object.keys(state)) {
-    if (k === 'loaded' || k === 'editingExtensions') continue
+    if (k === 'loaded' || k === 'editingExtensions' || k === 'previewExtensions') continue
     flags[k] = true
   }
   state.editingExtensions = []
+  state.conversionKnown = false
+  state.previewExtensions = []
   capabilitiesService.reset()
 }

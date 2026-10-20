@@ -47,7 +47,7 @@
 
         <div class="ov-body">
           <p v-if="error" class="ov-err">{{ error }}</p>
-          <DocumentPreview ref="docRef" :uid="preview.uid" :name="name" full-width show-location titlebar="#ov-titlebar" />
+          <DocumentPreview ref="docRef" :uid="preview.uid" :name="name" :auto-generate="preview.generate" full-width show-location titlebar="#ov-titlebar" />
         </div>
       </div>
     </div>
