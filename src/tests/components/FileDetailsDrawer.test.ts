@@ -77,7 +77,7 @@ vi.mock('@/components/DocumentPreview.vue', () => ({
 vi.mock('@/components/FileVersions.vue', () => ({
   default: {
     name: 'FileVersions',
-    props: ['uid', 'name', 'current', 'canManage'],
+    props: ['uid', 'name', 'current', 'canManage', 'canCull'],
     setup(_p: unknown, { expose }: { expose: (e: object) => void }) {
       expose({ reload: fns.versionsReload })
       return () => h('div')
@@ -651,5 +651,64 @@ describe('FileDetailsDrawer — who sees the Actions tab', () => {
     release()
     await flushPromises()
     expect(w.find('.tabs button.active').text()).toBe('Actions')
+  })
+})
+
+describe('FileDetailsDrawer — version purge gate', () => {
+  function open() {
+    const files = useFileStore()
+    files.detailItem = { uid: 'f1', name: 'a.txt', isDirectory: false, type: 'file', size: 1,
+      hasRenditions: false, renditionCount: 0, deleted: false, createdAt: 0, modifiedAt: 0,
+      owner: '', createdBy: '', modifiedBy: '' } as never
+    files.drawerOpen = true
+    return mount(FileDetailsDrawer)
+  }
+  const canCull = (w: ReturnType<typeof mount>) =>
+    w.findComponent({ name: 'FileVersions' }).props('canCull')
+  const setRoles = (roles: string[], level: string) => {
+    const auth = useAuthStore()
+    auth.roles = roles
+    auth.accessLevel = level as never
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    fns.stat.mockResolvedValue({ uid: 'f1', name: 'a.txt', type: 'file', size: 1, owner: 'u', version: 'v1' })
+    fns.getMetadata.mockResolvedValue({})
+    fns.generatePreview.mockResolvedValue({ status: 'indexed', renditions: [], hasMarkdown: true })
+    fns.loadRenditionSet.mockResolvedValue({})
+  })
+
+  it('withholds it from a non-member even when they hold CULL_VERSIONS', async () => {
+    fns.checkPermission.mockResolvedValue(true)
+    setRoles(['users', 'editor'], 'editor')
+    const w = open()
+    await flushPromises()
+    expect(canCull(w)).toBe(false)
+  })
+
+  it('withholds it from a tenant administrator who is not in erasure_admins', async () => {
+    fns.checkPermission.mockResolvedValue(true)
+    setRoles(['users', 'administrators'], 'admin')
+    const w = open()
+    await flushPromises()
+    expect(canCull(w)).toBe(false)
+  })
+
+  it('withholds it from a member the core would refuse (no CULL_VERSIONS)', async () => {
+    fns.checkPermission.mockImplementation(async (_uid: string, o: { permission: string }) => o.permission !== 'CULL_VERSIONS')
+    setRoles(['users', 'erasure_admins', 'erasure_admin'], 'editor')
+    const w = open()
+    await flushPromises()
+    expect(canCull(w)).toBe(false)
+  })
+
+  it('offers it to a member who holds CULL_VERSIONS', async () => {
+    fns.checkPermission.mockResolvedValue(true)
+    setRoles(['users', 'erasure_admins'], 'editor')
+    const w = open()
+    await flushPromises()
+    expect(canCull(w)).toBe(true)
   })
 })

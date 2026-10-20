@@ -32,7 +32,7 @@ vi.mock('@/services/apiClient', () => ({ errorMessage: (e: unknown) => String(e)
 import FileVersions from '@/components/FileVersions.vue'
 
 function mountIt(props: Record<string, unknown> = {}) {
-  return mount(FileVersions, { props: { uid: 'f1', current: 'v3', canManage: true, ...props } })
+  return mount(FileVersions, { props: { uid: 'f1', current: 'v3', canManage: true, canCull: true, ...props } })
 }
 
 describe('FileVersions', () => {
@@ -91,11 +91,18 @@ describe('FileVersions', () => {
   })
 
   it('hides restore/purge controls when canManage is false', async () => {
-    const w = mountIt({ canManage: false })
+    const w = mountIt({ canManage: false, canCull: false })
     await flushPromises()
     expect(w.text()).not.toContain('restore')
     expect(w.find('form.v-purge').exists()).toBe(false)
     expect(w.text()).toContain('download') // still downloadable
+  })
+
+  it('purge has its own gate: an editor who may restore does not get it', async () => {
+    const w = mountIt({ canManage: true, canCull: false })
+    await flushPromises()
+    expect(w.text()).toContain('restore')
+    expect(w.find('form.v-purge').exists()).toBe(false)
   })
 })
 

@@ -563,7 +563,10 @@ const menuFor = (item: FileItem): KebabItem[] => {
     // rather than sitting one menu click away from a live file.
     const m: KebabItem[] = []
     if (files.canUndelete) m.push({ action: 'undelete', label: 'Undelete' })
-    if (files.canErase) m.push({ action: 'erase', label: '⚠ Erase permanently' })
+    // Destruction is for erasure_admins only. The core already refuses ERASE to
+    // anyone else; checking the role too keeps the item hidden even from a core
+    // that predates that gate and would still honour a bare ERASE grant.
+    if (files.canErase && auth.isErasureAdmin) m.push({ action: 'erase', label: '⚠ Erase permanently' })
     return m
   }
   const m: KebabItem[] = []

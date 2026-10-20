@@ -85,6 +85,16 @@ export const useAuthStore = defineStore('auth', {
      */
     hasRole: (state) => (role: string) =>
       state.roles.some((r) => r.toLowerCase() === role.toLowerCase()),
+
+    /**
+     * Member of the tenant's `erasure_admins` group — the only population that
+     * may destroy data (erase a file, purge old versions). The core enforces
+     * this; the UI uses it so no one else is shown an affordance for it. The
+     * bridge sends the group verbatim and the core role (`erasure_admin`)
+     * alongside it, so either spelling counts.
+     */
+    isErasureAdmin: (state) =>
+      state.roles.some((r) => ['erasure_admins', 'erasure_admin'].includes(r.toLowerCase())),
   },
 
   actions: {
