@@ -37,7 +37,7 @@ the [sharing editor](#sharing):
 | **View / Retrieve / Restore versions** | See earlier versions, download them, and roll a file back |
 | **Manage ACL** | Change the item's permissions |
 | **Inherit** | Mark this rule to be passed down to *new* items — see [inheritance](#acl-inheritance) |
-| **Cull versions** | Permanently remove old versions (a deliberately separate, high-trust permission that destroys data) |
+| **Cull versions** | Permanently remove old versions (a deliberately separate, high-trust permission that destroys data). Only members of the **erasure_admins** group can cull, and they don't need this grant to do it; granted to anyone else it does nothing |
 
 Most of the time you'll think in terms of **Read**, **Write**, and **Manage ACL**;
 the finer-grained bits are there when you need them.

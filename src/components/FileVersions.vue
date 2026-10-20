@@ -94,7 +94,9 @@
       <button v-if="selected.length" class="link" :disabled="busy" @click="selected = []">clear</button>
     </div>
 
-    <form v-if="canManage && versions.length > 1" class="v-purge" @submit.prevent="purge">
+    <!-- Purging destroys versions irreversibly, so it has its own gate rather
+         than riding on canManage (which only means "may restore"). -->
+    <form v-if="canCull && versions.length > 1" class="v-purge" @submit.prevent="purge">
       <label class="v-keep-label">
         Keep newest
         <input v-model.number="keep" type="number" min="1" class="v-keep" />
@@ -113,7 +115,7 @@ import { usePreviewStore } from '@/stores/preview'
 import { useCapabilities } from '@/composables/useCapabilities'
 import { formatVersionTimestamp, versionFilename } from '@/utils/format'
 
-const props = defineProps<{ uid: string; name?: string; current?: string; canManage?: boolean }>()
+const props = defineProps<{ uid: string; name?: string; current?: string; canManage?: boolean; canCull?: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const difference = useDifferenceStore()

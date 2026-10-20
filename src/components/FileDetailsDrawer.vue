@@ -170,6 +170,7 @@
         :name="item.name"
         :current="info?.version"
         :can-manage="canEdit"
+        :can-cull="canCull"
         @changed="loadAll(item.uid)"
       />
       <p v-else class="muted">Folders are not versioned.</p>
@@ -409,6 +410,13 @@ watch([() => route.query.tab, visibleTabs], () => { tab.value = requestedTab() }
       { immediate: true })
 
 const canEdit = computed(() => auth.hasAccessLevel('editor'))
+// "Purge older" destroys history, so — like every destroy-data operation — it is
+// offered only to members of erasure_admins. Membership is sufficient in the
+// core, which then reports CULL_VERSIONS for them; the bit is still checked so
+// the button never appears where the core would refuse (an older core required
+// a grant on top). Editor level used to show it to everyone, and the core
+// refused nearly all of them.
+const canCull = computed(() => auth.isErasureAdmin && !!effective.value['CULL_VERSIONS'])
 const canDownload = computed(() => canDo('download', auth.accessLevel))
 // Editability is decided by the file NAME's extension (an office document), not the
 // UID; the backend still enforces WRITE when the editor opens.

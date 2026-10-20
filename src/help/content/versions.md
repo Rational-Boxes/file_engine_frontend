@@ -38,18 +38,19 @@ each version you can:
 
 ## Cleaning up old versions
 
-If a file has many versions and you want to reclaim space, editors can prune history:
-set **Keep newest** to how many recent versions to retain, then choose **Purge
+If a file has many versions and you want to reclaim space, an erasure administrator
+can prune history: set **Keep newest** to how many recent versions to retain, then choose **Purge
 older**.
 
 > **Purging is permanent.** Unlike deleting a file (which is reversible), purged
-> versions are gone for good. It's a deliberately high-trust action — see the
-> **Cull versions** permission in [how permissions work](#acl-basics).
+> versions are gone for good. Like every action that destroys data, it is
+> reserved for members of your workspace's **erasure_admins** group — see
+> [how permissions work](#acl-basics). Anyone else won't see the button.
 
 ## Good to know
 
 - **Folders aren't versioned** — the Versions tab shows *"Folders are not
   versioned."* Versioning applies to file contents.
-- **Restoring and purging follow permissions.** You need edit access to restore, and
-  the dedicated cull-versions permission to purge; without them you'll still see the
-  history and can download past versions.
+- **Restoring and purging follow permissions.** You need edit access to restore. To
+  purge you must be in the **erasure_admins** group; otherwise you'll still see
+  the history and can download past versions.
