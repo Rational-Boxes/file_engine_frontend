@@ -2,7 +2,7 @@
 id: webdav
 title: Connect FileEngine to your computer
 category: Working with files
-keywords: [webdav, mount, drive, finder, explorer, davfs, credential, key, secret, mcp, network, folder, connect, password]
+keywords: [webdav, mount, drive, finder, explorer, davfs, credential, key, secret, mcp, api, rest, token, script, network, folder, connect, password]
 order: 7
 related: [files, versions, account-security]
 ---
@@ -16,10 +16,11 @@ store, so history and permissions still apply.
 
 You don't connect with your account password. Instead you generate a **scoped
 credential** — a `key : secret` pair you can revoke on its own without affecting your
-login. Go to your **profile** and find the **WebDAV & MCP credentials** card:
+login. Go to your **profile** and find the **WebDAV, MCP & API credentials** card:
 
 1. Enter a **Label** (for example, `MacBook Finder`) so you can recognize it later.
-2. Tick **WebDAV** (and/or **MCP** for AI-agent access).
+2. Tick **WebDAV**, and/or **MCP** for AI-agent access, and/or **REST API** for your
+   own scripts and programs.
 3. Choose **Add credential**.
 
 > **The secret is shown only once.** Copy it right away with **Copy key:secret**.
@@ -40,9 +41,29 @@ your operating system prompts for it (use the **key** as the username and the
 If you'd rather set it up by hand, point your WebDAV client at your deployment's
 drive address and sign in with the same `key` / `secret`.
 
+## Scripts and programs (REST API)
+
+A credential with the **REST API** scope lets a script or program work with your
+files without your password. The program presents the `key : secret` once, to sign
+in, and gets back a **session token** like the web app's. It uses that token for its
+requests, renews it before it expires, and signs out when it is done. After you
+create the credential, **API example** shows a small Bash script that does exactly
+this; like the mount scripts, it asks for the secret rather than containing it.
+
+Good to know:
+
+- A credential works in the **workspace it was created in** only. Create one in each
+  workspace a program needs.
+- A session from a credential doesn't ask for a two-factor code; the generated
+  secret takes its place. Keep the secret as safe as a password.
+- **Revoking** or **Regenerating** the credential stops its sessions from renewing.
+  A session already running keeps working until its token expires, which is
+  normally within the hour.
+
 ## Related
 
 - The **MCP** scope on a credential lets an AI agent connect to your files instead of
   a file browser — a separate use of the same credential mechanism.
+- The **REST API** scope is for scripts and programs (see below).
 - For your login, SSO, and two-factor settings, see
   [signing in & account security](#account-security).
