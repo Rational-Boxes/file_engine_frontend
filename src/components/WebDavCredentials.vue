@@ -18,11 +18,12 @@
 <template>
   <section class="card">
     <div class="head">
-      <h2>WebDAV &amp; MCP credentials <HelpIcon topic="webdav" label="Connect FileEngine to your computer" /></h2>
+      <h2>WebDAV, MCP &amp; API credentials <HelpIcon topic="webdav" label="Connect FileEngine to your computer" /></h2>
     </div>
     <p class="muted">
-      Connect a WebDAV client (Finder, Explorer, davfs) or an MCP agent with a
-      generated <strong>key&nbsp;:&nbsp;secret</strong> — not your account password. Each
+      Connect a WebDAV client (Finder, Explorer, davfs), an MCP agent or a program using
+      the REST API with a generated <strong>key&nbsp;:&nbsp;secret</strong> — not your
+      account password. Each
       credential is scoped to the door(s) you pick, can be revoked on its own, and the
       secret is shown <strong>once</strong>. Lost it? Regenerate.
     </p>
@@ -56,10 +57,15 @@
           class="btn small ghost"
           @click="showScript = showScript === 'mcp' ? '' : 'mcp'"
         >MCP config</button>
+        <button
+          v-if="freshSecret.scopes?.includes('api')"
+          class="btn small ghost"
+          @click="showScript = showScript === 'api' ? '' : 'api'"
+        >API example</button>
       </div>
       <label v-if="showScript" class="muted-label">
         Host (override — defaults to your deployment convention)
-        <input v-model="hostOverride" :placeholder="showScript === 'mcp' ? mcpHost : driveHost" />
+        <input v-model="hostOverride" :placeholder="scriptHost" />
       </label>
       <pre v-if="showScript"><code>{{ generatedScript }}</code></pre>
       <div v-if="showScript" class="actions">
@@ -79,6 +85,7 @@
       <input v-model="newLabel" placeholder="Label (e.g. MacBook Finder)" @keyup.enter="create" />
       <label class="chk"><input type="checkbox" value="webdav" v-model="newScopes" /> WebDAV</label>
       <label class="chk"><input type="checkbox" value="mcp" v-model="newScopes" /> MCP</label>
+      <label class="chk"><input type="checkbox" value="api" v-model="newScopes" /> REST API</label>
       <button class="btn" :disabled="busy || newScopes.length === 0" @click="create">Add credential</button>
     </div>
 
@@ -120,7 +127,7 @@ const newScopes = ref<string[]>(['webdav'])
 const freshSecret = ref<ServiceCredentialSecret | null>(null)
 const error = ref('')
 const busy = ref(false)
-const showScript = ref<'' | 'bash' | 'ps' | 'mcp'>('')
+const showScript = ref<'' | 'bash' | 'ps' | 'mcp' | 'api'>('')
 
 // The SPA is served at <subdomain>.<domain>; WebDAV lives at
 // <subdomain>-drive.<domain> and MCP at <subdomain>-mcp.<domain>. Derive both from
@@ -137,7 +144,11 @@ function deriveHost(insert: string): string {
 }
 const driveHost = deriveHost('drive')
 const mcpHost = deriveHost('mcp')
+// The REST API is the /api path of the tenant's own origin (the one serving this page).
+const apiHost = window.location.origin
 const hostOverride = ref('') // empty = use the derived host for the shown script
+const scriptHost = computed(() =>
+  showScript.value === 'mcp' ? mcpHost : showScript.value === 'api' ? apiHost : driveHost)
 
 async function load() {
   try {
@@ -203,6 +214,7 @@ async function copy(text: string) {
 const scriptFilename = computed(() => {
   if (showScript.value === 'bash') return 'fileengine-webdav-mount.sh'
   if (showScript.value === 'ps') return 'fileengine-webdav-mount.ps1'
+  if (showScript.value === 'api') return 'fileengine-api-session.sh'
   return 'fileengine-mcp-setup.sh'
 })
 
@@ -225,9 +237,33 @@ const generatedScript = computed(() => {
   const s = freshSecret.value
   if (!s) return ''
   const key = s.key_id
-  const isMcp = showScript.value === 'mcp'
-  // WebDAV is served at the root of the -drive host; MCP at /mcp on the -mcp host.
-  const base = (hostOverride.value || (isMcp ? mcpHost : driveHost)).replace(/\/$/, '')
+  // WebDAV is served at the root of the -drive host; MCP at /mcp on the -mcp host;
+  // the REST API at /api on the tenant's own host.
+  const base = (hostOverride.value || scriptHost.value).replace(/\/$/, '')
+  if (showScript.value === 'api') {
+    // The key is exchanged ONCE for an ordinary session token, which the program
+    // then renews; the key is not sent on every request. curl reads the
+    // credential from a config on stdin (-K -), so the secret never reaches argv.
+    return `#!/usr/bin/env bash
+# FileEngine REST API session from a generated credential. The key is presented
+# once, at POST /v1/auth/token; what comes back is a normal session token that
+# expires after expires_in seconds. Renew it before then with POST
+# /v1/auth/refresh (it stops renewing once the credential is revoked or
+# regenerated) and end it with DELETE /v1/auth/token.
+API="${base}/api"
+KEY="${key}"
+
+read -rsp "API secret for $KEY: " SECRET; printf '\n' >&2
+[ -n "$SECRET" ] || { echo "No secret entered — aborting." >&2; exit 1; }
+TOKEN="$(printf 'user = "%s:%s"\n' "$KEY" "$SECRET" \
+  | curl -sf -K - -X POST "$API/v1/auth/token" | jq -r .token)"
+unset SECRET
+[ -n "$TOKEN" ] && [ "$TOKEN" != null ] || { echo "Sign-in refused." >&2; exit 1; }
+
+curl -sf -H "Authorization: Bearer $TOKEN" "$API/v1/whoami"; echo
+# Renew:    TOKEN="$(curl -sf -X POST -H "Authorization: Bearer $TOKEN" "$API/v1/auth/refresh" | jq -r .token)"
+# Sign out: curl -sf -X DELETE -H "Authorization: Bearer $TOKEN" "$API/v1/auth/token"`
+  }
   if (showScript.value === 'bash') {
     // Prompt for the secret via the first available graphical dialog (osascript /
     // zenity / kdialog / yad), else a hidden terminal prompt; feed it on stdin so
