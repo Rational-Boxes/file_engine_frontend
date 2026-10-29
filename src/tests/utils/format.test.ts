@@ -88,6 +88,12 @@ describe('formatVersionTimestamp', () => {
     expect(formatVersionTimestamp('20260625_005841')).toBe(expected)
   })
 
+  it('reads a same-millisecond "-N" id as the same moment', () => {
+    const expected = new Date(Date.UTC(2026, 9, 29, 12, 0, 0, 123)).toLocaleString()
+    expect(formatVersionTimestamp('20261029_120000.123-1')).toBe(expected)
+    expect(formatVersionMinute('20261029_120000.123-9')).toBe(formatVersionMinute('20261029_120000.123'))
+  })
+
   it('falls back to the raw value for non-timestamp ids', () => {
     expect(formatVersionTimestamp('v3')).toBe('v3')
     expect(formatVersionTimestamp('')).toBe('—')
