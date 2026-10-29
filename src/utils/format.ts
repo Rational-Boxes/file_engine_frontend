@@ -58,6 +58,8 @@ export function versionFilename(name: string, ts: string): string {
 // UTC (the core uses gmtime). Render them as a localized, human-readable date-time
 // — parse the components as UTC (Date.UTC), NOT local, or the displayed time is
 // off by the viewer's UTC offset. Falls back to the raw value if it doesn't match.
+// A second write to the same file in the same millisecond gets a "-N" suffix
+// (`20261029_120000.123-1`, the core's version_id.h); it names the same moment.
 /**
  * A version timestamp as `YYYY-MM-DD HH:MM`, in local time.
  *
@@ -79,7 +81,7 @@ export function formatVersionMinute(v: string): string {
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
     `${pad(d.getHours())}:${pad(d.getMinutes())}`
 
-  const core = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:\.(\d+))?$/.exec(v || '')
+  const core = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:\.(\d+))?(?:-\d)?$/.exec(v || '')
   if (core) {
     const [, y, mo, d, h, mi, s, ms] = core
     const date = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s, ms ? +ms : 0))
@@ -97,7 +99,7 @@ export function formatVersionMinute(v: string): string {
 }
 
 export function formatVersionTimestamp(v: string): string {
-  const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:\.(\d+))?$/.exec(v || '')
+  const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:\.(\d+))?(?:-\d)?$/.exec(v || '')
   if (!m) return v || '—'
   const [, y, mo, d, h, mi, s, ms] = m
   const date = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s, ms ? +ms : 0))
