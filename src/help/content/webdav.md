@@ -59,6 +59,9 @@ Good to know:
 - **Revoking** or **Regenerating** the credential stops its sessions from renewing.
   A session already running keeps working until its token expires, which is
   normally within the hour.
+- The same session also reaches the **research tools**: search, reading values out
+  of documents, and reports. Each credential has its own usage allowance, and what
+  it did is listed under **Applications** in the AI research chat.
 
 ## Related
 

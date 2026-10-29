@@ -49,9 +49,14 @@
           </li>
         </ul>
         <p v-if="!conversations.length" class="hist-empty">No saved chats yet.</p>
+        <!-- Desktop applications' headless runs: per application, collapsed,
+             out of the chat history above (read-only review). -->
+        <HeadlessApplications :applications="applications" :active-run-id="activeRun?.id" @open="openRun" />
       </aside>
 
       <main class="content">
+      <HeadlessRunView v-if="activeRun" :run="activeRun" @close="closeRun" @open-file="onRunFile" />
+      <template v-else>
       <div ref="messagesEl" class="messages" @scroll="onScroll">
         <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
           <div class="bubble" :aria-busy="m.streaming || undefined">
@@ -152,6 +157,7 @@
         />
         <button class="btn" type="submit" :disabled="!input.trim() || busy">Send</button>
       </form>
+      </template>
       </main>
 
       <!-- Right-side tools: chat-wide operations (web search, generate report) live
@@ -224,6 +230,9 @@ import ShadowHtml from '@/components/ShadowHtml.vue'
 import ReportTargetDialog from '@/components/ReportTargetDialog.vue'
 import FolderScopeDialog from '@/components/FolderScopeDialog.vue'
 import type { Citation, ConversationSummary } from '@/types'
+import HeadlessApplications from '@/components/HeadlessApplications.vue'
+import HeadlessRunView from '@/components/HeadlessRunView.vue'
+import { headlessService, type HeadlessApplication, type HeadlessRun } from '@/services/headlessService'
 
 const preview = usePreviewStore()
 
@@ -336,6 +345,7 @@ watch(messages, () => void nextTick(scrollToBottom), { deep: true })
 
 onMounted(() => {
   void refreshConversations()
+  void refreshApplications()
   session = new ChatSession({
     onToken: (t) => {
       if (current >= 0) messages.value[current].content += t
@@ -408,6 +418,32 @@ function decideConsent(approve: boolean) {
 
 onBeforeUnmount(() => session?.close())
 
+// Headless runs (desktop applications), shown read-only in place of the chat.
+const applications = ref<HeadlessApplication[]>([])
+const activeRun = ref<HeadlessRun | null>(null)
+
+async function refreshApplications() {
+  applications.value = (await headlessService.listApplications()) ?? []
+}
+
+async function openRun(id: string) {
+  if (busy.value) return
+  try {
+    activeRun.value = await headlessService.getRun(id)
+    error.value = ''
+  } catch {
+    error.value = 'Could not load that run.'
+  }
+}
+
+function closeRun() {
+  activeRun.value = null
+}
+
+function onRunFile(uid: string, name: string) {
+  preview.open(uid, name || names.value[uid] || '')
+}
+
 async function refreshConversations() {
   try {
     conversations.value = await conversationService.list()
@@ -418,6 +454,7 @@ async function refreshConversations() {
 
 // Resume a saved chat: load its messages into the transcript.
 async function selectConversation(id: string) {
+  activeRun.value = null
   if (busy.value || id === currentConversationId.value) return
   try {
     const convo = await conversationService.get(id)
@@ -449,6 +486,7 @@ async function selectConversation(id: string) {
 
 // Start a fresh chat (a new conversation is created server-side on first send).
 function newChat() {
+  activeRun.value = null
   if (busy.value) return
   messages.value = []
   currentConversationId.value = null
