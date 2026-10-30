@@ -39,6 +39,14 @@ vi.mock('@/services/conversationService', () => ({
   conversationService: { list: listConvs, get: getConv, remove: removeConv },
 }))
 
+const { listApps, getRun } = vi.hoisted(() => ({
+  listApps: vi.fn(async () => []),
+  getRun: vi.fn(),
+}))
+vi.mock('@/services/headlessService', () => ({
+  headlessService: { listApplications: listApps, getRun },
+}))
+
 import ChatView from '@/views/ChatView.vue'
 import ShadowHtml from '@/components/ShadowHtml.vue'
 import FolderScopeDialog from '@/components/FolderScopeDialog.vue'
@@ -376,5 +384,34 @@ describe('ChatView', () => {
     await w.find('input').setValue('brand new')
     await w.find('form').trigger('submit')
     expect(sendMock).toHaveBeenLastCalledWith('brand new', { history: [], webSearch: false, scopeFolders: [] })
+  })
+})
+
+
+// Headless runs (desktop applications) open read-only IN PLACE of the chat and
+// never among the chat history; the composer is gone while one is shown.
+describe('ChatView — headless runs', () => {
+  beforeEach(() => {
+    listConvs.mockResolvedValue([{ id: 'c1', title: 'My chat', updatedAt: '' }])
+    listApps.mockResolvedValue([{ clientKeyId: 'fesk_a', label: 'Reviera laptop', runCount: 1,
+      lastRun: '', runs: [{ id: 'r1', title: 'Extract from folder' }], usage: null }])
+    getRun.mockResolvedValue({ id: 'r1', title: 'Extract from folder', clientLabel: 'Reviera laptop',
+      createdAt: '', request: { kind: 'research', message: 'Q?' }, summary: null,
+      answer: 'A.', results: [] })
+  })
+
+  it('lists runs apart from chats and shows one read-only instead of the chat', async () => {
+    const w = mountView()
+    await flushPromises()
+    expect(w.findAll('.conv').map((c) => c.text())).toEqual(['My chat ×'])
+    expect(w.find('.apps .app-name').text()).toBe('Reviera laptop')
+    await w.find('.run-open').trigger('click')
+    await flushPromises()
+    expect(getRun).toHaveBeenCalledWith('r1')
+    expect(w.find('.run .answer').text()).toBe('A.')
+    expect(w.find('.composer').exists()).toBe(false)
+    await w.find('.run .back').trigger('click')
+    expect(w.find('.run').exists()).toBe(false)
+    expect(w.find('.composer').exists()).toBe(true)
   })
 })

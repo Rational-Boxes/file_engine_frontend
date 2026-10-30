@@ -69,6 +69,25 @@ Your chats are **saved** and titled automatically from your first message. Use
 resume it, or use the **×** on a row to delete one (this happens immediately). The
 list is newest-first; an empty list reads *"No saved chats yet."*
 
+## Applications
+
+Desktop applications you connect with a credential (see *Scripts and programs* in
+the WebDAV & credentials help) can use the research tools without the chat
+window — for example to read values out of the datasheets in a folder. What they
+did is kept, under **Applications** at the bottom of the left list: one fold per
+credential, named as you named the credential, collapsed so it stays out of the
+way of your own chats.
+
+- Open a run to see it **read-only**: what the application asked, and what came
+  back. For values read from documents there is a row per document, with each
+  value and the passage it was taken from. A value the document doesn't support
+  shows as *no evidence*.
+- A fold shows **high usage** or **limit reached** when that credential is near or
+  over its daily allowance; the application is told the same thing.
+- Runs can't be deleted from here; they are the record of what an application did
+  in your name. If a document is permanently erased, the values read from it are
+  removed from every run.
+
 ## Citations
 
 Answers include numbered **citations** so you can check every claim against its
