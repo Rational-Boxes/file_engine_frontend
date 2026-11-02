@@ -38,7 +38,7 @@ export interface FieldDescriptor {
   max_length?: number | null
   pattern?: string | null
   options?: FieldOption[] | null
-  options_source?: string | null // event_catalog | classifier_sets | mime_catalog
+  options_source?: string | null // event_catalog | classifier_sets | mime_catalog | notify_templates | prompt_sets
   item_fields?: FieldDescriptor[] | null
   secret?: boolean
   visible_when?: { key: string; equals: unknown } | null

@@ -195,6 +195,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import PrincipalPicker from '@/components/PrincipalPicker.vue'
 import NodeBrowser from '@/components/NodeBrowser.vue'
 import { folderActionsService } from '@/services/folderActionsService'
+import { promptSetService } from '@/services/promptSetService'
 import { useFolderActionsStore } from '@/stores/folderActions'
 import { encodePrincipal } from '@/types'
 import type { Principal } from '@/types'
@@ -226,7 +227,10 @@ const emit = defineEmits<{
 const visibleFields = computed(() =>
   props.fields.filter((f) => {
     if (!f.visible_when) return true
-    return props.modelValue[f.visible_when.key] === f.visible_when.equals
+    const want = f.visible_when.equals
+    const have = props.modelValue[f.visible_when.key]
+    // A list means "any of these" (an action shown for move OR copy).
+    return Array.isArray(want) ? want.includes(have) : have === want
   }),
 )
 
@@ -300,6 +304,9 @@ function onPrincipal(key: string, p: Principal) {
 // --- options_source resolution ---
 // classifier_sets are fetched once and cached; event_catalog uses the prop.
 const classifierOptions = ref<FieldOption[]>([])
+// Published extraction prompt sets (csai), for the extract action and the
+// webhook's extracted-data filter. An application-published set says so.
+const promptSetOptions = ref<FieldOption[]>([])
 // Reactive from the shared store — reflects templates added/removed elsewhere live.
 const notifyTemplateOptions = computed<FieldOption[]>(() =>
   faStore.notifyTemplates.map((t) => ({ value: t.id, label: t.name })),
@@ -310,6 +317,8 @@ function optionsFor(f: FieldDescriptor): FieldOption[] {
       return classifierOptions.value
     case 'notify_templates':
       return notifyTemplateOptions.value
+    case 'prompt_sets':
+      return promptSetOptions.value
     case 'event_catalog':
       return (props.eventCatalog.length
         ? props.eventCatalog.map((e) => ({ value: e, label: e }))
@@ -329,6 +338,7 @@ function anyFieldNeeds(fields: FieldDescriptor[], source: string): boolean {
 // editor switches action type) — not just on first mount, so the right options load
 // for the currently-selected action. Each source is fetched at most once (cached).
 let loadedClassifiers = false
+let loadedPromptSets = false
 watch(
   () => props.fields,
   async () => {
@@ -340,6 +350,21 @@ watch(
       } catch {
         loadedClassifiers = false // allow a retry on the next change
         classifierOptions.value = []
+      }
+    }
+    if (!loadedPromptSets && anyFieldNeeds(props.fields, 'prompt_sets')) {
+      loadedPromptSets = true
+      try {
+        const sets = await promptSetService.list()
+        promptSetOptions.value = sets
+          .filter((s) => s.status === 'active' && s.revision)
+          .map((s) => ({
+            value: s.id,
+            label: `${s.name} (r${s.revision}${s.managed === 'application' ? `, from ${s.managed_by?.label || 'an application'}` : ''})`,
+          }))
+      } catch {
+        loadedPromptSets = false
+        promptSetOptions.value = []
       }
     }
     if (anyFieldNeeds(props.fields, 'notify_templates')) {
