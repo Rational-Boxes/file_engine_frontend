@@ -16,7 +16,7 @@ const { svc, roleBox } = vi.hoisted(() => ({
   svc: {
     models: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), saveDraft: vi.fn(),
     publish: vi.fn(), retire: vi.fn(), control: vi.fn(), exportYaml: vi.fn(), importYaml: vi.fn(),
-    test: vi.fn(), revisions: vi.fn(),
+    test: vi.fn(), revisions: vi.fn(), testMarkup: vi.fn(),
   },
   roleBox: { roles: [] as string[] },
 }))
@@ -158,5 +158,38 @@ describe('PromptSetsPanel', () => {
     await w.findAll('.pset-app-note .btn').find((b) => b.text() === 'Take over')!.trigger('click')
     await flushPromises()
     expect(svc.control).toHaveBeenCalledWith('ps_2', { take_over: true })
+  })
+})
+
+describe('PromptSetsPanel marked-up PDF', () => {
+  it('offers the test PDF and shows the page of each value', async () => {
+    svc.list.mockResolvedValue([{ id: 'ps_1', name: 'Door datasheet', status: 'active', managed: 'builder',
+      revision: 1, slug: null, description: '' }])
+    svc.get.mockResolvedValue({ id: 'ps_1', name: 'Door datasheet', revision: 1, status: 'active',
+      managed: 'builder', revision_shown: 1, state: 'published', definition: DEF })
+    svc.test.mockResolvedValue({ plan: { model: { requested: null, used: 'deepseek-v4-flash', fallback: false } },
+      items: [{ file_uid: 'd1', name: 'door.pdf', version: 'v1', tokens: 10,
+        data: { fire_rating: { found: true, value: 'EI 60', unit: null, evidence: { quote: 'q', offset: 1 } },
+          width: { found: true, value: 926, unit: 'mm', evidence: { quote: 'w', offset: 5 } } },
+        markup: { status: 'ready', download: '/v1/prompt-sets/test/markup/tok',
+          fields: { fire_rating: { located: true, page: 2, method: 'words' }, width: { located: false, reason: 'not_located' } } } }],
+      summary: {} })
+    svc.testMarkup.mockResolvedValue(new Blob(['%PDF']))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    URL.createObjectURL = vi.fn(() => 'blob:x')
+    URL.revokeObjectURL = vi.fn()
+    const w = await mountPanel()
+    await w.find('.pset-name').trigger('click')
+    await flushPromises()
+    await w.find('textarea[placeholder="Paste document text here…"]').setValue('x')
+    await w.findAll('.pset-test .btn').find((b) => b.text().includes('Run test'))!.trigger('click')
+    await flushPromises()
+    const rows = w.findAll('.pset-table tbody tr')
+    expect(rows[0].text()).toContain('page 2')
+    expect(rows[1].text()).toContain('not located')
+    await w.findAll('.pset-results .btn').find((b) => b.text().includes('marked-up PDF'))!.trigger('click')
+    await flushPromises()
+    expect(svc.testMarkup).toHaveBeenCalledWith('/v1/prompt-sets/test/markup/tok')
+    expect(open).toHaveBeenCalledWith('blob:x', '_blank', 'noopener')
   })
 })

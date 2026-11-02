@@ -126,6 +126,12 @@ export interface TestItem {
   model?: string
   skipped?: string
   error?: string
+  /** The marked-up PDF: "ready" (a test's, to view) or why there is none. */
+  markup?: {
+    status: 'ready' | 'written' | 'no_pdf' | 'too_large' | 'error'
+    download?: string
+    fields?: Record<string, { located: boolean; page?: number; method?: string; reason?: string }>
+  }
 }
 
 export interface TestResult {
@@ -204,6 +210,13 @@ export const promptSetService = {
       headers: { 'Content-Type': 'application/yaml' },
     })
     return data.imported as { id: string; name: string; draft_revision: number; created: boolean; warnings: Warning[] }[]
+  },
+
+  /** A test's marked-up PDF (held briefly by the server for this user). */
+  async testMarkup(download: string): Promise<Blob> {
+    const path = download.replace(/^\/+/, '/')
+    const { data } = await csaiClient.get(path, { responseType: 'blob' })
+    return data
   },
 
   /** Try a definition (saved or not) on pasted text or a stored file. Stores nothing. */

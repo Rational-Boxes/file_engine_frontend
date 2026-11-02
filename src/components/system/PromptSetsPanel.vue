@@ -224,9 +224,15 @@
                 · {{ testItem?.tokens ?? 0 }} tokens
               </p>
               <p v-if="testItem?.skipped" class="pset-warn">Skipped: {{ testItem.skipped }}</p>
+              <div v-if="testItem?.markup" class="row">
+                <button v-if="testItem.markup.status === 'ready'" class="btn ghost" :disabled="busy" @click="viewMarkup">
+                  📄 View marked-up PDF
+                </button>
+                <span v-else class="muted">No marked-up PDF: {{ markupReason(testItem.markup.status) }}</span>
+              </div>
               <p v-if="testItem?.error" class="pset-err">{{ testItem.error }}</p>
               <table v-if="testItem?.data" class="pset-table">
-                <thead><tr><th>Field</th><th>Value</th><th>Evidence</th></tr></thead>
+                <thead><tr><th>Field</th><th>Value</th><th>Evidence</th><th v-if="testItem.markup?.fields">In the PDF</th></tr></thead>
                 <tbody>
                   <tr v-for="f in draft.fields" :key="f.name" :class="{ notfound: !testItem.data[f.name]?.found }">
                     <td>{{ f.label || f.name }}<span v-if="f.required" class="req" title="required">*</span></td>
@@ -242,6 +248,10 @@
                         “{{ testItem.data[f.name].evidence!.quote }}”
                         <span class="muted">@{{ testItem.data[f.name].evidence!.offset }}</span>
                       </template>
+                    </td>
+                    <td v-if="testItem.markup?.fields" class="muted">
+                      <template v-if="testItem.markup.fields[f.name]?.located">page {{ testItem.markup.fields[f.name].page }}</template>
+                      <template v-else-if="testItem.data[f.name]?.found">not located</template>
                     </td>
                   </tr>
                 </tbody>
@@ -485,6 +495,20 @@ async function runTest() {
   } finally {
     testing.value = false
   }
+}
+
+const viewMarkup = wrap(async () => {
+  const dl = testItem.value?.markup?.download
+  if (!dl) return
+  const blob = await promptSetService.testMarkup(dl)
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank', 'noopener')
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+})
+
+function markupReason(status: string) {
+  return ({ no_pdf: 'this document has no PDF', too_large: 'the PDF is too large',
+    error: 'it could not be drawn' } as Record<string, string>)[status] || status
 }
 
 function fmtValue(v: unknown) {
