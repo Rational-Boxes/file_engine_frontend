@@ -227,7 +227,10 @@ const emit = defineEmits<{
 const visibleFields = computed(() =>
   props.fields.filter((f) => {
     if (!f.visible_when) return true
-    return props.modelValue[f.visible_when.key] === f.visible_when.equals
+    const want = f.visible_when.equals
+    const have = props.modelValue[f.visible_when.key]
+    // A list means "any of these" (an action shown for move OR copy).
+    return Array.isArray(want) ? want.includes(have) : have === want
   }),
 )
 

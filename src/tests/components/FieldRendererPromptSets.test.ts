@@ -40,3 +40,20 @@ describe('prompt_sets options', () => {
     expect(list).toHaveBeenCalledOnce()
   })
 })
+
+describe('visible_when with a list', () => {
+  it('shows a field for any of the listed values', async () => {
+    const fields = [
+      { key: 'action', label: 'Then', type: 'select', options: [{ value: 'move', label: 'Move' },
+        { value: 'flag', label: 'Flag' }] },
+      { key: 'name_template', label: 'New name', type: 'string',
+        visible_when: { key: 'action', equals: ['move', 'copy', 'rename'] } },
+    ]
+    const mk = (action: string) => mount(FieldRenderer, {
+      props: { fields: fields as never, modelValue: { action } },
+      global: { stubs: { NodeBrowser: true, PrincipalPicker: true, Teleport: true } },
+    })
+    expect(mk('move').text()).toContain('New name')
+    expect(mk('flag').text()).not.toContain('New name')
+  })
+})
