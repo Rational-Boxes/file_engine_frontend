@@ -30,6 +30,7 @@ const FileBrowserView = () => import('@/views/FileBrowserView.vue')
 const SearchView = () => import('@/views/SearchView.vue')
 const ChatView = () => import('@/views/ChatView.vue')
 const AdminOpsView = () => import('@/views/AdminOpsView.vue')
+const PromptSetsView = () => import('@/views/PromptSetsView.vue')
 const PreviewView = () => import('@/views/PreviewView.vue')
 const OnlyOfficeEditorView = () => import('@/views/OnlyOfficeEditorView.vue')
 const TextEditorView = () => import('@/views/TextEditorView.vue')
@@ -63,6 +64,9 @@ const routes = [
   // OAuth authorization/consent — an external client redirects the browser here; the
   // auth guard bounces to /login (and back) if not signed in, then consent is shown.
   { path: '/oauth/authorize', name: 'OAuthConsent', component: OAuthConsentView, meta: { requiresAuth: true } },
+  // Extraction prompt sets: administrators and extraction editors (the panel
+  // checks the role; the server enforces it).
+  { path: '/prompt-sets', name: 'PromptSets', component: PromptSetsView, meta: { requiresAuth: true } },
   {
     path: '/admin/ops',
     name: 'AdminOps',

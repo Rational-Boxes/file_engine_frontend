@@ -33,6 +33,10 @@
       -->
       <router-link v-if="features.search" to="/search">Search</router-link>
       <router-link v-if="features.chat" to="/chat">AI Research Chat</router-link>
+      <router-link
+        v-if="features.chat && (auth.hasAccessLevel('admin') || auth.hasRole('extraction_editors'))"
+        to="/prompt-sets"
+      >Prompt sets</router-link>
       <!-- "Users & roles" undersold the page even before this: it also carries the
            two-factor and WebDAV session policies, now as tabs of their own. The
            label matches the view's own <h1>. -->
