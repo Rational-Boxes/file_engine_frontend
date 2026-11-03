@@ -30,7 +30,6 @@ const FileBrowserView = () => import('@/views/FileBrowserView.vue')
 const SearchView = () => import('@/views/SearchView.vue')
 const ChatView = () => import('@/views/ChatView.vue')
 const AdminOpsView = () => import('@/views/AdminOpsView.vue')
-const PromptSetsView = () => import('@/views/PromptSetsView.vue')
 const PreviewView = () => import('@/views/PreviewView.vue')
 const OnlyOfficeEditorView = () => import('@/views/OnlyOfficeEditorView.vue')
 const TextEditorView = () => import('@/views/TextEditorView.vue')
@@ -64,14 +63,19 @@ const routes = [
   // OAuth authorization/consent — an external client redirects the browser here; the
   // auth guard bounces to /login (and back) if not signed in, then consent is shown.
   { path: '/oauth/authorize', name: 'OAuthConsent', component: OAuthConsentView, meta: { requiresAuth: true } },
-  // Extraction prompt sets: administrators and extraction editors (the panel
-  // checks the role; the server enforces it).
-  { path: '/prompt-sets', name: 'PromptSets', component: PromptSetsView, meta: { requiresAuth: true } },
+  // Extraction prompt sets live on the System page as a tab. The old address
+  // still works (bookmarks, links in help) and lands on that tab.
+  { path: '/prompt-sets', redirect: { path: '/admin/ops', query: { tab: 'prompt-sets' } } },
   {
+    // System. Administrators see every tab; a member of extraction_editors who
+    // is not an administrator may open it too and sees only "Prompt sets" —
+    // the role exists so maintaining extraction is not an admin-only job. The
+    // view hides the rest (and never calls their admin-only APIs); the server
+    // enforces every API regardless.
     path: '/admin/ops',
     name: 'AdminOps',
     component: AdminOpsView,
-    meta: { requiresAuth: true, requiresAdmin: true },
+    meta: { requiresAuth: true, requiresAdmin: true, alsoForRoles: ['extraction_editors'] },
   },
   {
     path: '/admin/tenant',
@@ -140,9 +144,17 @@ const router = createRouter({
  * running BEFORE the destination view mounts is exactly how the sign-out bug
  * below escaped a suite that covered the view.
  */
+// May this identity open an admin route? Admins always; a route may also name
+// roles it admits (System admits extraction_editors for its Prompt sets tab).
+function adminGate(to: RouteLocationNormalized, auth: ReturnType<typeof useAuthStore>) {
+  if (auth.hasAccessLevel('admin')) return undefined
+  const extra = (to.meta.alsoForRoles as string[] | undefined) ?? []
+  return extra.some((r) => auth.hasRole(r)) ? undefined : { path: '/files' }
+}
+
 export function authGuard(
   to: RouteLocationNormalized,
-): RouteLocationRaw | boolean | undefined {
+): RouteLocationRaw | boolean | undefined | Promise<RouteLocationRaw | undefined> {
   const auth = useAuthStore()
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     // On a TENANT origin, signing in happens at the shared login host — one
@@ -178,8 +190,25 @@ export function authGuard(
       && !servingFromLoginOrigin()) {
     return { path: '/login', query: { next: to.fullPath } }
   }
-  if (to.meta.requiresAdmin && !auth.hasAccessLevel('admin')) {
-    return { path: '/files' }
+  if (to.meta.requiresAdmin) {
+    // A page LOAD (reload, bookmark, a link opened in a new tab) reaches this
+    // before anyone has been identified: the token is in storage but whoami has
+    // not answered, so the roles are empty and every admin page bounced to
+    // /files — reloading Tenant administration threw an administrator out of
+    // it. Wait for the identity, then decide. (The rule below is for /login
+    // only, so deciding here is the whole answer for an admin route.)
+    if (auth.isAuthenticated && !auth.user) {
+      // Once settled, run the whole policy again: a stored token whoami
+      // rejected has been cleared by now, and that visitor belongs at sign-in,
+      // not /files. Re-entry cannot loop — it happens only once a user is known
+      // or the token is gone; anything else is decided on the roles directly.
+      return auth.ensureInitialized().then(() =>
+        (auth.user || !auth.isAuthenticated)
+          ? (authGuard(to) as RouteLocationRaw | undefined)
+          : adminGate(to, auth))
+    }
+    const verdict = adminGate(to, auth)
+    if (verdict) return verdict
   }
   // Already signed in and asking for the sign-in page: there is nothing to log
   // into, so carry on to where they were headed.

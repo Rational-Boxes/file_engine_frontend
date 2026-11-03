@@ -18,11 +18,12 @@
 <template>
   <div class="admin-ops">
     <AppNav />
-    <main class="content" :class="{ wide: tab === 'Classifier sets' || tab === 'Email templates' }">
+    <main class="content" :class="{ wide: tab === 'Classifier sets' || tab === 'Email templates' || tab === 'Prompt sets' }">
       <h1 class="title">System configuration</h1>
       <nav class="tabs">
-        <button v-for="t in TABS" :key="t" :class="{ active: tab === t }" @click="tab = t">{{ t }}</button>
+        <button v-for="t in tabs" :key="t" :class="{ active: tab === t }" @click="select(t)">{{ t }}</button>
       </nav>
+      <p v-if="!tabs.length" class="muted">Nothing here is available to your account.</p>
 
       <!-- ============ STORAGE & SYNC ============ -->
       <section v-if="tab === 'Storage & sync'">
@@ -72,6 +73,11 @@
         <ClassifierSetsPanel />
       </section>
 
+      <!-- ============ PROMPT SETS ============ -->
+      <section v-else-if="tab === 'Prompt sets'">
+        <PromptSetsPanel />
+      </section>
+
       <!-- ============ EMAIL TEMPLATES ============ -->
       <section v-else-if="tab === 'Email templates'">
         <nav class="subtabs">
@@ -88,8 +94,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
+import PromptSetsPanel from '@/components/system/PromptSetsPanel.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useCapabilities } from '@/composables/useCapabilities'
 import IntegrationsPanel from '@/components/system/IntegrationsPanel.vue'
 import EmbedIntegrationPanel from '@/components/system/EmbedIntegrationPanel.vue'
 import ClassifierSetsPanel from '@/components/system/ClassifierSetsPanel.vue'
@@ -99,8 +109,45 @@ import { adminService, type StorageUsage } from '@/services/adminService'
 import { errorMessage } from '@/services/apiClient'
 import { formatSize } from '@/utils/format'
 
-const TABS = ['Storage & sync', 'Integrations', 'Embedding', 'Classifier sets', 'Email templates'] as const
-const tab = ref<(typeof TABS)[number]>('Storage & sync')
+const TABS = ['Storage & sync', 'Integrations', 'Embedding', 'Classifier sets', 'Prompt sets',
+  'Email templates'] as const
+type Tab = (typeof TABS)[number]
+
+const auth = useAuthStore()
+const { features } = useCapabilities()
+const route = useRoute()
+const router = useRouter()
+const isAdmin = computed(() => auth.hasAccessLevel('admin'))
+
+// Administrators see every tab. A member of extraction_editors who is not an
+// administrator reaches this page only for Prompt sets (the router lets that
+// role in), so that is all they are shown — and the admin-only data the other
+// tabs load is never requested. Prompt sets also needs a chat provider, the
+// same condition the panel's server side has.
+const tabs = computed<Tab[]>(() => TABS.filter((t) => {
+  if (t === 'Prompt sets') {
+    return features.chat && (isAdmin.value || auth.hasRole('extraction_editors'))
+  }
+  return isAdmin.value
+}))
+
+// Tabs are addressable (?tab=prompt-sets) so the old /prompt-sets address, help
+// links and bookmarks open the right one.
+const slug = (t: Tab) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+function fromQuery(): Tab | undefined {
+  const q = String(route.query.tab ?? '')
+  return tabs.value.find((t) => slug(t) === q)
+}
+const tab = ref<Tab | undefined>(fromQuery() ?? tabs.value[0])
+// Capabilities arrive asynchronously; a tab that was not offered yet (or a
+// deep link to it) is resolved once they do.
+watch(tabs, (list) => {
+  if (!tab.value || !list.includes(tab.value)) tab.value = fromQuery() ?? list[0]
+})
+function select(t: Tab) {
+  tab.value = t
+  router.replace({ query: { ...route.query, tab: slug(t) } })
+}
 
 // Email-templates sub-toggle: account templates vs. event-notification templates.
 const emailKind = ref<'Account' | 'Event notifications'>('Account')
@@ -113,7 +160,7 @@ const syncMsg = ref('')
 
 const pct = computed(() => Math.round(usage.value?.usagePercentage ?? 0))
 
-onMounted(load)
+onMounted(() => { if (isAdmin.value) load() })
 
 async function load() {
   loading.value = true

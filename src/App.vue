@@ -67,10 +67,10 @@ useBranding()
 
 onMounted(() => {
   // Adopt the tenant from the subdomain (someco.host.com → someco) before any
-  // request, so whoami() and tenant listing are scoped to the right tenant.
-  authStore.initTenantFromHost()
-  // Hydrate identity from a stored token, if any.
-  authStore.initialize()
+  // request, so whoami() and tenant listing are scoped to the right tenant,
+  // then hydrate identity from a stored token, if any. Once per page load: the
+  // router guard may already have started it for an admin route.
+  void authStore.ensureInitialized()
 })
 </script>
 
