@@ -360,8 +360,21 @@ onMounted(loadDoc)
 watch(() => `${props.src}|${props.editable ? 1 : 0}`, () => { destroy(); loadDoc() })
 onBeforeUnmount(destroy)
 
+// Scroll to a 1-based page (the extraction view's "page N" links). Ignored until
+// the document is loaded, and clamped by pdfjs to the pages it has.
+function goToPage(n: number) {
+  // The shipped .d.ts omits these accessors; they are pdfjs's public API.
+  const v = pdfViewer as unknown as { pagesCount: number; currentPageNumber: number } | null
+  try {
+    if (v && n >= 1 && n <= v.pagesCount) v.currentPageNumber = n
+  } catch {
+    /* not ready */
+  }
+}
+
 defineExpose({
   saveBytes,
+  goToPage,
   hasEdits: () => dirty.value, // unsaved markup?
   markSaved, // reset the unsaved flag but keep the drawing on screen
   setMode,

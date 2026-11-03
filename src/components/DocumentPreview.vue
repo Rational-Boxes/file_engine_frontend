@@ -105,19 +105,38 @@
       </div>
 
       <div v-else-if="viewerSrc" class="dp-pdf">
-        <PdfViewer
-          ref="pdfViewerRef"
-          :key="markupView ? `markup:${markupView.renditionUid}` : `doc:${viewerNonce}`"
-          :src="viewerSrc"
-          :editable="canAnnotate"
-          :full-width="fullWidth"
-          @dirty="pdfDirty = $event"
-          @has-markup="pdfHasMarkup = $event"
-          @download="downloadPdf"
-          @error="error = $event"
-        />
+        <!-- The extraction view: the marked-up PDF csai wrote with the values it
+             extracted, and those values beside it. Read-only throughout (owner):
+             no markup toolbar, even when the plain document stands in for a
+             missing marked-up copy. Markup is offered on the document view. -->
+        <div class="dp-pdf-row" :class="{ 'dp-extract': extractActive }">
+          <PdfViewer
+            ref="pdfViewerRef"
+            :key="viewerKey"
+            :src="viewerSrc"
+            :editable="canAnnotate && !extractActive"
+            :full-width="fullWidth"
+            @dirty="pdfDirty = $event"
+            @has-markup="pdfHasMarkup = $event"
+            @download="downloadPdf"
+            @error="error = $event"
+          />
+          <ExtractionSidebar
+            v-if="extractActive"
+            :entries="extractions"
+            :selected="extractIndex"
+            @select="selectExtraction"
+            @go-to-page="pdfViewerRef?.goToPage($event)"
+          />
+        </div>
         <div class="dp-actions">
-          <template v-if="markupView">
+          <template v-if="extractActive">
+            <span class="dp-markup-tag">🧾 Extracted information{{ extractMarked ? ' — marked-up copy' : '' }}</span>
+            <button class="link" data-test="extract-back" @click="closeExtractView">← Back to document</button>
+            <button class="link" @click="downloadOriginal">⬇ Download original</button>
+            <button v-if="showLocation" class="link" @click="openLocation">📂 Open file location</button>
+          </template>
+          <template v-else-if="markupView">
             <span class="dp-markup-tag">📄 Marked-up copy{{ markupView.name ? ` — ${markupView.name}` : '' }}</span>
             <button class="link" @click="closeMarkupView">← Back to document</button>
             <button class="link" :disabled="markupDownloading" @click="downloadMarkupView">⬇ Download this copy</button>
@@ -130,6 +149,13 @@
               ● Your markup will be saved with your next comment
             </span>
             <span v-else-if="canAnnotate" class="dp-hint">✎ Mark up with the toolbar; it saves with your comment</span>
+            <button
+              v-if="extractions.length"
+              class="link"
+              data-test="extract-open"
+              title="Show the information AI extraction found in this document"
+              @click="openExtractView"
+            >🧾 Extracted information</button>
             <!-- The way into a comparison from the document itself. Same window,
                  same discussion rail — changing what you look at must not cost you
                  the conversation beside it. -->
@@ -408,6 +434,8 @@ import PdfViewer from '@/components/PdfViewer.vue'
 import ThreadPanel from '@/components/ThreadPanel.vue'
 import DiffPageViewer from '@/components/DiffPageViewer.vue'
 import VersionPairPicker from '@/components/VersionPairPicker.vue'
+import ExtractionSidebar from '@/components/ExtractionSidebar.vue'
+import { extractionService, type ExtractionEntry } from '@/services/extractionService'
 import { differenceService, type DiffChildRef } from '@/services/differenceService'
 import type { DiffViewAnchor, ThreadAnchor } from '@/services/discussionService'
 import { useModel3dStore } from '@/stores/model3d'
@@ -513,6 +541,7 @@ const pdfViewerRef = ref<{
   saveBytes: () => Promise<Uint8Array>
   hasEdits: () => boolean
   markSaved: () => void
+  goToPage: (page: number) => void
 } | null>(null)
 const pdfDirty = ref(false) // markup not yet attached to a comment (unsaved)
 const pdfHasMarkup = ref(false) // any markup on the live document (persists across a save)
@@ -702,7 +731,31 @@ const diffLabel = computed(() => {
 
 // What the PDF.js viewer renders: a comment's marked-up copy (read-only) when
 // reshowing, else the live document.
-const viewerSrc = computed(() => (markupView.value ? markupUrl.value : pdfUrl.value))
+const viewerSrc = computed(() => {
+  if (markupView.value) return markupUrl.value
+  if (extractMarked.value) return extractUrl.value
+  return pdfUrl.value
+})
+
+// --- The extraction view ---
+// A version AI extraction has values for (its `extract` sidecar) opens on the
+// marked-up PDF csai wrote with them, the values in a sidebar. The reader can
+// go back to the plain document and return. A comment's marked-up copy and a
+// comparison still take the frame over it, as they do the document.
+const extractions = ref<ExtractionEntry[]>([])
+const extractIndex = ref(0)
+const extractOpen = ref(false)
+const extractUrl = ref('') // object URL of the selected entry's marked-up PDF
+const extractActive = computed(
+  () => !!props.fullWidth && extractOpen.value && !markupView.value && extractions.value.length > 0,
+)
+// Showing the extraction's own marked-up PDF (not the plain document beside the sidebar).
+const extractMarked = computed(() => extractActive.value && !!extractUrl.value)
+const viewerKey = computed(() => {
+  if (markupView.value) return `markup:${markupView.value.renditionUid}`
+  if (extractMarked.value) return `extract:${extractions.value[extractIndex.value]?.markup?.uid}`
+  return `doc:${viewerNonce.value}`
+})
 // Whether the markup toolbar is shown + editing enabled: on the full review surface,
 // for a writer. Applies to BOTH the live document and a reshown marked-up copy — the
 // user can add further markup to a saved copy and attach it to another comment.
@@ -813,8 +866,11 @@ async function reload() {
     if (still) {
       previewUrl.value = await renditionObjectUrl(still.uid, 'image/png')
     }
+    // Extracted values open the extraction view; its marked-up PDF stands in for
+    // the document's, which is then fetched only if the reader goes back to it.
+    if (props.fullWidth && set.value.extract) await loadExtractions()
     // On the full-width review overlay, open the media (PDF/video) straight away.
-    if (props.fullWidth && canOpen.value) await openMedia()
+    if (props.fullWidth && canOpen.value && !extractMarked.value) await openMedia()
   } catch (e) {
     error.value = errorMessage(e, 'Failed to load preview')
   } finally {
@@ -978,7 +1034,10 @@ function openLocation() {
 async function downloadPdf() {
   if (!viewerSrc.value) return
   const base = props.name || props.uid
-  const filename = /\.pdf$/i.test(base) ? base : `${base.replace(/\.[^./\\]+$/, '')}.pdf`
+  const stem = base.replace(/\.[^./\\]+$/, '')
+  const filename = extractMarked.value
+    ? `${stem}-extracted.pdf`
+    : /\.pdf$/i.test(base) ? base : `${stem}.pdf`
   // Any markup on the live document (a fresh drawing, or further edits on a copy) means
   // the on-screen PDF differs from the loaded rendition — bake the annotations in.
   const marked = (pdfViewerRef.value?.hasEdits?.() ?? false) || pdfHasMarkup.value
@@ -1422,6 +1481,59 @@ function closeMedia() {
   pdfHasMarkup.value = false
 }
 
+// The current version's extractions. Best-effort: no csai, nothing readable, or
+// no entry for this version (the sidecar is an older version's) is simply no view.
+async function loadExtractions() {
+  const uid = props.uid
+  let entries: ExtractionEntry[] = []
+  try {
+    entries = (await extractionService.forDocument(uid)).entries
+  } catch {
+    return
+  }
+  if (uid !== props.uid || !entries.length) return
+  extractions.value = entries
+  extractOpen.value = true
+  // The first entry with a marked-up PDF, else the first.
+  const first = Math.max(0, entries.findIndex((e) => !!e.markup))
+  await selectExtraction(first)
+}
+
+async function selectExtraction(index: number) {
+  const e = extractions.value[index]
+  if (!e) return
+  extractIndex.value = index
+  closeExtractUrl()
+  if (e.markup?.uid) {
+    try {
+      const url = await renditionObjectUrl(e.markup.uid, 'application/pdf')
+      if (extractions.value[extractIndex.value] === e) extractUrl.value = url
+      else revokeRenditionUrl(url)
+    } catch {
+      /* pruned meanwhile: the plain document stands in, beside the values */
+    }
+  }
+  // No marked-up copy: the values are shown beside the plain document.
+  if (!extractUrl.value && !pdfUrl.value && canOpen.value) await openMedia()
+}
+
+function openExtractView() {
+  if (!confirmDiscard()) return
+  extractOpen.value = true
+}
+
+async function closeExtractView() {
+  extractOpen.value = false
+  if (!pdfUrl.value && canOpen.value) await openMedia()
+}
+
+function closeExtractUrl() {
+  if (extractUrl.value) {
+    revokeRenditionUrl(extractUrl.value)
+    extractUrl.value = ''
+  }
+}
+
 // Switch to the Chat log tab, fetching the provenance HTML on first view. The
 // HTML is injected into a shadow root (ShadowHtml) for style isolation.
 async function selectChatlog() {
@@ -1462,6 +1574,10 @@ function cleanup() {
   activeThreadId.value = null
   diffView.value = null
   diffError.value = ''
+  closeExtractUrl()
+  extractions.value = []
+  extractIndex.value = 0
+  extractOpen.value = false
 }
 </script>
 
@@ -1671,6 +1787,23 @@ function cleanup() {
   flex-direction: column;
   gap: 6px;
   width: 100%;
+}
+/* The viewer, and in the extraction view the sidebar beside it. */
+.dp-pdf-row {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.dp-pdf-row.dp-extract {
+  flex-direction: row;
+  gap: 10px;
+  align-items: stretch;
+}
+.dp-pdf-row > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .dp-none {
