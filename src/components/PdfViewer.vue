@@ -121,6 +121,11 @@ const props = defineProps<{
   src: string
   editable?: boolean
   fullWidth?: boolean
+  // One popup per note: where several markup annotations on a page carry the same
+  // note (csai marks an extracted value with a highlight AND an underline, both
+  // noted "<label>: <value>"), only the first — a highlight where there is one —
+  // stays a hover target. The others are still drawn.
+  dedupeNotes?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -227,6 +232,10 @@ function buildViewer() {
   // Fit the page to the width of the pane once the first page is measured.
   eventBus.on('pagesinit', () => {
     if (pdfViewer) pdfViewer.currentScaleValue = 'page-width'
+  })
+  // Rendered again on every zoom, so the de-duplication is re-applied each time.
+  eventBus.on('annotationlayerrendered', (e: { pageNumber: number; source?: { div?: HTMLElement } }) => {
+    if (props.dedupeNotes && e?.source?.div) void dedupePopups(e.pageNumber, e.source.div)
   })
   // Keep the zoom readout in sync with the actual scale (zoom buttons, fit, Ctrl+wheel).
   eventBus.on('scalechanging', (e: { scale?: number }) => {
@@ -369,6 +378,39 @@ function goToPage(n: number) {
     if (v && n >= 1 && n <= v.pagesCount) v.currentPageNumber = n
   } catch {
     /* not ready */
+  }
+}
+
+// Silence the repeats of a note on one page (see the dedupeNotes prop): the
+// repeat's trigger area stops taking the pointer, so hovering falls through to
+// the kept annotation, and its own popup is hidden.
+async function dedupePopups(pageNumber: number, pageDiv: HTMLElement) {
+  const doc = pdfDoc
+  if (!doc) return
+  let annots: any[] = []
+  try {
+    annots = (await (await doc.getPage(pageNumber)).getAnnotations()) || []
+  } catch {
+    return
+  }
+  const marks = annots.filter((a) => a.subtype === 'Highlight' || a.subtype === 'Underline')
+  // Highlights first, so the highlight is the one kept.
+  marks.sort((a, b) => Number(b.subtype === 'Highlight') - Number(a.subtype === 'Highlight'))
+  const seen = new Set<string>()
+  for (const a of marks) {
+    const text = a.contentsObj?.str ?? a.contents ?? ''
+    if (!text) continue
+    if (!seen.has(text)) {
+      seen.add(text)
+      continue
+    }
+    const trigger = pageDiv.querySelector<HTMLElement>(`[data-annotation-id="${a.id}"]`)
+    if (trigger) trigger.style.pointerEvents = 'none'
+    const popup = pageDiv.querySelector<HTMLElement>(`[data-annotation-id="popup_${a.id}"]`)
+    if (popup) {
+      popup.hidden = true
+      popup.style.display = 'none'
+    }
   }
 }
 

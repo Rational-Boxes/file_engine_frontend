@@ -162,6 +162,24 @@ async function checkExtracted(p, where) {
   // the PDF on screen is the marked-up copy (it has csai's highlight annotations)
   assert(await p.locator('.pv-container .annotationLayer section.highlightAnnotation, .pv-container .annotationLayer [data-annotation-id]').count() > 0,
     `${where}: the PDF shown carries the extraction's highlights`)
+  // One popup per value: csai marks it twice (highlight + underline, same note).
+  // Sweep the pointer across each highlight and collect every popup that opens.
+  const opened = new Set()
+  const hls = p.locator('.pv-container .page[data-page-number="1"] .annotationLayer section.highlightAnnotation')
+  for (let i = 0; i < await hls.count(); i++) {
+    const b = await hls.nth(i).boundingBox()
+    if (!b) continue
+    for (let x = b.x + 2; x < b.x + b.width - 1; x += 4) {
+      await p.mouse.move(x, b.y + b.height / 2)
+      for (const id of await p.$$eval('.pv-container .annotationLayer [data-annotation-id^="popup_"]', (els) =>
+        els.filter((e) => !e.hidden && e.style.display !== 'none' && e.querySelector('.popup:not([hidden])'))
+          .map((e) => e.getAttribute('data-annotation-id')))) opened.add(id)
+    }
+  }
+  await p.mouse.move(5, 5)
+  const underlines = await p.locator('.pv-container .page[data-page-number="1"] .annotationLayer section.underlineAnnotation').count()
+  assert(opened.size === 1, `${where}: hovering the value opens one popup, not two (${[...opened].join(', ')})`)
+  assert(underlines > 0, `${where}: the value's underline is still drawn`)
   await shot(p, `${where}-extracted`)
   const before = await p.$eval('.pv-container', (c) => c.scrollTop)
   await p.click('.xs-row[data-field="fire_rating"] .xs-page')
