@@ -353,6 +353,7 @@
             :key="`extract:${extractSrc}`"
             :src="extractSrc"
             :full-width="fullWidth"
+            dedupe-notes
             @ready="readMarks"
             @download="downloadExtracted"
             @error="error = $event"
