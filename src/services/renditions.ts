@@ -35,6 +35,11 @@ import { fileService, type FileItem } from '@/services/fileService'
 //              one-per-fmt RenditionSet (toRenditionSet keeps only the latest). It is
 //              deliberately NOT in convert_search_ai's _KNOWN_FMTS, so the conversion
 //              pipeline's version-pruner leaves markups alone across re-conversions.
+//   extract    the extracted values of a version (JSON sidecar, csai headless
+//              extraction). Read through csai's /v1/documents/{uid}/extractions,
+//              never directly; its presence is what offers the extraction view.
+//              The marked-up PDFs beside it (`extractpdf_<set>`) are a FAMILY of
+//              fmts, named by that endpoint, so they are not listed here.
 //   media / media_sd / audio / audio_opus / emailposter — publish-grade media
 //              (MEDIA_SHARE.md §4.1), produced on request to publish, never on
 //              ingest. Must match convert_search_ai's _KNOWN_FMTS: a fmt this
@@ -42,11 +47,11 @@ import { fileService, type FileItem } from '@/services/fileService'
 //              (names split on the LAST one), hence media_sd, not media-sd.
 export type RenditionFmt =
   | 'thumbnail' | 'preview' | 'pdf' | 'poster' | 'model' | 'metamodel' | 'chatlog' | 'markup'
-  | 'media' | 'media_sd' | 'audio' | 'audio_opus' | 'emailposter'
+  | 'extract' | 'media' | 'media_sd' | 'audio' | 'audio_opus' | 'emailposter'
 
 const KNOWN: readonly RenditionFmt[] = [
   'thumbnail', 'preview', 'pdf', 'poster', 'model', 'metamodel', 'chatlog', 'markup',
-  'media', 'media_sd', 'audio', 'audio_opus', 'emailposter',
+  'extract', 'media', 'media_sd', 'audio', 'audio_opus', 'emailposter',
 ]
 
 export interface RenditionRef {
