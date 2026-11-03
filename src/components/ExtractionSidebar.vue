@@ -37,7 +37,7 @@
       <p v-else-if="entry" class="xs-set">{{ entryTitle(entry) }}</p>
     </header>
 
-    <p v-if="entry && !entry.markup" class="xs-note" data-test="no-markup">
+    <p v-if="entry && !hasMarkup" class="xs-note" data-test="no-markup">
       No marked-up copy is held for this version, so the document is shown unmarked.
     </p>
 
@@ -50,20 +50,20 @@
         :data-field="r.name"
       >
         <div class="xs-label">
-          <span v-if="r.colour" class="xs-swatch" :style="{ background: r.colour }" aria-hidden="true"></span>
+          <span v-if="r.mark?.colour" class="xs-swatch" :style="{ background: r.mark.colour }" aria-hidden="true"></span>
           <span :title="r.description || undefined">{{ r.label }}</span>
         </div>
         <div v-if="r.found" class="xs-value">{{ r.value }}</div>
         <div v-else class="xs-value xs-none">Not found</div>
         <blockquote v-if="r.found && r.quote" class="xs-quote">“{{ r.quote }}”</blockquote>
         <button
-          v-if="r.location?.located && r.location.page"
+          v-if="r.mark"
           class="link xs-page"
           type="button"
-          :title="`Show page ${r.location.page}`"
-          @click="emit('go-to-page', r.location.page)"
-        >Page {{ r.location.page }}</button>
-        <span v-else-if="r.found && r.location && !r.location.located" class="xs-muted">
+          :title="`Show page ${r.mark.page}`"
+          @click="emit('go-to-page', r.mark!.page)"
+        >Page {{ r.mark.page }}</button>
+        <span v-else-if="r.found && hasMarkup && marksRead" class="xs-muted">
           Not marked in the PDF
         </span>
       </li>
@@ -78,11 +78,16 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { entryRows, entryTitle, type ExtractionEntry } from '@/services/extractionService'
+import { entryRows, entryTitle, type ExtractionEntry, type FieldMark } from '@/services/extractionService'
 
 const props = defineProps<{
   entries: ExtractionEntry[]
   selected: number
+  /** Whether the marked-up PDF is on screen (else the plain document is). */
+  hasMarkup: boolean
+  /** Where each value is marked, once the PDF's annotations have been read. */
+  marks: Record<string, FieldMark>
+  marksRead: boolean
 }>()
 
 const emit = defineEmits<{
@@ -91,7 +96,7 @@ const emit = defineEmits<{
 }>()
 
 const entry = computed<ExtractionEntry | undefined>(() => props.entries[props.selected])
-const rows = computed(() => (entry.value ? entryRows(entry.value) : []))
+const rows = computed(() => (entry.value ? entryRows(entry.value, props.marks) : []))
 const modelLabel = computed(() => {
   const e = entry.value
   if (!e) return ''
@@ -186,7 +191,16 @@ function formatWhen(iso: string): string {
 }
 .xs-page {
   align-self: flex-start;
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
   font-size: 12px;
+  color: var(--primary);
+  cursor: pointer;
+}
+.xs-page:hover {
+  text-decoration: underline;
 }
 .xs-foot {
   margin-top: auto;

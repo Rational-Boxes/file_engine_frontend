@@ -372,9 +372,32 @@ function goToPage(n: number) {
   }
 }
 
+// The document's own highlight/underline annotations: the 1-based page, the
+// note text and the colour. The extraction view reads where each value was
+// marked from these, since the marked-up PDF is the only record of it.
+async function annotationNotes(): Promise<{ page: number; text: string; colour: string }[]> {
+  const out: { page: number; text: string; colour: string }[] = []
+  const doc = pdfDoc
+  if (!doc) return out
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n)
+    for (const a of (await page.getAnnotations()) || []) {
+      if (a.subtype !== 'Highlight' && a.subtype !== 'Underline') continue
+      const text = a.contentsObj?.str ?? a.contents ?? ''
+      const c = a.color
+      const colour = c && c.length >= 3
+        ? `#${Array.from(c as ArrayLike<number>).slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join('')}`
+        : ''
+      if (text) out.push({ page: n, text, colour })
+    }
+  }
+  return out
+}
+
 defineExpose({
   saveBytes,
   goToPage,
+  annotationNotes,
   hasEdits: () => dirty.value, // unsaved markup?
   markSaved, // reset the unsaved flag but keep the drawing on screen
   setMode,

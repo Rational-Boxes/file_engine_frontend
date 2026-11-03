@@ -59,21 +59,21 @@ Tests store nothing: no result is cached and nothing appears in any history.
 ## Seeing what was extracted
 
 When folder automation or a desktop application has extracted values from a
-document, opening that document's preview shows them: the document as a
-**marked-up copy**, each value highlighted where it was found, and an
-**Extracted information** panel beside it listing every field with its value,
-unit and the quote it came from. **Page N** takes you to the highlight; a value
-marked *Not marked in the PDF* was found in the text but could not be pinned to
-a place on the page. If several prompt sets were run on the document, pick one
+document, its preview opens on the **🧾 Extracted data** tab. You see the
+document as a **marked-up copy**, with each value highlighted where it was
+found, and a panel beside it that lists every field with its value, unit and
+the quote it came from. **Page N** takes you to the highlight. A value marked
+*Not marked in the PDF* was found in the text but could not be pinned to a
+place on the page. If several prompt sets were run on the document, pick one
 at the top of the panel.
 
-This view is read-only. To mark the document up yourself, choose **← Back to
-document**; **🧾 Extracted information** returns to the values. Only the
-current version's values are shown: a new version shows them again once it has
-been extracted. When no marked-up copy could be made (a very large document,
-for instance) the values are shown beside the plain document; a file with no
-PDF view, such as an image, has no extraction view. Try it results are never shown here,
-because tests store nothing.
+This tab is read-only. To mark the document up yourself or to join the
+discussion, switch to the **💬 Preview & comments** tab. Only the current
+version's values are shown: a new version gets the tab again once it has been
+extracted. When no marked-up copy could be made (a very large document, for
+instance), the values are shown beside the plain document. A file with no PDF
+view, such as an image, has no Extracted data tab. Try it results never appear
+here, because tests store nothing.
 
 ## Drafts and publishing
 
