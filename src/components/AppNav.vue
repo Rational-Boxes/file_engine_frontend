@@ -33,10 +33,6 @@
       -->
       <router-link v-if="features.search" to="/search">Search</router-link>
       <router-link v-if="features.chat" to="/chat">AI Research Chat</router-link>
-      <router-link
-        v-if="features.chat && (auth.hasAccessLevel('admin') || auth.hasRole('extraction_editors'))"
-        to="/prompt-sets"
-      >Prompt sets</router-link>
       <!-- "Users & roles" undersold the page even before this: it also carries the
            two-factor and WebDAV session policies, now as tabs of their own. The
            label matches the view's own <h1>. -->
@@ -47,7 +43,12 @@
            type error. -->
       <router-link v-if="auth.hasAccessLevel('admin') && features.audit" to="/admin/security">Security</router-link>
       <router-link v-if="auth.hasAccessLevel('admin') && features.sharing" to="/admin/shares">Shared outside</router-link>
-      <router-link v-if="auth.hasAccessLevel('admin')" to="/admin/ops">System</router-link>
+      <!-- Also for extraction editors who are not administrators: System is where
+           Prompt sets lives, and for them it shows only that tab. -->
+      <router-link
+        v-if="auth.hasAccessLevel('admin') || (features.chat && auth.hasRole('extraction_editors'))"
+        to="/admin/ops"
+      >System</router-link>
     </nav>
     <div class="user">
       <button

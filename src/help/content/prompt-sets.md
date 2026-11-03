@@ -19,9 +19,11 @@ folder automation.
 
 ## Who can build them
 
-Open **Prompt sets** in the top bar. It is there for tenant administrators and
-members of the **extraction editors** role. Everyone in the workspace can *use*
-a published set; only editors change them.
+Open **System** in the top bar, then the **Prompt sets** tab. It is there for
+tenant administrators and members of the **extraction editors** role; an
+extraction editor who is not an administrator sees only this tab on the System
+page. Everyone in the workspace can *use* a published set; only editors change
+them.
 
 ## Building a set
 

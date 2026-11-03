@@ -23,14 +23,34 @@ const { storageUsage, triggerSync } = vi.hoisted(() => ({
 vi.mock('@/services/adminService', () => ({ adminService: { storageUsage, triggerSync } }))
 vi.mock('@/services/apiClient', () => ({ errorMessage: (e: unknown) => String(e) }))
 
+// Who is looking, what the deployment offers, and the address bar.
+const who = vi.hoisted(() => ({ admin: true, roles: [] as string[] }))
+const caps = vi.hoisted(() => ({ chat: true }))
+const route = vi.hoisted(() => ({ query: {} as Record<string, string> }))
+const replace = vi.hoisted(() => vi.fn())
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({
+    hasAccessLevel: (lvl: string) => lvl === 'admin' && who.admin,
+    hasRole: (r: string) => who.roles.includes(r),
+  }),
+}))
+vi.mock('@/composables/useCapabilities', () => ({ useCapabilities: () => ({ features: caps }) }))
+vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ replace }) }))
+
 import AdminOpsView from '@/views/AdminOpsView.vue'
 
 const mountView = () =>
-  mount(AdminOpsView, { global: { stubs: { AppNav: true } } })
+  mount(AdminOpsView, { global: { stubs: { AppNav: true, PromptSetsPanel: { template: '<div class="psp" />' } } } })
+
+const tabLabels = (w: ReturnType<typeof mountView>) => w.findAll('.tabs button').map((b) => b.text())
 
 describe('AdminOpsView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    who.admin = true
+    who.roles = []
+    caps.chat = true
+    route.query = {}
     storageUsage.mockResolvedValue({
       totalSpace: 1024 * 1024,
       usedSpace: 512 * 1024,
@@ -63,5 +83,57 @@ describe('AdminOpsView', () => {
     const w = mountView()
     await flushPromises()
     expect(w.text()).toContain('nope')
+  })
+
+  // --- Prompt sets lives here -----------------------------------------------
+
+  it('an administrator sees every tab, Prompt sets included', async () => {
+    const w = mountView()
+    await flushPromises()
+    expect(tabLabels(w)).toEqual(['Storage & sync', 'Integrations', 'Embedding',
+      'Classifier sets', 'Prompt sets', 'Email templates'])
+    expect(storageUsage).toHaveBeenCalled()
+  })
+
+  it('an extraction editor who is not an admin sees only Prompt sets, and no admin data is requested', async () => {
+    who.admin = false
+    who.roles = ['extraction_editors']
+    const w = mountView()
+    await flushPromises()
+    expect(tabLabels(w)).toEqual(['Prompt sets'])
+    expect(w.find('.psp').exists()).toBe(true)
+    expect(storageUsage).not.toHaveBeenCalled()
+  })
+
+  it('?tab=prompt-sets opens that tab (the old /prompt-sets address redirects here)', async () => {
+    route.query = { tab: 'prompt-sets' }
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('.tabs button.active').text()).toBe('Prompt sets')
+    expect(w.find('.psp').exists()).toBe(true)
+  })
+
+  it('choosing a tab records it in the address', async () => {
+    const w = mountView()
+    await flushPromises()
+    await w.findAll('.tabs button').find((b) => b.text() === 'Prompt sets')!.trigger('click')
+    expect(replace).toHaveBeenCalledWith({ query: { tab: 'prompt-sets' } })
+  })
+
+  it('without a chat provider there is no Prompt sets tab', async () => {
+    caps.chat = false
+    const w = mountView()
+    await flushPromises()
+    expect(tabLabels(w)).not.toContain('Prompt sets')
+  })
+
+  it('an editor on a deployment without chat is told nothing is available', async () => {
+    who.admin = false
+    who.roles = ['extraction_editors']
+    caps.chat = false
+    const w = mountView()
+    await flushPromises()
+    expect(tabLabels(w)).toEqual([])
+    expect(w.text()).toContain('Nothing here is available to your account.')
   })
 })

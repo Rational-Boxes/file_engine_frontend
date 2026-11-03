@@ -57,6 +57,14 @@ interface AuthState {
   mfaChallenge: { mfaToken: string; methods: string[]; mustEnroll: boolean } | null
 }
 
+// The one boot-time identity load (see ensureInitialized). Module scope, not
+// state: a promise is not something to make reactive or persist.
+let bootPromise: Promise<void> | null = null
+/** Tests only: forget the boot, so each test starts from a fresh page load. */
+export function resetBootForTests() {
+  bootPromise = null
+}
+
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
     token: tokenStorage.getAccessToken(),
@@ -175,6 +183,20 @@ export const useAuthStore = defineStore('auth', {
         // sign-in appears to fail for an account that is perfectly fine.
         this.forgetActiveTenant()
       }
+    },
+
+    /**
+     * Boot identity, once. The router guard needs the identity on the FIRST
+     * navigation — which runs before App.vue mounts — to decide an admin route
+     * on a page load; App.vue needs it too. Whichever asks first starts it
+     * (tenant from the host, then whoami), and both wait on the same promise.
+     */
+    ensureInitialized(): Promise<void> {
+      if (!bootPromise) {
+        this.initTenantFromHost()
+        bootPromise = this.initialize()
+      }
+      return bootPromise
     },
 
     // On app start: if a valid token is present, hydrate the identity.
