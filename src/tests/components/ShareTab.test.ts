@@ -315,6 +315,25 @@ describe('ShareTab — revoking', () => {
       expect(msg).toMatch(/one-time code/i)
     })
 
+    it('applies to a drop box and a folder download as well as a file', async () => {
+      withNoExpiry(true)
+      create.mockResolvedValue({ link_uid: 'l1', url: 'u', expires_at: null })
+      for (const kind of [ShareKind.UPLOAD, ShareKind.FOLDER]) {
+        create.mockClear()
+        const w = mountTab({ isFolder: true })
+        await flushPromises()
+        const [kindSel, ttlSel] = w.findAll('select')
+        await kindSel.setValue(String(kind))
+        await ttlSel.setValue('0')
+        await w.find('input[type="text"]').setValue('a@example.com')
+        await w.findAll('button').find((b) => b.text().includes('Create link'))!.trigger('click')
+        await flushPromises()
+        const body = create.mock.calls[0][1]
+        expect(body).toMatchObject({ kind, no_expiry: true })
+        expect(body).not.toHaveProperty('ttl_days')
+      }
+    })
+
     it('labels a link with no expiry as such in the list', async () => {
       listForNode.mockResolvedValue([{
         link_uid: 'l1', kind: ShareKind.FILE, resource_uid: 'uid-1', created_by: 'me',
