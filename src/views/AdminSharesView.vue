@@ -151,7 +151,7 @@
             </td>
             <td>{{ r.recipient_count }}</td>
             <td><span class="ash-st" :data-st="r.status">{{ r.status }}</span></td>
-            <td>{{ until(r.expires_at) }}</td>
+            <td>{{ r.expires_at ? until(r.expires_at) : 'never' }}</td>
             <td>{{ r.max_uses ? `${r.uses_consumed} / ${r.max_uses}` : r.uses_consumed }}</td>
             <td>{{ r.last_activity ? ago(r.last_activity) : '—' }}</td>
             <td>

@@ -16,16 +16,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const { create, listForNode, revoke } = vi.hoisted(() => ({
-  create: vi.fn(), listForNode: vi.fn(), revoke: vi.fn(),
+const { create, listForNode, revoke, capabilities } = vi.hoisted(() => ({
+  create: vi.fn(), listForNode: vi.fn(), revoke: vi.fn(), capabilities: vi.fn(),
 }))
 
 vi.mock('@/services/shareService', async () => {
   const actual = await vi.importActual<object>('@/services/shareService')
   return {
     ...actual,
-    shareService: { create, listForNode, revoke },
-    default: { create, listForNode, revoke },
+    shareService: { create, listForNode, revoke, capabilities },
+    default: { create, listForNode, revoke, capabilities },
   }
 })
 
@@ -42,8 +42,10 @@ function mountTab(props: Partial<Record<string, unknown>> = {}) {
 }
 
 beforeEach(() => {
-  create.mockReset(); listForNode.mockReset(); revoke.mockReset()
+  create.mockReset(); listForNode.mockReset(); revoke.mockReset(); capabilities.mockReset()
   listForNode.mockResolvedValue([])
+  // An older share_service: no `expiry` block, so no "No expiry" choice.
+  capabilities.mockResolvedValue({ enabled: true })
 })
 
 describe('ShareTab', () => {
@@ -271,5 +273,77 @@ describe('ShareTab — revoking', () => {
     await flushPromises()
     expect(w.find('.cm-panel').exists()).toBe(false)
     expect(revoke).not.toHaveBeenCalled()
+  })
+
+  describe('No expiry', () => {
+    const withNoExpiry = (allowed: boolean) => capabilities.mockResolvedValue({
+      enabled: true, expiry: { no_expiry: allowed, max_ttl_days: 30, default_ttl_days: 7 },
+    })
+    const choices = (w: ReturnType<typeof mountTab>) =>
+      w.find('select').findAll('option').map((o) => o.text())
+
+    it('is offered only when the service advertises it', async () => {
+      // Absent means an older service, which would ignore no_expiry and mint a
+      // 7-day link while the creator believes it lasts forever.
+      let w = mountTab()
+      await flushPromises()
+      expect(choices(w)).not.toContain('No expiry')
+      withNoExpiry(false)
+      w = mountTab()
+      await flushPromises()
+      expect(choices(w)).not.toContain('No expiry')
+      withNoExpiry(true)
+      w = mountTab()
+      await flushPromises()
+      expect(choices(w)).toContain('No expiry')
+    })
+
+    it('sends no_expiry instead of a ttl, and the message names no date', async () => {
+      withNoExpiry(true)
+      create.mockResolvedValue({ link_uid: 'l1', url: 'https://x/s/l1.secret', expires_at: null })
+      const w = mountTab()
+      await flushPromises()
+      await w.find('select').setValue('0')
+      await w.find('input[type="text"]').setValue('a@example.com')
+      await w.findAll('button').find((b) => b.text().includes('Create link'))!.trigger('click')
+      await flushPromises()
+      const body = create.mock.calls[0][1]
+      expect(body.no_expiry).toBe(true)
+      expect(body).not.toHaveProperty('ttl_days')
+      const msg = w.find('textarea').element.value
+      expect(msg).not.toMatch(/expires|invalid date/i)
+      expect(msg).toMatch(/one-time code/i)
+    })
+
+    it('applies to a drop box and a folder download as well as a file', async () => {
+      withNoExpiry(true)
+      create.mockResolvedValue({ link_uid: 'l1', url: 'u', expires_at: null })
+      for (const kind of [ShareKind.UPLOAD, ShareKind.FOLDER]) {
+        create.mockClear()
+        const w = mountTab({ isFolder: true })
+        await flushPromises()
+        const [kindSel, ttlSel] = w.findAll('select')
+        await kindSel.setValue(String(kind))
+        await ttlSel.setValue('0')
+        await w.find('input[type="text"]').setValue('a@example.com')
+        await w.findAll('button').find((b) => b.text().includes('Create link'))!.trigger('click')
+        await flushPromises()
+        const body = create.mock.calls[0][1]
+        expect(body).toMatchObject({ kind, no_expiry: true })
+        expect(body).not.toHaveProperty('ttl_days')
+      }
+    })
+
+    it('labels a link with no expiry as such in the list', async () => {
+      listForNode.mockResolvedValue([{
+        link_uid: 'l1', kind: ShareKind.FILE, resource_uid: 'uid-1', created_by: 'me',
+        created_at: new Date().toISOString(), expires_at: null, revoked_at: null,
+        revoked_by: null, status: 'active', max_uses: 5, uses_consumed: 0,
+      }])
+      const w = mountTab()
+      await flushPromises()
+      expect(w.text()).toContain('no expiry')
+      expect(w.text()).not.toMatch(/NaNd|expired/)
+    })
   })
 })

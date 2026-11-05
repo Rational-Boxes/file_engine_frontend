@@ -41,7 +41,8 @@ export interface SharePeek {
   kind: 0 | 1 | 2 | 3
   media_base?: string
   media_enabled?: boolean
-  expires_at: string
+  /** null = the link never expires. */
+  expires_at: string | null
   uses_remaining: number | null
   verification_required: boolean
   note: string | null

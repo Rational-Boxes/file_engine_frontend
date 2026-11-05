@@ -75,7 +75,9 @@ describe('ShareTab — media', () => {
     let w = mountTab('Contract.pdf')
     await flushPromises()
     expect(w.find('[data-test="kind"]').exists()).toBe(false)
-    expect(capabilities).not.toHaveBeenCalled()
+    // Capabilities are asked for every resource (the expiry choices live
+    // there too), but a document never asks for media state.
+    expect(state).not.toHaveBeenCalled()
     features.media = false
     w = mountTab()
     await flushPromises()
@@ -152,6 +154,27 @@ describe('ShareTab — media', () => {
     expect(body).toMatchObject({ kind: 3, access_mode: 'open', recipients: [],
                                  confirm_public: true, display_name: 'Product tour' })
     expect(body.max_uses).toBeUndefined()
+  })
+
+  it('offers No expiry for a media link too, public ones included', async () => {
+    capabilities.mockResolvedValue({ ...CAPS, expiry: { no_expiry: true, max_ttl_days: 30,
+                                                        default_ttl_days: 7 } })
+    create.mockResolvedValue({ link_uid: 'm1', kind: ShareKind.MEDIA, access_mode: 'open',
+                               url: 'https://x/s/m1.secret', expires_at: null })
+    const w = mountTab()
+    await flushPromises()
+    await chooseWatch(w)
+    await w.get('[data-test="modes"] input[value="open"]').setValue(true)
+    await w.get('[data-test="confirm-public"] input').setValue(true)
+    await w.get('[data-test="display-name"]').setValue('Product tour')
+    const ttl = w.findAll('select').find((s) => s.text().includes('No expiry'))!
+    await ttl.setValue('0')
+    await w.get('[data-test="create"]').trigger('click')
+    await flushPromises()
+    const body = create.mock.calls[0][1]
+    expect(body).toMatchObject({ kind: 3, access_mode: 'open', no_expiry: true })
+    expect(body).not.toHaveProperty('ttl_days')
+    expect(w.find('textarea').element.value).not.toMatch(/available until|invalid date/i)
   })
 
   it('states the worst case in viewings, from the published size', async () => {
