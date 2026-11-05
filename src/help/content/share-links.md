@@ -46,8 +46,11 @@ You will be asked for:
 
 - **Who it is for** — one or more email addresses. Only these addresses can use
   the link, so it is not "anyone with the URL".
-- **How long it lasts.** Links always expire. Your administrator sets a maximum;
-  you can choose anything shorter.
+- **How long it lasts.** Choose a number of days, up to a maximum your
+  administrator sets. If your administrator allows it, you can also choose
+  **No expiry**: the link keeps working until you revoke it or its uses run
+  out. It also stops working if you lose access to the file yourself, since
+  the link only ever lets people do what you can do.
 - **How many times it can be used.** A "use" is one person opening the link and
   starting a download — not one file. Re-downloading within the same visit does
   not cost another.

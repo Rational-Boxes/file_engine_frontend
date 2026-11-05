@@ -70,7 +70,7 @@
           <!-- A video share is about who watched; it consumes no uses, so the
                use count a file share shows would always read 0 here. -->
           <span class="muted" :data-test="isMedia(l) ? 'media-summary' : undefined">
-            {{ isMedia(l) ? audienceLabel(l) : usesLabel(l) }} · {{ until(l.expires_at) }} left
+            {{ isMedia(l) ? audienceLabel(l) : usesLabel(l) }} · {{ l.expires_at ? `${until(l.expires_at)} left` : 'no expiry' }}
           </span>
         </li>
       </ul>

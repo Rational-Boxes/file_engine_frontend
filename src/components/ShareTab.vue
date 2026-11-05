@@ -274,6 +274,7 @@
         <span>Expires in</span>
         <select v-model.number="form.ttl_days">
           <option v-for="d in TTL_CHOICES" :key="d" :value="d">{{ d }} days</option>
+          <option v-if="noExpiryAllowed" :value="NO_EXPIRY">No expiry</option>
         </select>
       </label>
 
@@ -358,6 +359,8 @@ const props = defineProps<{ resourceUid: string; isFolder: boolean; name: string
 defineEmits<{ (e: 'go-access'): void }>()
 
 const TTL_CHOICES = [1, 3, 7, 14, 30]
+/** The "No expiry" choice in the ttl_days select; sent as `no_expiry: true`. */
+const NO_EXPIRY = 0
 
 const links = ref<ShareLink[]>([])
 const created = ref<CreatedShareLink | null>(null)
@@ -384,6 +387,7 @@ const MODE_SHORT: Record<AccessMode, string> = {
 }
 const { features } = useCapabilities()
 const mediaCaps = ref<ShareCapabilities['media'] | null>(null)
+const noExpiryAllowed = ref(false)
 const mediaState = ref<MediaState | null>(null)
 const accessMode = ref<AccessMode>('verified')
 const displayName = ref('')
@@ -446,15 +450,21 @@ const embed = computed(() => {
   }
 })
 
-async function loadMedia() {
+async function loadCapabilities() {
   mediaCaps.value = null
   mediaState.value = null
-  if (!isMediaFile.value) return
+  let caps: ShareCapabilities | null = null
   try {
-    mediaCaps.value = (await shareService.capabilities()).media
+    caps = await shareService.capabilities()
   } catch {
-    mediaCaps.value = null          // share_service unreachable or older: no media branch
+    caps = null                     // share_service unreachable or older
   }
+  // Off unless advertised: an older service ignores no_expiry and would mint
+  // a default-TTL link while the creator thinks it lasts forever.
+  noExpiryAllowed.value = caps?.expiry?.no_expiry === true
+  if (!noExpiryAllowed.value && form.value.ttl_days === NO_EXPIRY) form.value.ttl_days = 7
+  if (!isMediaFile.value) return
+  mediaCaps.value = caps?.media ?? null   // no media block: no media branch
   if (!mediaCaps.value?.available) return
   try {
     mediaState.value = await mediaService.state(props.resourceUid)
@@ -472,20 +482,25 @@ const messageText = computed(() => {
   if (!created.value) return ''
   const c = created.value
   if (c.kind === ShareKind.MEDIA) {
-    const when = new Date(c.expires_at).toLocaleDateString()
+    const until = c.expires_at
+      ? `Available until ${new Date(c.expires_at).toLocaleDateString()}.`
+      : ''
     const how = c.access_mode === 'verified'
       ? " You'll be emailed a one-time code when you open it — that's expected, it's how we check it's you."
       : c.access_mode === 'claimed'
         ? ' You will be asked for your email address before it plays.'
         : ''
-    return `${c.display_name || props.name}\n${c.url}\nAvailable until ${when}.${how}`
+    const tail = (until + how).trim()
+    return `${c.display_name || props.name}\n${c.url}${tail ? `\n${tail}` : ''}`
   }
   const size = c.member_count != null
     ? `\n${c.member_count} files, about ${human(c.archive_bytes)}`
     : ''
-  const when = new Date(c.expires_at).toLocaleDateString()
+  const expires = c.expires_at
+    ? `Expires ${new Date(c.expires_at).toLocaleDateString()}. `
+    : ''
   return `${props.name}${size}\n${c.url}\n`
-    + `Expires ${when}. You'll be emailed a one-time code when you open it —`
+    + `${expires}You'll be emailed a one-time code when you open it —`
     + ` that's expected, it's how we check it's you.`
 })
 
@@ -509,7 +524,12 @@ function usesLabel(l: ShareLink): string {
   return l.max_uses ? `${l.uses_consumed} / ${l.max_uses}` : `${l.uses_consumed}`
 }
 
+function expiryField(): { ttl_days: number } | { no_expiry: true } {
+  return form.value.ttl_days === NO_EXPIRY ? { no_expiry: true } : { ttl_days: form.value.ttl_days }
+}
+
 function expiryLabel(l: ShareLink): string {
+  if (!l.expires_at) return 'no expiry'
   const days = Math.ceil((new Date(l.expires_at).getTime() - Date.now()) / 86_400_000)
   return days > 0 ? `${days}d left` : 'expired'
 }
@@ -556,7 +576,7 @@ async function create() {
       kind: ShareKind.MEDIA,
       access_mode: accessMode.value,
       recipients: accessMode.value === 'open' ? [] : recipientList.value,
-      ttl_days: form.value.ttl_days,
+      ...expiryField(),
       note: form.value.note || undefined,
       display_name: displayName.value.trim() || undefined,
       ...(accessMode.value === 'open' ? { confirm_public: confirmPublic.value } : {}),
@@ -565,7 +585,7 @@ async function create() {
     } : {
       kind: form.value.kind,
       recipients: recipientList.value,
-      ttl_days: form.value.ttl_days,
+      ...expiryField(),
       note: form.value.note || undefined,
       ...(form.value.kind === ShareKind.UPLOAD
         ? { max_files: budgetField.value, max_uses: 20 }
@@ -635,7 +655,7 @@ async function confirmRevoke() {
 watch(() => props.resourceUid, () => {
   created.value = null
   form.value.kind = (props.isFolder ? ShareKind.FOLDER : ShareKind.FILE) as ShareKindValue
-  void loadMedia()
+  void loadCapabilities()
   // Or the dialog would still be open over a different file, aimed at a link
   // that is no longer on screen.
   revokeTarget.value = null

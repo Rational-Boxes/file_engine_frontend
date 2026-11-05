@@ -121,7 +121,7 @@
               about {{ human(peek.archive_bytes) }}
             </template>
             <template v-else>{{ human(peek.size_bytes) }}</template>
-            · expires {{ shortDate(peek.expires_at) }}
+            <template v-if="peek.expires_at">· expires {{ shortDate(peek.expires_at) }}</template>
             <template v-if="peek.uses_remaining != null">
               · {{ peek.uses_remaining }} download{{ peek.uses_remaining === 1 ? '' : 's' }} left
             </template>

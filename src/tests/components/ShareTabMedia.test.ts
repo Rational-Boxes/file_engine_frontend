@@ -75,7 +75,9 @@ describe('ShareTab — media', () => {
     let w = mountTab('Contract.pdf')
     await flushPromises()
     expect(w.find('[data-test="kind"]').exists()).toBe(false)
-    expect(capabilities).not.toHaveBeenCalled()
+    // Capabilities are asked for every resource (the expiry choices live
+    // there too), but a document never asks for media state.
+    expect(state).not.toHaveBeenCalled()
     features.media = false
     w = mountTab()
     await flushPromises()

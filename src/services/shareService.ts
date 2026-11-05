@@ -62,7 +62,8 @@ export interface ShareLink {
   resource_uid: string
   created_by: string
   created_at: string
-  expires_at: string
+  /** null = the link never expires ("No expiry" at creation). */
+  expires_at: string | null
   revoked_at: string | null
   revoked_by: string | null
   status: ShareStatus
@@ -149,6 +150,8 @@ export interface CreateShareLinkRequest {
   recipients: string[]
   ttl_days?: number
   expires_at?: string
+  /** A perpetual link; only when `capabilities().expiry.no_expiry` is true. */
+  no_expiry?: boolean
   max_uses?: number
   max_uses_per_recipient?: number
   max_bytes?: number
@@ -176,6 +179,13 @@ export interface CreateShareLinkRequest {
 /** What this deployment's share links can do (share_service /capabilities). */
 export interface ShareCapabilities {
   enabled: boolean
+  /** Absent on a share_service older than "No expiry", which would ignore
+   *  `no_expiry` and mint a default-TTL link — so treat absent as off. */
+  expiry?: {
+    no_expiry: boolean
+    max_ttl_days: number
+    default_ttl_days: number
+  }
   media: {
     available: boolean
     open_mode: boolean
