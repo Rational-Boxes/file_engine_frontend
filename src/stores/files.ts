@@ -532,5 +532,29 @@ export const useFileStore = defineStore('files', {
         this.error = errorMessage(e, 'Failed to download')
       }
     },
+
+    // A folder and everything under it, as one ZIP. Same navigation pattern as
+    // downloadItem, and for the same reason, only more so: a tree can be far
+    // larger than any one file in it. Nothing is buffered on the server either —
+    // the bridge streams the archive as it reads the files.
+    //
+    // `item` omitted = the folder being viewed.
+    async downloadFolderZip(item?: FileItem) {
+      const uid = item ? item.uid : this.currentUid
+      const name = item ? item.name : (this.breadcrumbs[this.breadcrumbs.length - 1]?.name || 'files')
+      try {
+        const url = await fileService.folderArchiveUrl(uid)
+        const a = document.createElement('a')
+        a.href = url
+        // The server's Content-Disposition carries the exact (UTF-8) name; this
+        // is only the fallback for a browser that ignores it.
+        a.download = `${name}.zip`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      } catch (e) {
+        this.error = errorMessage(e, 'Failed to download folder')
+      }
+    },
   },
 })

@@ -2,7 +2,7 @@
 id: files
 title: Uploading & organizing files
 category: Working with files
-keywords: [files, upload, folder, browse, move, copy, rename, delete, undelete, trash, drag, drop, download, breadcrumbs, clipboard, thumbnail, preview, generate preview, icon, executable, archive, binary]
+keywords: [files, upload, folder, browse, move, copy, rename, delete, undelete, trash, drag, drop, download, breadcrumbs, clipboard, thumbnail, preview, generate preview, icon, executable, archive, binary, zip, download folder]
 order: 1
 related: [versions, editing, sharing, folder-actions, search, acl-inheritance]
 ---
@@ -84,6 +84,29 @@ in-browser editing. See [editing documents](#editing).
 
 Most of these actions also live on each row's **⋮** menu, and folder-changing actions
 appear only where you have write access.
+
+## Downloading a whole folder
+
+**⬇ Download as ZIP** in the toolbar downloads the folder you are viewing, with
+every subfolder and file inside it, as one `.zip` file. To download a different
+folder, choose **Download as ZIP** from that folder's **⋮** menu.
+
+- The folder structure is kept, empty folders included. Each file is the current
+  version.
+- The download starts straight away and your browser shows it like any other
+  download. Large folders work, but they take as long as their size needs.
+- Files are stored in the ZIP without compression. Most documents, drawings,
+  images and videos are already compressed, so the ZIP is about the same size as
+  the files in it.
+- Only files you are allowed to open are included. If a file could not be added
+  (for example, someone deleted it during the download), the ZIP contains a
+  **`_download_report.txt`** that lists what is missing.
+- If two items in a folder have the same name apart from upper/lower case, the
+  second one gets a number, such as `notes (2).txt`, so neither overwrites the
+  other when you unzip.
+- Very large folders can be refused, with a message giving the limit. If several
+  people are downloading big folders at once, you may be asked to try again in a
+  moment.
 
 ## Previews, and files that don't have one
 

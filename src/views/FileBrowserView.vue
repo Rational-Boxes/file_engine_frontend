@@ -40,6 +40,15 @@
         </button>
         <HelpIcon topic="files" label="Uploading &amp; organizing files" />
         <button
+          v-if="canDo('download', auth.accessLevel) && !files.showDeleted"
+          class="btn"
+          title="Download this folder and everything in it as one ZIP"
+          data-test="download-folder-zip"
+          @click="files.downloadFolderZip()"
+        >
+          ⬇ Download as ZIP
+        </button>
+        <button
           v-if="files.canListDeleted"
           class="btn"
           :class="{ 'btn-active': files.showDeleted }"
@@ -577,6 +586,10 @@ const menuFor = (item: FileItem): KebabItem[] => {
   // global role — so a user who can modify this folder (e.g. their home) gets them.
   if (item.isDirectory) m.push({ action: 'open', label: 'Open' })
   else if (canDo('download', auth.accessLevel)) m.push({ action: 'download', label: 'Download' })
+  // The whole tree as one streamed ZIP. Files the caller cannot read are left
+  // out by the server (and named in a report inside the archive).
+  if (item.isDirectory && canDo('download', auth.accessLevel))
+    m.push({ action: 'downloadZip', label: 'Download as ZIP' })
   if (canView3D(item)) m.push({ action: 'view3d', label: 'View in 3D' })
   // Always reachable — the comment window doesn't need a preview/rendition.
   if (!item.isDirectory) m.push({ action: 'comments', label: '💬 Comments' })
@@ -697,6 +710,7 @@ const onAction = (action: string, item: FileItem) => {
   switch (action) {
     case 'open': return files.openDirectory(item)
     case 'download': return files.downloadItem(item)
+    case 'downloadZip': return files.downloadFolderZip(item)
     case 'info': return files.openDetails(item)
     case 'comments': return comments.open(item.uid, item.name)
     case 'view3d': return model3d.open(item.uid, item.name)
