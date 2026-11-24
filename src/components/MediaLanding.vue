@@ -111,6 +111,13 @@
         data-test="player"
       />
 
+      <!-- The sender's sign-off link: a new tab, no opener, no referrer. -->
+      <p v-if="session && followHref" class="ml-follow" data-test="follow-link">
+        <a class="ml-btn primary" :href="followHref" target="_blank" rel="noopener noreferrer">
+          {{ session.follow_link?.title || followHost }} ↗
+        </a>
+      </p>
+
       <p v-if="session && peek.allow_download" class="ml-dl">
         <a class="ml-btn" :href="door.downloadUrl(session.session)" download data-test="download">⬇ Download</a>
       </p>
@@ -161,6 +168,17 @@ const claimNotice = computed(() => (peek.value?.tracking
   ? `By clicking Watch, you agree that the sender can see whether and how much of this you ${
     peek.value?.kind === 'audio' ? 'listen to' : 'watch'}.`
   : 'By clicking Watch, you agree that your address is shared with the sender.'))
+/** Only an http(s) address becomes a link, whatever the server sent. */
+const followUrlObj = computed(() => {
+  const raw = session.value?.follow_link?.url
+  if (!raw) return null
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u : null
+  } catch { return null }
+})
+const followHref = computed(() => followUrlObj.value?.href ?? '')
+const followHost = computed(() => followUrlObj.value?.host ?? '')
 const absSources = computed(() => (session.value?.sources ?? []).map((s) => ({ ...s, url: door.abs(s.url) })))
 
 // Only the door's own refusal means the link is dead. Everything else — a 429
@@ -276,4 +294,5 @@ onBeforeUnmount(() => { if (poll) clearTimeout(poll) })
 .ml-err { color: var(--danger); margin: 0; }
 .ml-small { font-size: .8rem; color: var(--muted); margin: 0; }
 .ml-dl { margin: 0; }
+.ml-follow { margin: 0; }
 </style>

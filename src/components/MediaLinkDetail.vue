@@ -49,6 +49,11 @@
       </span>
     </p>
 
+    <p v-if="link.follow_link_url" class="mld-state" data-test="follow-link">
+      Viewers are offered:
+      <a :href="link.follow_link_url" target="_blank" rel="noopener noreferrer">{{ link.follow_link_title || link.follow_link_url }} ↗</a>
+    </p>
+
     <!-- ── egress ────────────────────────────────────────────────────── -->
     <div class="mld-meter" data-test="egress">
       <span class="muted">Served</span>

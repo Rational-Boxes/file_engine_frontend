@@ -4,7 +4,7 @@ title: Sending files to people outside your organisation
 category: Permissions
 keywords: [share link, external, outside, guest, no account, link, expire, revoke, drop box, upload, recipient, code, otp, one-time code, zip, archive, contractor, client]
 order: 4
-related: [sharing, acl-basics, files]
+related: [sharing, media-links, acl-basics, files]
 ---
 
 The [Access tab](#sharing) shares with people who have an account here. This page
@@ -35,6 +35,10 @@ Open a file or folder's details drawer and choose the **Share** tab:
   folder structure preserved inside the ZIP.
 - **A drop box.** The opposite direction: they send files *to* you, into a folder
   you choose. Nothing in that folder is visible to them.
+
+For a video or audio file there is one more choice, **Let someone watch this**: they
+play it in the browser instead of downloading it. See
+[Sharing a video or recording](#media-links).
 
 For the two folder shapes you are told the file count and roughly how big the ZIP
 will be *before* you create the link — worth glancing at if you are about to send

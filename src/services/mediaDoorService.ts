@@ -57,6 +57,8 @@ export interface MediaSession {
   sources: MediaSource[]
   tracking: boolean
   beacon?: string
+  /** The creator's sign-off link, given with the video (never before the gate). */
+  follow_link?: { url: string; title: string }
 }
 
 /** Thrown for the one non-error refusal a viewer must see: still encoding. */

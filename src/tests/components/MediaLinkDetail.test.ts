@@ -77,6 +77,17 @@ beforeEach(() => {
 })
 
 describe('MediaLinkDetail', () => {
+  it('shows the sign-off link the viewers are offered, only when there is one', async () => {
+    audience.mockResolvedValue(aud([]))
+    let w = await mountIt()
+    expect(w.find('[data-test="follow-link"]').exists()).toBe(false)
+    w = await mountIt({ follow_link_url: 'https://example.com/more', follow_link_title: 'Read more' })
+    const a = w.get('[data-test="follow-link"] a')
+    expect(a.attributes('href')).toBe('https://example.com/more')
+    expect(a.attributes('target')).toBe('_blank')
+    expect(a.text()).toContain('Read more')
+  })
+
   it('never shows "no playback data" as 0% watched', async () => {
     audience.mockResolvedValue(aud([row({})]))
     const w = await mountIt()

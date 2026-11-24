@@ -132,7 +132,9 @@ async function main() {
 
     console.log('== claimed: an address and consent, then it plays')
     const claimed = await mint(fileUid, { access_mode: 'claimed', recipients: [],
-                                          display_name: 'Landing E2E', allow_download: true })
+                                          display_name: 'Landing E2E', allow_download: true,
+                                          follow_link_url: `${APP}/?follow-e2e=1`,
+                                          follow_link_title: 'More about this project' })
     minted.push(claimed.link_uid)
     assert(claimed.ready, 'published')
     // A fixed, wide window: the media page must FILL it (production 2026-10-04 drew
@@ -169,6 +171,19 @@ async function main() {
     await page.click('[data-test="claim"] button')
     const reached = await plays(page, 4)
     assert(reached >= 4, `the video played in the page (${reached.toFixed(1)} s)`)
+    // The creator's sign-off link: under the player, with its title, in a NEW tab
+    // that cannot reach back into this page.
+    const follow = page.locator('[data-test="follow-link"] a')
+    assert(await follow.count() === 1 && (await follow.innerText()).includes('More about this project'),
+      'the sign-off link is shown with its title')
+    assert(await follow.getAttribute('target') === '_blank'
+      && (await follow.getAttribute('rel')) === 'noopener noreferrer', 'it opens in a new tab, no opener')
+    const [tab] = await Promise.all([page.context().waitForEvent('page'), follow.click()])
+    await tab.waitForLoadState('domcontentloaded').catch(() => {})
+    assert(tab.url() === `${APP}/?follow-e2e=1`, `the new tab is the creator's address (${tab.url()})`)
+    assert(await tab.evaluate(() => window.opener === null), 'the new tab has no handle on the player page')
+    assert(!page.isClosed() && page.url().includes(claimed.path), 'the player page stays where it was')
+    await tab.close()
     // The creator's Dashboard learns the recipient opened it (owner's request
     // 2026-10-04): share -> event stream -> discussion consumer -> the feed. The
     // media kinds used to be dropped by discussion as unknown.

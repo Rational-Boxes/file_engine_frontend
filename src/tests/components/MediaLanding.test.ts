@@ -227,6 +227,28 @@ describe('MediaLanding', () => {
       .toBe('https://acme-media.example.com/media/v1/L1/download?t=TOK')
   })
 
+  it("shows the sender's link with the video, in a new tab, and never a non-http one", async () => {
+    let w = await mountIt()
+    await w.get('[data-test="play"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="follow-link"]').exists()).toBe(false)
+    replies.session = respond(200, { ...SESSION, follow_link: { url: 'https://example.com/more', title: 'Read more' } })
+    w = await mountIt()
+    expect(w.find('[data-test="follow-link"]').exists()).toBe(false)      // not before the session
+    await w.get('[data-test="play"]').trigger('click')
+    await flushPromises()
+    const a = w.get('[data-test="follow-link"] a')
+    expect(a.attributes('href')).toBe('https://example.com/more')
+    expect(a.attributes('target')).toBe('_blank')
+    expect(a.attributes('rel')).toBe('noopener noreferrer')
+    expect(a.text()).toContain('Read more')
+    replies.session = respond(200, { ...SESSION, follow_link: { url: 'javascript:alert(1)', title: 'x' } })
+    w = await mountIt()
+    await w.get('[data-test="play"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="follow-link"]').exists()).toBe(false)
+  })
+
   it('wires the beacon only when tracking is on', async () => {
     replies.session = respond(200, { ...SESSION, tracking: false, beacon: undefined })
     replies.peek = respond(200, { ...PEEK, tracking: false })

@@ -64,7 +64,7 @@ describe('help registry', () => {
   it('covers every user-facing feature that has a UI surface', () => {
     // A feature people can see but cannot look up is a support question waiting
     // to happen, so the list is asserted rather than left to whoever notices.
-    for (const id of ['folder-actions', 'comparing', 'share-links']) {
+    for (const id of ['folder-actions', 'comparing', 'share-links', 'media-links']) {
       expect(getTopic(id), id).toBeDefined()
       expect(renderTopic(id), id).toContain('<')
     }
@@ -80,6 +80,10 @@ describe('help registry', () => {
       'what changed': 'comparing',
       diff: 'comparing',
       redline: 'comparing',
+      // Video links — people search for the thing, not "media".
+      video: 'media-links',
+      'who watched': 'media-links',
+      embed: 'media-links',
     }
     for (const [query, id] of Object.entries(wanted)) {
       expect(searchTopics(query).map((t) => t.id), `search: ${query}`).toContain(id)

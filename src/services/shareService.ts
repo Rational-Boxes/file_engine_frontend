@@ -85,6 +85,9 @@ export interface ShareLink {
   max_viewers?: number
   allowed_embed_origins?: string[] | null
   display_name?: string | null
+  /** The sign-off link shown under the player (opens in a new tab). */
+  follow_link_url?: string | null
+  follow_link_title?: string | null
   media_state?: MediaState | null
   /** The source version the link currently plays (the newest PUBLISHED one). */
   media_version?: string | null
@@ -174,6 +177,10 @@ export interface CreateShareLinkRequest {
   /** The public title. Required for an open link: the file name would publish
    *  whatever the internal naming convention says. */
   display_name?: string
+  /** Optional: an http(s) link shown with the video ("for more information…").
+   *  The title defaults to the link's host on the server. */
+  follow_link_url?: string
+  follow_link_title?: string
 }
 
 /** What this deployment's share links can do (share_service /capabilities). */
