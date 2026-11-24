@@ -556,5 +556,43 @@ export const useFileStore = defineStore('files', {
         this.error = errorMessage(e, 'Failed to download folder')
       }
     },
+
+    /**
+     * The selected items of the folder being viewed, as one ZIP named after
+     * that folder; a selected folder brings its whole tree. Submitted as a form
+     * into a hidden frame, so the browser saves the stream and the page stays
+     * where it is (and the tab never holds the archive).
+     */
+    async downloadSelectionZip() {
+      const uids = [...this.selected]
+      if (!uids.length) return
+      try {
+        const action = await fileService.selectionArchiveAction(this.currentUid, uids)
+        const frameName = 'fe-zip-download'
+        let frame = document.querySelector<HTMLIFrameElement>(`iframe[name="${frameName}"]`)
+        if (!frame) {
+          frame = document.createElement('iframe')
+          frame.name = frameName
+          frame.style.display = 'none'
+          document.body.appendChild(frame)
+        }
+        const form = document.createElement('form')
+        form.method = 'POST'
+        form.action = action
+        form.target = frameName
+        form.enctype = 'application/x-www-form-urlencoded'
+        form.style.display = 'none'
+        const field = document.createElement('input')
+        field.type = 'hidden'
+        field.name = 'uids'
+        field.value = uids.join(',')
+        form.appendChild(field)
+        document.body.appendChild(form)
+        form.submit()
+        document.body.removeChild(form)
+      } catch (e) {
+        this.error = errorMessage(e, 'Failed to download the selected items')
+      }
+    },
   },
 })

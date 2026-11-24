@@ -104,6 +104,9 @@ folder, choose **Download as ZIP** from that folder's **⋮** menu.
 - If two items in a folder have the same name apart from upper/lower case, the
   second one gets a number, such as `notes (2).txt`, so neither overwrites the
   other when you unzip.
+- To download only some items, tick two or more of them and choose
+  **⬇ Download as ZIP** in the selection bar. The ZIP is named after the folder
+  you are in, and a ticked folder brings everything inside it.
 - Very large folders can be refused, with a message giving the limit. If several
   people are downloading big folders at once, you may be asked to try again in a
   moment.

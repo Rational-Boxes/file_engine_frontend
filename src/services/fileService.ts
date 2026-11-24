@@ -369,6 +369,22 @@ export const fileService = {
   },
 
   /**
+   * Where to POST a selection of a folder's items to get them as one ZIP.
+   *
+   * The uid list goes in the BODY of a plain form submission (a URL cannot
+   * hold a few hundred uids), so the browser itself receives and saves the
+   * archive. The ticket is minted with the same selection: the bridge refuses
+   * an item that is not in the folder here, where the error can still be
+   * shown, rather than in the hidden frame the form is submitted into.
+   */
+  async selectionArchiveAction(folderUid: string, uids: string[]): Promise<string> {
+    const { data } = await apiClient.post<{ ticket: string }>(
+      `/v1/dirs/${folderUid}/archive-ticket`, { uids })
+    const q = new URLSearchParams({ ticket: data.ticket })
+    return `${API_BASE}/v1/dirs/${folderUid}/archive?${q.toString()}`
+  },
+
+  /**
    * A URL a <video>/<audio> element can stream from, Range requests and all.
    *
    * Like `downloadUrl` the credential has to travel in the URL — a media element

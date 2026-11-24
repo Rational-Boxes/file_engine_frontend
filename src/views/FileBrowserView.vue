@@ -134,6 +134,13 @@
         :title="files.canWrite ? 'Delete selected' : 'Requires write access to this folder'"
         @click="batchDelete"
       >Delete</button>
+      <button
+        v-if="files.selected.size > 1 && canDo('download', auth.accessLevel) && !files.showDeleted"
+        class="btn"
+        title="Download the selected items as one ZIP named after this folder"
+        data-test="download-selection-zip"
+        @click="files.downloadSelectionZip()"
+      >⬇ Download as ZIP</button>
       <button class="btn btn-ghost" title="Clear selection" @click="files.clearSelection()">Clear</button>
     </div>
 

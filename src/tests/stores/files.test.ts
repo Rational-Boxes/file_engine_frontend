@@ -38,6 +38,7 @@ vi.mock('@/services/fileService', () => ({
     downloadFile: vi.fn(),
     downloadUrl: vi.fn(),
     folderArchiveUrl: vi.fn(),
+    selectionArchiveAction: vi.fn(),
     stat: vi.fn(),
     checkPermission: vi.fn(),
     touch: vi.fn(),
@@ -532,6 +533,44 @@ describe('downloadFolderZip — a whole tree, streamed', () => {
     vi.mocked(fileService.folderArchiveUrl).mockRejectedValue(new Error('forbidden'))
     const store = useFileStore()
     await store.downloadFolderZip({ uid: 'd1', name: 'docs', isDirectory: true } as never)
+    expect(store.error).toBeTruthy()
+  })
+})
+
+describe('downloadSelectionZip — the selected items, as a form POST', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.mocked(fileService.selectionArchiveAction).mockReset()
+    document.querySelectorAll('iframe[name="fe-zip-download"]').forEach((f) => f.remove())
+  })
+
+  it('posts the selection into a hidden frame at the ticketed archive URL of the current folder', async () => {
+    vi.mocked(fileService.selectionArchiveAction).mockResolvedValue('/api/v1/dirs/cur/archive?ticket=t')
+    const submitted: { action: string; method: string; target: string; uids: string }[] = []
+    const spy = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+      submitted.push({ action: this.getAttribute('action') || '', method: this.method, target: this.target,
+        uids: (this.elements.namedItem('uids') as HTMLInputElement).value })
+    })
+    const store = useFileStore()
+    store.currentUid = 'cur'
+    store.selected = new Set(['a', 'b'])
+    await store.downloadSelectionZip()
+    expect(fileService.selectionArchiveAction).toHaveBeenCalledWith('cur', ['a', 'b'])
+    expect(submitted).toEqual([{ action: '/api/v1/dirs/cur/archive?ticket=t', method: 'post',
+      target: 'fe-zip-download', uids: 'a,b' }])
+    expect(document.querySelector('iframe[name="fe-zip-download"]')).not.toBeNull()
+    expect(document.querySelectorAll('form').length).toBe(0)   // cleaned up
+    expect(store.selected.size).toBe(2)                         // selection kept
+    spy.mockRestore()
+  })
+
+  it('does nothing with an empty selection, and surfaces a refused ticket', async () => {
+    const store = useFileStore()
+    await store.downloadSelectionZip()
+    expect(fileService.selectionArchiveAction).not.toHaveBeenCalled()
+    vi.mocked(fileService.selectionArchiveAction).mockRejectedValue(new Error('not an item in this folder'))
+    store.selected = new Set(['x', 'y'])
+    await store.downloadSelectionZip()
     expect(store.error).toBeTruthy()
   })
 })
