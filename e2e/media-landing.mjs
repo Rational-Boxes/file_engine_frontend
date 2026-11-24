@@ -176,6 +176,12 @@ async function main() {
     const follow = page.locator('[data-test="follow-link"] a')
     assert(await follow.count() === 1 && (await follow.innerText()).includes('More about this project'),
       'the sign-off link is shown with its title')
+    const fc = await follow.evaluate((a) => {
+      const r = a.getBoundingClientRect()
+      return { left: r.left, right: innerWidth - r.right }
+    })
+    assert(Math.abs(fc.left - fc.right) <= 2,
+      `the sign-off button is centred (${Math.round(fc.left)}px | ${Math.round(fc.right)}px)`)
     assert(await follow.getAttribute('target') === '_blank'
       && (await follow.getAttribute('rel')) === 'noopener noreferrer', 'it opens in a new tab, no opener')
     const [tab] = await Promise.all([page.context().waitForEvent('page'), follow.click()])

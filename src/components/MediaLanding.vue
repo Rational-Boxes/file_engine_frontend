@@ -294,5 +294,5 @@ onBeforeUnmount(() => { if (poll) clearTimeout(poll) })
 .ml-err { color: var(--danger); margin: 0; }
 .ml-small { font-size: .8rem; color: var(--muted); margin: 0; }
 .ml-dl { margin: 0; }
-.ml-follow { margin: 0; }
+.ml-follow { margin: 0; text-align: center; }
 </style>
