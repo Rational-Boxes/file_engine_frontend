@@ -20,7 +20,10 @@
  * A small tree is built over the API; the file browser is opened on it; the
  * toolbar button (the folder being viewed) and a subfolder's ⋮ menu item must
  * each produce a browser download, which Python's zipfile then checks for every
- * member's CRC and bytes. The download must be a NAVIGATION the browser saves
+ * member's CRC and bytes. Then a SELECTION: two of the three items ticked, the
+ * selection bar's "Download as ZIP" must give exactly those (the folder's
+ * subtree included) in a ZIP named after the folder being viewed; with one item
+ * ticked the button is not offered. The download must be a NAVIGATION the browser saves
  * itself — the page must never fetch the archive into memory — which is checked
  * by watching the page's own requests.
  *
@@ -124,6 +127,8 @@ async function main() {
   writeFileSync(join(work, 'big.bin'), big)
   writeFileSync(join(work, 'cover.txt'), small)
   await put(top, 'cover.txt', small)
+  await put(top, 'skip.txt', Buffer.from('not selected\n'))
+  writeFileSync(join(work, 'skip.txt'), 'not selected\n')
   await put(sub, 'big.bin', big)
   assert(!!top && !!sub, `tree built (${name})`)
 
@@ -154,7 +159,8 @@ async function main() {
     const f1 = join(work, 'toolbar.zip')
     await d1.saveAs(f1)
     assert(d1.suggestedFilename() === `${name}.zip`, `toolbar download is named ${name}.zip`, d1.suggestedFilename())
-    const v1 = verify(f1, { 'cover.txt': join(work, 'cover.txt'), 'models/big.bin': join(work, 'big.bin') })
+    const v1 = verify(f1, { 'cover.txt': join(work, 'cover.txt'), 'skip.txt': join(work, 'skip.txt'),
+      'models/big.bin': join(work, 'big.bin') })
     assert(v1 === 'OK', 'toolbar ZIP holds the whole tree, CRC-valid and byte-identical', v1)
 
     // The subfolder's ⋮ menu.
@@ -175,6 +181,26 @@ async function main() {
     await frow.locator('.kebab-btn').click()
     assert(!(await p.locator('.kebab-item', { hasText: 'Download as ZIP' }).isVisible()),
       'a file row\'s ⋮ menu does not offer it')
+
+    // Selected items.
+    await p.keyboard.press('Escape')
+    const tick = (name) => p.locator('tr', { hasText: name }).first().locator('td.cb-col input[type=checkbox]').check()
+    const selBtn = p.locator('[data-test="download-selection-zip"]')
+    await tick('cover.txt')
+    await p.locator('.selbar').waitFor({ timeout: 10000 })
+    assert(!(await selBtn.isVisible()), 'one item ticked: the selection bar does not offer a ZIP')
+    await tick('models')
+    await selBtn.waitFor({ timeout: 10000 })
+    assert(await selBtn.isVisible(), 'two items ticked: the selection bar offers "Download as ZIP"')
+    const urlBefore = p.url()
+    const [d3] = await Promise.all([p.waitForEvent('download', { timeout: 60000 }), selBtn.click()])
+    const f3 = join(work, 'selection.zip')
+    await d3.saveAs(f3)
+    assert(d3.suggestedFilename() === `${name}.zip`, `selection download is named after the folder (${name}.zip)`, d3.suggestedFilename())
+    const v3 = verify(f3, { 'cover.txt': join(work, 'cover.txt'), 'models/big.bin': join(work, 'big.bin') })
+    assert(v3 === 'OK', 'selection ZIP holds exactly the ticked items (folder subtree included)', v3)
+    assert(p.url() === urlBefore && await p.locator('.selbar').isVisible(),
+      'the page stayed put and the selection is kept', p.url())
 
     assert(xhrArchive.length === 0, 'the archive was a navigation, never fetched into the tab', xhrArchive.join(' '))
     assert(errors.length === 0, 'no page errors', errors.join(' | '))
