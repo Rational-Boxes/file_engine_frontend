@@ -171,10 +171,13 @@ async function main() {
     assert(played > 2, `the video played inside the frame (${played.toFixed(1)} s)`)
     const fl = await frame.evaluate(() => {
       const el = document.querySelector('.fp-follow a')
-      return el && { href: el.href, target: el.target, rel: el.rel, text: el.textContent }
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      return { href: el.href, target: el.target, rel: el.rel, text: el.textContent,
+               centred: Math.abs(r.left - (innerWidth - r.right)) <= 2 }
     })
     assert(fl?.href === 'https://example.com/embed-more' && fl.target === '_blank'
-      && fl.rel === 'noopener noreferrer' && fl.text.includes('Embed follow-up'),
+      && fl.rel === 'noopener noreferrer' && fl.text.includes('Embed follow-up') && fl.centred,
       `the framed player shows the sign-off link, for a new tab (${JSON.stringify(fl)})`)
     const ev = await events(page)
     const ident = ev.find((e) => e.type === 'fe:media-identified')
