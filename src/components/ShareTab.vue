@@ -168,7 +168,10 @@
         <!-- Radios, never a dropdown: the difference between these IS the
              security posture of the link, and a collapsed control hides it. -->
         <fieldset class="share-modes" data-test="modes">
-          <legend>Who can {{ isAudio ? 'listen' : 'watch' }}</legend>
+          <legend>
+            Who can {{ isAudio ? 'listen' : 'watch' }}
+            <HelpIcon topic="media-links" label="Sharing a video or recording" />
+          </legend>
           <label class="share-check">
             <input v-model="accessMode" type="radio" value="verified" />
             <span>
@@ -226,6 +229,17 @@
             <span>I understand: <strong>anyone with this link, and anyone they forward it to, can watch this.</strong></span>
           </label>
         </template>
+
+        <!-- A sign-off: "for more information, follow this link" (opens in a new tab). -->
+        <fieldset class="share-field share-follow" data-test="follow-link">
+          <span>Link to show with the video (optional)</span>
+          <input v-model="followTitle" type="text" maxlength="120" placeholder="Link title, e.g. Read the full proposal"
+                 data-test="follow-link-title" />
+          <input v-model="followUrl" type="url" maxlength="2048" placeholder="https://www.example.com/more"
+                 data-test="follow-link-url" />
+          <small v-if="followError" class="share-err" data-test="follow-link-error">{{ followError }}</small>
+          <small v-else class="muted">Shown under the player and opened in a new tab.</small>
+        </fieldset>
 
         <label class="share-field">
           <span>At most this many {{ accessMode === 'open' ? 'viewers' : 'people' }} (optional)</span>
@@ -394,6 +408,18 @@ const displayName = ref('')
 const confirmPublic = ref(false)
 const embedInput = ref('')
 const maxViewers = ref<number | null>(null)
+const followUrl = ref('')
+const followTitle = ref('')
+/** The same rule the server applies, said before the round trip. */
+const followError = computed(() => {
+  const u = followUrl.value.trim()
+  if (!u) return followTitle.value.trim() ? 'Add the link address for this title.' : ''
+  try {
+    const p = new URL(u)
+    if ((p.protocol === 'http:' || p.protocol === 'https:') && p.hostname && !p.username && !p.password) return ''
+  } catch { /* fall through */ }
+  return 'Use a full address starting with https://'
+})
 
 const isAudio = computed(() => AUDIO_RE.test(props.name))
 const isMediaFile = computed(() => !props.isFolder && (VIDEO_RE.test(props.name) || isAudio.value))
@@ -411,6 +437,7 @@ const viewEstimate = computed(() => {
 
 const canCreate = computed(() => {
   if (!isMedia.value) return recipientList.value.length > 0
+  if (followError.value) return false
   if (accessMode.value === 'verified') return recipientList.value.length > 0
   if (accessMode.value === 'open') return confirmPublic.value && !!displayName.value.trim()
   return true
@@ -582,6 +609,10 @@ async function create() {
       ...(accessMode.value === 'open' ? { confirm_public: confirmPublic.value } : {}),
       ...(origins.length ? { allowed_embed_origins: origins } : {}),
       ...(maxViewers.value ? { max_viewers: maxViewers.value } : {}),
+      ...(followUrl.value.trim() ? {
+        follow_link_url: followUrl.value.trim(),
+        ...(followTitle.value.trim() ? { follow_link_title: followTitle.value.trim() } : {}),
+      } : {}),
     } : {
       kind: form.value.kind,
       recipients: recipientList.value,
@@ -696,6 +727,7 @@ watch(() => props.resourceUid, () => {
 .share-warn { flex-basis: 100%; margin: .25rem 0 0; font-size: .8rem; color: var(--danger); }
 .share-field { display: flex; flex-direction: column; gap: .2rem; margin-bottom: .6rem; }
 .share-field > span { font-size: .8rem; font-weight: 600; }
+.share-follow { border: 0; padding: 0; min-width: 0; }
 .share-check { display: flex; gap: .4rem; align-items: flex-start; margin-bottom: .6rem; }
 /* Themed explicitly. The global `button { color: inherit }` rule gives a button
    the theme ink, which in dark mode is LIGHT — so a button that sets no

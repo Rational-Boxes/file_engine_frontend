@@ -136,7 +136,9 @@ async function main() {
 
     console.log('== gated (claimed): framed, the gate inside the frame')
     const gated = await mint(fileUid, { access_mode: 'claimed', recipients: [], display_name: 'Embed E2E',
-                                        allowed_embed_origins: [HOST_OK] })
+                                        allowed_embed_origins: [HOST_OK],
+                                        follow_link_url: 'https://example.com/embed-more',
+                                        follow_link_title: 'Embed follow-up' })
     minted.push(gated.link_uid)
     assert(gated.ready, 'published')
     const page = await browser.newPage()
@@ -167,6 +169,13 @@ async function main() {
       const t = () => (v.currentTime > 2 ? (v.pause(), resolve(v.currentTime)) : setTimeout(t, 100)); t()
     }))
     assert(played > 2, `the video played inside the frame (${played.toFixed(1)} s)`)
+    const fl = await frame.evaluate(() => {
+      const el = document.querySelector('.fp-follow a')
+      return el && { href: el.href, target: el.target, rel: el.rel, text: el.textContent }
+    })
+    assert(fl?.href === 'https://example.com/embed-more' && fl.target === '_blank'
+      && fl.rel === 'noopener noreferrer' && fl.text.includes('Embed follow-up'),
+      `the framed player shows the sign-off link, for a new tab (${JSON.stringify(fl)})`)
     const ev = await events(page)
     const ident = ev.find((e) => e.type === 'fe:media-identified')
     assert(!!ident && !JSON.stringify(ident).includes('embed-viewer'),

@@ -232,6 +232,39 @@ describe('ShareTab — media', () => {
     expect(create.mock.calls[0][1].allowed_embed_origins).toEqual(['https://client.example'])
   })
 
+  it('sends an optional titled sign-off link, and refuses one that is not http(s)', async () => {
+    create.mockResolvedValue({ link_uid: 'L1', kind: 3, url: 'https://a/s/L1.s',
+                               expires_at: '2026-10-11T00:00:00Z', secret_shown_once: true })
+    const w = mountTab()
+    await flushPromises()
+    await chooseWatch(w)
+    await w.get('[data-test="modes"] input[value="claimed"]').setValue(true)
+    await w.get('[data-test="follow-link-title"]').setValue('Read the proposal')
+    expect(w.get('[data-test="create"]').attributes('disabled')).toBeDefined()   // title without address
+    await w.get('[data-test="follow-link-url"]').setValue('javascript:alert(1)')
+    expect(w.find('[data-test="follow-link-error"]').exists()).toBe(true)
+    expect(w.get('[data-test="create"]').attributes('disabled')).toBeDefined()
+    await w.get('[data-test="follow-link-url"]').setValue(' https://example.com/p ')
+    expect(w.find('[data-test="follow-link-error"]').exists()).toBe(false)
+    await w.get('[data-test="create"]').trigger('click')
+    await flushPromises()
+    expect(create.mock.calls[0][1]).toMatchObject({ follow_link_url: 'https://example.com/p',
+                                                     follow_link_title: 'Read the proposal' })
+  })
+
+  it('sends no sign-off fields when none is given', async () => {
+    create.mockResolvedValue({ link_uid: 'L1', kind: 3, url: 'https://a/s/L1.s',
+                               expires_at: '2026-10-11T00:00:00Z', secret_shown_once: true })
+    const w = mountTab()
+    await flushPromises()
+    await chooseWatch(w)
+    await w.get('[data-test="modes"] input[value="claimed"]').setValue(true)
+    await w.get('[data-test="create"]').trigger('click')
+    await flushPromises()
+    expect(create.mock.calls[0][1]).not.toHaveProperty('follow_link_url')
+    expect(create.mock.calls[0][1]).not.toHaveProperty('follow_link_title')
+  })
+
   it('offers the three embed snippets only for an embeddable link', async () => {
     create.mockResolvedValue({
       link_uid: 'L1', kind: 3, access_mode: 'claimed', display_name: 'Intro',
