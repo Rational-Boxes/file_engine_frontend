@@ -350,6 +350,25 @@ export const fileService = {
   },
 
   /**
+   * A URL that streams a whole folder tree as one ZIP, by navigation.
+   *
+   * The bridge writes the archive straight to the socket as it reads each file
+   * from the core: nothing is assembled on the server, and — because this is a
+   * navigation, not an XHR — nothing is assembled in this tab either. The
+   * browser saves it as it arrives.
+   *
+   * The ticket is an ARCHIVE ticket: scoped to this one folder, seconds-long,
+   * honoured only by the archive route, and refused as a bearer. It only has to
+   * outlive the click; the transfer that follows is not bounded by it.
+   */
+  async folderArchiveUrl(uid: string): Promise<string> {
+    const { data } = await apiClient.post<{ ticket: string }>(
+      `/v1/dirs/${uid}/archive-ticket`)
+    const q = new URLSearchParams({ ticket: data.ticket })
+    return `${API_BASE}/v1/dirs/${uid}/archive?${q.toString()}`
+  },
+
+  /**
    * A URL a <video>/<audio> element can stream from, Range requests and all.
    *
    * Like `downloadUrl` the credential has to travel in the URL — a media element

@@ -37,6 +37,7 @@ vi.mock('@/services/fileService', () => ({
     copy: vi.fn(),
     downloadFile: vi.fn(),
     downloadUrl: vi.fn(),
+    folderArchiveUrl: vi.fn(),
     stat: vi.fn(),
     checkPermission: vi.fn(),
     touch: vi.fn(),
@@ -484,5 +485,53 @@ describe('createDocument', () => {
 
     expect(uid).toBeNull()
     expect(store.error).toContain('denied')
+  })
+})
+
+describe('downloadFolderZip — a whole tree, streamed', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.mocked(fileService.folderArchiveUrl).mockReset()
+    vi.mocked(fileService.downloadFile).mockReset()
+  })
+
+  function captureClicks() {
+    const clicks: { href: string; download: string }[] = []
+    const realCreate = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = realCreate(tag) as HTMLAnchorElement
+      if (tag === 'a') el.click = () => { clicks.push({ href: el.getAttribute('href') || '', download: el.download }) }
+      return el
+    })
+    return clicks
+  }
+
+  it('navigates to the ticketed archive URL of the given folder', async () => {
+    vi.mocked(fileService.folderArchiveUrl).mockResolvedValue('/api/v1/dirs/d1/archive?ticket=t')
+    const clicks = captureClicks()
+    await useFileStore().downloadFolderZip({ uid: 'd1', name: 'docs', isDirectory: true } as never)
+    expect(fileService.folderArchiveUrl).toHaveBeenCalledWith('d1')
+    expect(fileService.downloadFile).not.toHaveBeenCalled()
+    expect(clicks).toEqual([{ href: '/api/v1/dirs/d1/archive?ticket=t', download: 'docs.zip' }])
+    vi.mocked(document.createElement).mockRestore()
+  })
+
+  it('with no argument, archives the folder being viewed', async () => {
+    vi.mocked(fileService.folderArchiveUrl).mockResolvedValue('/api/v1/dirs/x/archive?ticket=t')
+    const clicks = captureClicks()
+    const store = useFileStore()
+    store.currentUid = 'cur'
+    store.breadcrumbs = [{ uid: ROOT, name: 'Home' }, { uid: 'cur', name: 'Q3 Drawings' }]
+    await store.downloadFolderZip()
+    expect(fileService.folderArchiveUrl).toHaveBeenCalledWith('cur')
+    expect(clicks[0].download).toBe('Q3 Drawings.zip')
+    vi.mocked(document.createElement).mockRestore()
+  })
+
+  it('surfaces a refused ticket (e.g. a folder the caller cannot see)', async () => {
+    vi.mocked(fileService.folderArchiveUrl).mockRejectedValue(new Error('forbidden'))
+    const store = useFileStore()
+    await store.downloadFolderZip({ uid: 'd1', name: 'docs', isDirectory: true } as never)
+    expect(store.error).toBeTruthy()
   })
 })
